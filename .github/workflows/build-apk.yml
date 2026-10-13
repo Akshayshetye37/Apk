@@ -86,6 +86,9 @@ jobs:
       - name: Resolve dependencies from committed lockfile
         run: flutter pub get --enforce-lockfile
 
+      - name: Enforce production security hold
+        run: python3 scripts/production_release_gate.py
+
       - name: Prepare production signing key
         shell: bash
         env:
