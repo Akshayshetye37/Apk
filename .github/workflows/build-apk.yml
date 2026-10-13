@@ -77,6 +77,13 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: flutter create . --platforms=android
 
+      - name: Apply committed Android project configuration
+        run: |
+          set -euo pipefail
+          test -f "$GITHUB_WORKSPACE/android/app/build.gradle.kts"
+          cp -a "$GITHUB_WORKSPACE/android/." "$PROJECT_DIR/android/"
+          echo "Committed Android configuration copied into the build project."
+
       - name: Harden Android network, backup, and release configuration
         run: python3 "$GITHUB_WORKSPACE/scripts/harden_android.py" "$PROJECT_DIR"
 
