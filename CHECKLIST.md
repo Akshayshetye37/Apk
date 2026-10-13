@@ -1,5 +1,7 @@
 # Aurelia PMS APK — Complete Project Checklist
 
+> **SECURITY HOLD:** NOT APPROVED FOR PRODUCTION USE. See [SECURITY_HOLD.md](SECURITY_HOLD.md). Use fictional/sample data only until every release blocker is independently verified.
+
 **Rule:** Do not check off an item until it has actually been verified. A successful CI build does not prove that the app works correctly on a phone.
 
 ## 1. GitHub repository
