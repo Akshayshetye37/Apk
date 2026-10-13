@@ -69,7 +69,16 @@ jobs:
           set -euo pipefail
           WRAPPER=android/gradle/wrapper/gradle-wrapper.properties
           test -s "$WRAPPER" || { echo "::error::Gradle wrapper properties were not generated"; exit 1; }
-          sed -i -E 's#gradle-[0-9.]+-(bin|all)[.]zip#gradle-8.13-bin.zip#' "$WRAPPER"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path("android/gradle/wrapper/gradle-wrapper.properties")
+          text = path.read_text(encoding="utf-8")
+          updated, count = re.subn(r"gradle-[0-9.]+-(?:bin|all)\\.zip", "gradle-8.13-bin.zip", text)
+          if count != 1:
+              raise SystemExit(f"Expected one Gradle distribution URL, found {count}")
+          path.write_text(updated, encoding="utf-8")
+          PY
           grep -q 'gradle-8.13-bin.zip' "$WRAPPER"
 
       - name: Compile Android debug APK for Kotlin and Gradle validation
@@ -106,7 +115,16 @@ jobs:
           set -euo pipefail
           WRAPPER=android/gradle/wrapper/gradle-wrapper.properties
           test -s "$WRAPPER" || { echo "::error::Gradle wrapper properties were not generated"; exit 1; }
-          sed -i -E 's#gradle-[0-9.]+-(bin|all)[.]zip#gradle-8.13-bin.zip#' "$WRAPPER"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path("android/gradle/wrapper/gradle-wrapper.properties")
+          text = path.read_text(encoding="utf-8")
+          updated, count = re.subn(r"gradle-[0-9.]+-(?:bin|all)\\.zip", "gradle-8.13-bin.zip", text)
+          if count != 1:
+              raise SystemExit(f"Expected one Gradle distribution URL, found {count}")
+          path.write_text(updated, encoding="utf-8")
+          PY
           grep -q 'gradle-8.13-bin.zip' "$WRAPPER"
 
       - name: Enforce production security hold
