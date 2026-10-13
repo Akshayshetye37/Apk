@@ -86,38 +86,39 @@ if "isMinifyEnabled = true" not in source:
     if count != 1:
         raise SystemExit("ERROR: could not safely find the Android release build type to enable R8")
 
-if 'create("release")' not in source:
-    match = re.search(r"(?m)^(\s*)buildTypes\s*\{", source)
+# Always configure release signing with the supplied production key. There is no debug fallback.
+signing_block = '''    signingConfigs {
+        create("release") {
+            val releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")
+                ?: throw GradleException("ANDROID_KEYSTORE_PATH is required for release signing")
+            storeFile = file(releaseStore)
+            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                ?: throw GradleException("ANDROID_KEYSTORE_PASSWORD is required for release signing")
+            keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                ?: throw GradleException("ANDROID_KEY_ALIAS is required for release signing")
+            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                ?: throw GradleException("ANDROID_KEY_PASSWORD is required for release signing")
+        }
+    }
+'''
+if 'create("release")' in source:
+    source = re.sub(r'(?s)    signingConfigs\s*\{.*?\n    \}\n(?=\s*buildTypes\s*\{)', signing_block, source, count=1)
+else:
+    match = re.search(r"(?m)^\s*buildTypes\s*\{", source)
     if not match:
         raise SystemExit("ERROR: could not safely find Android buildTypes in Gradle file")
-    indent = match.group(1)
-    signing = (
-        indent + "signingConfigs {\n"
-        + indent + '    create("release") {\n'
-        + indent + '        val releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")\n'
-        + indent + "        if (releaseStore != null) {\n"
-        + indent + "            storeFile = file(releaseStore)\n"
-        + indent + "            storePassword = System.getenv(\"ANDROID_KEYSTORE_PASSWORD\")\n"
-        + indent + "            keyAlias = System.getenv(\"ANDROID_KEY_ALIAS\")\n"
-        + indent + "            keyPassword = System.getenv(\"ANDROID_KEY_PASSWORD\")\n"
-        + indent + "        }\n"
-        + indent + "    }\n"
-        + indent + "}\n\n"
-    )
-    source = source[:match.start()] + signing + source[match.start():]
+    source = source[:match.start()] + signing_block + "\n" + source[match.start():]
 
-debug_signing = 'signingConfig = signingConfigs.getByName("debug")'
-if debug_signing in source:
-    source = source.replace(
-        debug_signing,
-        '''signingConfig = if (System.getenv("ANDROID_KEYSTORE_PATH") != null)
-                    signingConfigs.getByName("release")
-                else
-                    signingConfigs.getByName("debug")''',
-        1,
-    )
-elif "ANDROID_KEYSTORE_PATH" not in source:
-    raise SystemExit("ERROR: could not safely configure release signing")
+source, count = re.subn(
+    r'(?m)^\s*signingConfig\s*=.*$',
+    '            signingConfig = signingConfigs.getByName("release")',
+    source,
+    count=1,
+)
+if count != 1:
+    raise SystemExit("ERROR: could not safely set release signing config")
+if 'signingConfig = signingConfigs.getByName("debug")' in source:
+    raise SystemExit("ERROR: debug signing fallback is forbidden")
 
 gradle.write_text(source, encoding="utf-8")
 proguard = android / "app/proguard-rules.pro"
@@ -142,4 +143,4 @@ if "-dontwarn com.google.android.play.core.**" not in rules:
         encoding="utf-8",
     )
 
-print("Applied: HTTPS-only network policy, Android backup restrictions, R8 shrinking, and conditional release signing.")
+print("Applied: HTTPS-only network policy, Android backup restrictions, R8 shrinking, and fail-closed production release signing.")
