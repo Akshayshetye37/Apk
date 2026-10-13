@@ -26,9 +26,23 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            val releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")
+                ?: throw GradleException("ANDROID_KEYSTORE_PATH is required for release signing")
+            storeFile = file(releaseStore)
+            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                ?: throw GradleException("ANDROID_KEYSTORE_PASSWORD is required for release signing")
+            keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                ?: throw GradleException("ANDROID_KEY_ALIAS is required for release signing")
+            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                ?: throw GradleException("ANDROID_KEY_PASSWORD is required for release signing")
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
