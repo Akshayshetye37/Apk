@@ -92,7 +92,11 @@ jobs:
         run: |
           set -euo pipefail
           flutter analyze --fatal-infos
-          flutter test
+          if find test -type f -name '*_test.dart' -print -quit 2>/dev/null | grep -q .; then
+            flutter test
+          else
+            echo "No Flutter test files are present; skipping the test runner."
+          fi
 
       - name: Prepare release signing key
         shell: bash
