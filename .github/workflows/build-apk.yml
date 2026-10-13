@@ -53,7 +53,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.35.5'
           cache: true
 
       - name: Prepare Android platform
@@ -75,7 +75,21 @@ jobs:
 
       - name: Resolve dependencies
         working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter pub get
+        run: |
+          set -euo pipefail
+          if [ -f pubspec.lock ]; then
+            flutter pub get --enforce-lockfile
+          else
+            echo 'ERROR: pubspec.lock is required for reproducible release builds.'
+            exit 1
+          fi
+
+      - name: Analyze and test
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          set -euo pipefail
+          flutter analyze --fatal-infos
+          flutter test
 
       - name: Prepare release signing key
         shell: bash
@@ -88,9 +102,12 @@ jobs:
           set -euo pipefail
           if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] && [ -n "${ANDROID_KEY_ALIAS:-}" ] && [ -n "${ANDROID_KEY_PASSWORD:-}" ]; then
             KEY_PATH="$GITHUB_WORKSPACE/$PROJECT_DIR/android/app/release-keystore.jks"
+            umask 077
             printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEY_PATH"
+            test -s "$KEY_PATH"
+            keytool -list -keystore "$KEY_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
             echo "ANDROID_KEYSTORE_PATH=$KEY_PATH" >> "$GITHUB_ENV"
-            echo "Release signing keystore configured."
+            echo "Release signing keystore and alias validated."
           else
             echo "ERROR: Production signing secrets are missing. Refusing to produce a release APK with a debug key."
             exit 1
@@ -110,6 +127,12 @@ jobs:
           APK="build/app/outputs/flutter-apk/app-release.apk"
           test -s "$APK"
           "$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)/apksigner" verify --verbose "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-certs.txt"
+          keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > "$RUNNER_TEMP/keystore-cert.txt"
+          APK_CERT=$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2); exit}' "$RUNNER_TEMP/apk-certs.txt" | tr -d ':')
+          KEY_CERT=$(awk -F': ' '/SHA256:/ {print tolower($2); exit}' "$RUNNER_TEMP/keystore-cert.txt" | tr -d ':')
+          test -n "$APK_CERT" && test -n "$KEY_CERT" && test "$APK_CERT" = "$KEY_CERT"
+          echo "APK certificate matches configured production keystore."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
