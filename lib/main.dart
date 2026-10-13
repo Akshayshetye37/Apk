@@ -184,14 +184,12 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         final temp = await getTemporaryDirectory();
         // Use a unique temporary path to avoid collisions between exports.
         final file = File('${temp.path}/aurelia_${DateTime.now().microsecondsSinceEpoch}_$safeName');
-        var shared = false;
         try {
           await file.writeAsBytes(bytes, flush: true);
           await Share.shareXFiles(
             [XFile(file.path, mimeType: mime, name: safeName)],
             subject: safeName,
           );
-          shared = true;
           await _controller.runJavaScript(
             'window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);',
           );
