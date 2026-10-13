@@ -137,8 +137,8 @@ proguard = android / "app/proguard-rules.pro"
 rules = proguard.read_text(encoding="utf-8")
 if "-dontwarn com.google.android.play.core.**" not in rules:
     proguard.write_text(
-        rules.rstrip() + "\\n# Flutter references Play Store deferred-component APIs not used by this app.\\n"
-        "-dontwarn com.google.android.play.core.**\\n",
+        rules.rstrip() + "\n# Flutter references Play Store deferred-component APIs not used by this app.\n"
+        "-dontwarn com.google.android.play.core.**\n",
         encoding="utf-8",
     )
 
