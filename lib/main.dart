@@ -202,7 +202,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       else {
         final attempts = (int.tryParse(await AureliaSecureVault.readSecret('app_pin_attempts_v1') ?? '0') ?? 0) + 1;
         await AureliaSecureVault.writeSecret('app_pin_attempts_v1', attempts.toString());
-        if (attempts >= 5) { final delay = min(900, 60 * (1 << min(4, attempts - 5))); await AureliaSecureVault.writeSecret('app_pin_lock_until_v1', (now + delay * 1000).toString()); setState(() => _lockMessage = 'Too many failures. Locked for ' + delay.toString() + ' seconds.'); }
+        if (attempts >= 5) { final exponent = min(4, attempts - 5).toInt(); final delay = min(900, 60 * (1 << exponent)).toInt(); await AureliaSecureVault.writeSecret('app_pin_lock_until_v1', (now + delay * 1000).toString()); setState(() => _lockMessage = 'Too many failures. Locked for ' + delay.toString() + ' seconds.'); }
         else { setState(() => _lockMessage = 'Incorrect PIN. ' + (5 - attempts).toString() + ' attempts remain before lockout.'); }
       }
     } catch (_) { if (mounted) setState(() => _lockMessage = 'Secure verification failed. App remains locked.'); }
