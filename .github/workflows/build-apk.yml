@@ -5,7 +5,6 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'aurelia-pms-flutter-apk-source.zip'
       - '.github/workflows/**'
       - 'assets/**'
       - 'lib/**'
@@ -26,33 +25,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract Flutter project
+      - name: Select authoritative Flutter project
         run: |
-          mkdir -p project
-          unzip -o aurelia-pms-flutter-apk-source.zip -d project
-          echo "Extracted files:"
-          find project -maxdepth 4 -type f | head -100
-
-      - name: Locate Flutter project
-        run: |
-          FILE=$(find project -name pubspec.yaml -print -quit)
-          if [ -z "$FILE" ]; then
-            echo "ERROR: pubspec.yaml was not found in the ZIP."
-            exit 1
-          fi
-          echo "PROJECT_DIR=$(dirname "$FILE")" >> "$GITHUB_ENV"
-
-      - name: Install the latest supplied PMS HTML
-        run: |
-          if [ ! -f assets/index.html ]; then
-            echo "ERROR: assets/index.html is missing from the repository."
-            exit 1
-          fi
-          mkdir -p "$PROJECT_DIR/assets"
-          cp assets/index.html "$PROJECT_DIR/assets/index.html"
-          if [ -f lib/main.dart ]; then cp lib/main.dart "$PROJECT_DIR/lib/main.dart"; fi
-          if [ -f pubspec.yaml ]; then cp pubspec.yaml "$PROJECT_DIR/pubspec.yaml"; fi
-          echo "Installed repository HTML, Flutter wrapper, and dependencies into the app."
+          set -euo pipefail
+          test -f pubspec.yaml
+          test -f lib/main.dart
+          test -f assets/index.html
+          echo "PROJECT_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+          echo "Building directly from the committed repository source."
 
       - name: Apply Android WebView API compatibility fix
         working-directory: ${{ env.PROJECT_DIR }}
@@ -93,7 +73,7 @@ jobs:
       - name: Run static security checks
         run: python3 scripts/security_static_check.py
 
-      - name: Get dependencies
+      - name: Resolve dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: flutter pub get
 
@@ -112,7 +92,8 @@ jobs:
             echo "ANDROID_KEYSTORE_PATH=$KEY_PATH" >> "$GITHUB_ENV"
             echo "Release signing keystore configured."
           else
-            echo "::warning::Release keystore secrets are missing. APK will use the temporary debug key and is not suitable for production distribution or future signed updates."
+            echo "ERROR: Production signing secrets are missing. Refusing to produce a release APK with a debug key."
+            exit 1
           fi
 
       - name: Build release APK
