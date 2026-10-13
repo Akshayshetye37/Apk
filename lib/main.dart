@@ -91,7 +91,20 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
             debugPrint('Aurelia PMS WebView error: ${error.description}');
           },
           onNavigationRequest: (request) {
-            return NavigationDecision.navigate;
+            final uri = Uri.tryParse(request.url);
+            // The JavaScript bridge is intended only for our bundled local PMS.
+            // Never let a remote page become top-level while the bridge is installed.
+            if (uri != null && uri.scheme == 'file' && uri.path.startsWith('/android_asset/flutter_assets/')) {
+              return NavigationDecision.navigate;
+            }
+            if (uri != null && (uri.scheme == 'tel' || uri.scheme == 'mailto')) {
+              return NavigationDecision.navigate;
+            }
+            if (uri != null && uri.scheme == 'about' && uri.path == 'blank') {
+              return NavigationDecision.navigate;
+            }
+            debugPrint('Blocked non-local top-level navigation: ${request.url}');
+            return NavigationDecision.prevent;
           },
         ),
       );

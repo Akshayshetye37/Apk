@@ -14,6 +14,7 @@ if 'aureliaRequestLocalQr' not in html or 'generateQr' not in main: errors.appen
 if "type:'shareFile'" not in html or "value['type'] == 'shareFile'" not in main: errors.append('Native file export bridge is missing.')
 if 'android:allowBackup="false"' not in manifest: errors.append('Android backup must remain disabled.')
 if 'android:usesCleartextTraffic="false"' not in manifest: errors.append('Cleartext HTTP must remain disabled.')
+if 'NavigationDecision.prevent' not in main or '/android_asset/flutter_assets/' not in main: errors.append('WebView must block non-local top-level navigation while the JS bridge is installed.')
 if re.search(r'uses-permission[^>]+(CAMERA|RECORD_AUDIO|READ_SMS|READ_CONTACTS|MANAGE_EXTERNAL_STORAGE)',manifest): errors.append('Review unexpected sensitive Android permissions.')
 for line in pub.splitlines():
  if re.match(r'\s{2}[a-zA-Z0-9_]+:\s+\^',line): errors.append('Unpinned direct dependency: '+line.strip()); break
