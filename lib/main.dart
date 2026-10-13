@@ -230,6 +230,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       if (raw.length > 22 * 1024 * 1024) throw const FormatException('Request too large');
       final value = jsonDecode(raw);
       if (value is! Map<String, dynamic>) throw const FormatException('Invalid request');
+      if (_locked) throw const FormatException('App is locked');
       final rawId = value['requestId'];
       if (rawId is String) {
         final cleaned = rawId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
