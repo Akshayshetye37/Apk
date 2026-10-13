@@ -291,11 +291,22 @@ const seed={
 const aureliaStorage=(()=>{let memory={};let store=null;try{store=window.localStorage;const probe='__aurelia_storage_probe__';store.setItem(probe,'1');store.removeItem(probe);}catch(_){store=null;}return {getItem(k){try{return store?store.getItem(k):(memory[k]??null)}catch(_){return memory[k]??null}},setItem(k,v){try{if(store){store.setItem(k,String(v));return}}catch(_){}memory[k]=String(v)},removeItem(k){try{if(store){store.removeItem(k);return}}catch(_){}delete memory[k]}}})();
 function loadAureliaDB(){
  const primary=aureliaStorage.getItem('aurelia_pms_v3');
- if(primary){try{const parsed=JSON.parse(primary);if(parsed&&typeof parsed==='object')return parsed;}catch(e){console.warn('Primary PMS data could not be parsed; trying recovery snapshot.',e);}}
- try{
-   const backup=aureliaStorage.getItem('aurelia_pms_v3_autobackup');
-   if(backup){const parsed=JSON.parse(backup);if(parsed&&typeof parsed==='object'){console.warn('Loaded PMS recovery snapshot. Review recent changes and save to restore the main copy.');return parsed;}}
- }catch(e){console.warn('PMS recovery snapshot could not be loaded.',e);}
+ const backup=aureliaStorage.getItem('aurelia_pms_v3_autobackup');
+ const hasStoredData=primary!==null||backup!==null;
+ const isPmsRecord=value=>value&&typeof value==='object'&&!Array.isArray(value)&&
+   value.settings&&typeof value.settings==='object'&&
+   Array.isArray(value.rooms)&&Array.isArray(value.guests)&&Array.isArray(value.bookings);
+ if(primary!==null){
+   try{const parsed=JSON.parse(primary);if(isPmsRecord(parsed))return parsed;console.error('Primary PMS data failed schema validation.');}
+   catch(e){console.error('Primary PMS data could not be parsed; checking recovery snapshot without modifying either copy.',e);}
+ }
+ if(backup!==null){
+   try{const parsed=JSON.parse(backup);if(isPmsRecord(parsed)){console.warn('Loaded the local PMS recovery snapshot. Review recent changes and validate a separate backup before continuing.');return parsed;}console.error('PMS recovery snapshot failed schema validation.');}
+   catch(e){console.error('PMS recovery snapshot could not be parsed. Existing stored data was left untouched.',e);}
+ }
+ if(hasStoredData){
+   throw new Error('Aurelia PMS could not safely read existing hotel records. No demo data was loaded and no stored copy was overwritten. Do not clear app data; preserve the device and seek recovery support.');
+ }
  return seed;
 }
 let DB=loadAureliaDB();
