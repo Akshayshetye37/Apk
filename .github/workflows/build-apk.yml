@@ -62,6 +62,9 @@ jobs:
       - name: Test
         run: flutter test --reporter expanded
 
+      - name: Compile Android debug APK for Kotlin and Gradle validation
+        run: flutter build apk --debug
+
   build-release:
     name: Build and verify signed production APK
     runs-on: ubuntu-latest
