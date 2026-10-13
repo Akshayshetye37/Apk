@@ -21,7 +21,8 @@ class AureliaSecureVault {
   static const FlutterSecureStorage _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
-      resetOnError: true,
+      // Never silently reset encrypted preferences: doing so can orphan keys
+      // and make existing encrypted data unrecoverable. Surface errors instead.
     ),
   );
 
@@ -181,10 +182,28 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         final bytes = base64Decode(dataValue);
         if (bytes.length > 15 * 1024 * 1024) throw const FormatException('File too large');
         final temp = await getTemporaryDirectory();
-        final file = File('${temp.path}/$safeName');
-        await file.writeAsBytes(bytes, flush: true);
-        await Share.shareXFiles([XFile(file.path, mimeType: mime, name: safeName)], subject: safeName);
-        await _controller.runJavaScript('window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);');
+        // Use a unique temporary path to avoid collisions between exports.
+        final file = File('${temp.path}/aurelia_${DateTime.now().microsecondsSinceEpoch}_$safeName');
+        var shared = false;
+        try {
+          await file.writeAsBytes(bytes, flush: true);
+          await Share.shareXFiles(
+            [XFile(file.path, mimeType: mime, name: safeName)],
+            subject: safeName,
+          );
+          shared = true;
+          await _controller.runJavaScript(
+            'window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);',
+          );
+        } finally {
+          // Share targets may read asynchronously; cleanup is best-effort and
+          // should not turn a successful share into a bridge failure.
+          try {
+            if (await file.exists()) await file.delete();
+          } catch (cleanupError) {
+            debugPrint('Aurelia temporary export cleanup failed: $cleanupError');
+          }
+        }
         return;
       }
       throw const FormatException('Unsupported native action');
