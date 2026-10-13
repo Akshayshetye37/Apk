@@ -579,8 +579,8 @@ function pagesDashboard(){
  return `<div class="hero"><div><h1>Hotel command center</h1><p>${DB.settings.hotelName} · Live operational overview · ${new Date().toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</p></div><div class="actions"><button class="btn primary" onclick="openBooking()">＋ New booking</button><button class="btn" onclick="showPage('reservations')">Reservation</button><button class="btn" onclick="showPage('pos')">POS</button></div></div>
  <div class="grid kpis">
  ${kpi('Occupancy',DB.rooms.length?Math.round(occupied/DB.rooms.length*100)+'%':'0%',`${occupied} occupied · ${available} available`)}
- ${kpi('Arrivals',DB.bookings.filter(b=>b.checkIn.slice(0,10)===new Date().toISOString().slice(0,10)).length,'Today')}
- ${kpi('Departures',DB.bookings.filter(b=>b.checkOut.slice(0,10)===new Date().toISOString().slice(0,10)).length,'Today')}
+ ${kpi('Arrivals',DB.bookings.filter(b=>b.checkIn.slice(0,10)===aureliaTodayISO()).length,'Today')}
+ ${kpi('Departures',DB.bookings.filter(b=>b.checkOut.slice(0,10)===aureliaTodayISO()).length,'Today')}
  ${kpi('Reserved',reserved,'Confirmed')}
  ${kpi('Guests in house',active.reduce((s,b)=>s+Number(b.guests||1),0),'Active stays')}
  ${kpi('Outstanding',money(outstanding),'All active folios')}
@@ -796,8 +796,8 @@ function openModal(title,body,buttons='<button class="btn" onclick="closeModal()
 function closeModal(){document.getElementById('modalBack').classList.remove('show')}
 function roomOptionHTML(b){
  const current=b?.roomId||'';
- const from=b?.checkIn||new Date().toISOString().slice(0,16);
- const to=b?.checkOut||new Date(Date.now()+86400000).toISOString().slice(0,16);
+ const from=b?.checkIn||aureliaDateTimeISO(new Date());
+ const to=b?.checkOut||aureliaDateTimeISO(new Date(Date.now()+86400000));
  return DB.rooms.map(x=>{
    const hardBlocked=['cleaning','maintenance'].includes(x.status);
    const bookingConflict=DB.bookings.some(other=>other.id!==b?.id&&other.roomId===x.id&&other.status!=='checked_out'&&other.status!=='cancelled'&&from<other.checkOut&&to>other.checkIn);
@@ -823,7 +823,7 @@ function openBooking(id){
  const b=id?DB.bookings.find(x=>x.id===id):null; const g=b&&guest(b), r=b&&room(b);
  let occ=(g?.occupants||[]).map((o,i)=>occupantHTML(o,i)).join('');
  let veh=(g?.vehicles||[]).map((v,i)=>vehicleHTML(v,i)).join('');
- const checkIn=b?.checkIn||new Date().toISOString().slice(0,16), checkOut=b?.checkOut||new Date(Date.now()+86400000).toISOString().slice(0,16);
+ const checkIn=b?.checkIn||aureliaDateTimeISO(new Date()), checkOut=b?.checkOut||aureliaDateTimeISO(new Date(Date.now()+86400000));
  openModal(b?'Edit booking':'New booking',`<div class="form-grid">
  ${field('Primary guest name','bkGuest',g?.name||'')}${field('Phone / WhatsApp','bkPhone',g?.phone||'')}
  ${selectIdTypeField('bkIdType',g?.idType||'')}${field('Government ID number','bkIdNumber',g?.idNumber||'')} <div class="subcard full">
@@ -1122,8 +1122,8 @@ function openReservation(id){
  const x=id&&DB.reservations.find(r=>r.id===id);
  const pre=!x?(window.aureliaReservationPrefill||null):null;
  const preRoom=pre?DB.rooms.find(r=>r.id===pre.roomId):null;
- const fromDefault=pre?.date?`${pre.date}T14:00`:new Date().toISOString().slice(0,16);
- const toDefault=pre?.date?(()=>{const d=new Date(pre.date+'T14:00:00');d.setDate(d.getDate()+1);return `${aureliaCalDate(d)}T11:00`})():new Date(Date.now()+86400000).toISOString().slice(0,16);
+ const fromDefault=pre?.date?`${pre.date}T14:00`:aureliaDateTimeISO(new Date());
+ const toDefault=pre?.date?(()=>{const d=new Date(pre.date+'T14:00:00');d.setDate(d.getDate()+1);return `${aureliaCalDate(d)}T11:00`})():aureliaDateTimeISO(new Date(Date.now()+86400000));
  const options=DB.rooms.map(r=>`<option value="${r.number}" ${(r.number===room({roomId:x?.roomId})?.number||r.id===preRoom?.id)?'selected':''} ${!x&&['occupied','reserved','cleaning','maintenance'].includes(r.status)&&r.id!==preRoom?.id?'disabled':''}>${r.number} · ${r.type} · ${money(r.rate)} · ${r.status}</option>`).join('');
  openModal(x?'Edit reservation':'New reservation',`<div class="form-grid">${field('Guest name','rsGuest',guest({guestId:x?.guestId})?.name||'')}<div class="field"><label>Room · rate auto shown</label><select id="rsRoom">${options}</select></div>${field('From','rsFrom',x?.from||fromDefault)}${field('To','rsTo',x?.to||toDefault)}</div>`,`<button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveReservation('${id||''}')">Save</button>`);
  window.aureliaReservationPrefill=null;
@@ -2511,8 +2511,8 @@ async function sendBookingTerms(id){
       _openBooking(id);
       if(!id)setTimeout(()=>{
         const a=document.getElementById('bkIn'),b=document.getElementById('bkOut');
-        if(a&&(!a.value||a.value===''))a.value=new Date().toISOString().slice(0,10)+'T'+(DB.settings.checkInTime||'14:00');
-        if(b&&(!b.value||b.value===''))b.value=new Date(Date.now()+86400000).toISOString().slice(0,10)+'T'+(DB.settings.checkOutTime||'11:00');
+        if(a&&(!a.value||a.value===''))a.value=aureliaTodayISO()+'T'+(DB.settings.checkInTime||'14:00');
+        if(b&&(!b.value||b.value===''))b.value=aureliaDateISO(new Date(Date.now()+86400000))+'T'+(DB.settings.checkOutTime||'11:00');
       },0);
     };
   }
@@ -2864,7 +2864,7 @@ function aureliaSetBackupDestination(value){
 function aureliaDownloadBackup(){
   try{
     const payload={app:'AURELIA PMS',version:3,exportedAt:new Date().toISOString(),data:DB};
-    downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`aurelia-backup-${new Date().toISOString().slice(0,10)}.json`);
+    downloadBlob(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}),`aurelia-backup-${aureliaTodayISO()}.json`);
     toast('Local backup downloaded');
   }catch(e){toast('Backup could not be created: '+(e.message||'unknown error'))}
 }
@@ -3159,7 +3159,7 @@ async function aureliaVerifyBiometric(){
   window.exportStructuredSpreadsheet=function(scope,id){
     const format=document.getElementById('exportFormat')?.value||'csv';
     const rows=rowsFor(scope,id);
-    const stamp=new Date().toISOString().slice(0,10);
+    const stamp=aureliaTodayISO();
     if(format==='csv'){csvDownload(rows,`aurelia-${scope}-report-${stamp}.csv`);return;}
     if(format==='xlsx'){
       // Excel-compatible HTML workbook. It is intentionally .xls, not a falsely labelled .xlsx ZIP.
@@ -3170,7 +3170,7 @@ async function aureliaVerifyBiometric(){
     }
     safeToast('Choose CSV or Excel-compatible .xls.');
   };
-  window.exportCSV=function(){csvDownload(allRows(),`aurelia-pms-report-${new Date().toISOString().slice(0,10)}.csv`);};
+  window.exportCSV=function(){csvDownload(allRows(),`aurelia-pms-report-${aureliaTodayISO()}.csv`);};
   window.quickGuestExport=function(id){
     if(!DB.guests.some(g=>g.id===id)){safeToast('Guest record not found');return;}
     window.exportPrintDocument ? window.exportPrintDocument('guest',id,'pdf') : safeToast('Open Import / Export to export this guest.');
@@ -3197,4 +3197,36 @@ async function aureliaVerifyBiometric(){
 })();
 </script>
 
+
+<!-- AURELIA TIMEZONE: Asia/Kolkata (IST, UTC+05:30) -->
+<script id="aurelia-ist-timezone">
+(function () {
+  'use strict';
+  const ZONE = 'Asia/Kolkata';
+  const parts = (date, options) => Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', { timeZone: ZONE, ...options }).formatToParts(date)
+      .filter(p => p.type !== 'literal').map(p => [p.type, p.value])
+  );
+  window.aureliaDateISO = function (date) {
+    const p = parts(date, { year: 'numeric', month: '2-digit', day: '2-digit' });
+    return p.year + '-' + p.month + '-' + p.day;
+  };
+  window.aureliaTodayISO = function () { return window.aureliaDateISO(new Date()); };
+  window.aureliaDateTimeISO = function (date) {
+    const p = parts(date, { year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    return p.year + '-' + p.month + '-' + p.day + 'T' + p.hour + ':' + p.minute;
+  };
+  // Date display in reports, bills, audit logs and exports must not follow the
+  // handset's configurable timezone; force the hotel's IST timezone.
+  for (const method of ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString']) {
+    const original = Date.prototype[method];
+    Date.prototype[method] = function (locales, options) {
+      return original.call(this, locales || 'en-IN', { ...(options || {}), timeZone: ZONE });
+    };
+  }
+  // Keep the reservation calendar's date keys aligned with India-local dates.
+  window.aureliaCalDate = function (date) { return window.aureliaDateISO(date); };
+})();
+</script>
 </body></html>
