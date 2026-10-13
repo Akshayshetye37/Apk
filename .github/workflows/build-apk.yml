@@ -62,6 +62,15 @@ jobs:
       - name: Test
         run: flutter test --reporter expanded
 
+      - name: Align Gradle wrapper with Android Gradle Plugin minimum
+        shell: bash
+        run: |
+          set -euo pipefail
+          WRAPPER=android/gradle/wrapper/gradle-wrapper.properties
+          test -s "$WRAPPER" || { echo "::error::Gradle wrapper properties were not generated"; exit 1; }
+          sed -i -E 's#gradle-[0-9.]+-(bin|all)\\.zip#gradle-8.13-bin.zip#' "$WRAPPER"
+          grep -q 'gradle-8.13-bin.zip' "$WRAPPER"
+
       - name: Compile Android debug APK for Kotlin and Gradle validation
         run: flutter build apk --debug
 
@@ -89,6 +98,15 @@ jobs:
 
       - name: Resolve dependencies from committed lockfile
         run: flutter pub get --enforce-lockfile
+
+      - name: Align Gradle wrapper with Android Gradle Plugin minimum
+        shell: bash
+        run: |
+          set -euo pipefail
+          WRAPPER=android/gradle/wrapper/gradle-wrapper.properties
+          test -s "$WRAPPER" || { echo "::error::Gradle wrapper properties were not generated"; exit 1; }
+          sed -i -E 's#gradle-[0-9.]+-(bin|all)\\.zip#gradle-8.13-bin.zip#' "$WRAPPER"
+          grep -q 'gradle-8.13-bin.zip' "$WRAPPER"
 
       - name: Enforce production security hold
         run: python3 scripts/production_release_gate.py
