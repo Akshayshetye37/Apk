@@ -451,7 +451,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       },
       child: Scaffold(
         body: SafeArea(
-          child: Stack(
+          child: Listener(behavior: HitTestBehavior.translucent, onPointerDown: (_) => _recordActivity(), child: Stack(
             children: [
               WebViewWidget(controller: _controller),
               if (_loading)
@@ -461,8 +461,9 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
                     value: _progress == 100 ? null : _progress / 100,
                   ),
                 ),
+              if (_locked) _lockOverlay(),
             ],
-          ),
+          )),
         ),
       ),
     );
