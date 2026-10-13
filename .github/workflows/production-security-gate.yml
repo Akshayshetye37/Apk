@@ -1,0 +1,73 @@
+name: Production Security Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-security-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  flutter-validation:
+    name: Flutter dependency, analysis, and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.5'
+          channel: stable
+          cache: true
+      - name: Require committed lockfile
+        run: |
+          test -s pubspec.lock || { echo "::error::pubspec.lock is missing. Generate it with Flutter 3.35.5, review it, and commit it."; exit 1; }
+      - name: Run static security checks
+        run: python3 scripts/security_static_check.py
+      - name: Resolve dependencies without changing lockfile
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze
+        run: flutter analyze --fatal-infos
+      - name: Test
+        run: flutter test --reporter expanded
+
+  production-signing-preflight:
+    name: Production signing secret preflight
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - name: Require all production signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required production signing secret is missing: $name"
+              missing=1
+            fi
+          done
+          if [[ "$missing" -ne 0 ]]; then
+            echo "Configure all four repository Actions secrets before production release."
+            exit 1
+          fi
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$tmp/release.jks"
+          test -s "$tmp/release.jks" || { echo "::error::Decoded keystore is empty."; exit 1; }
+          command -v keytool >/dev/null
+          if ! keytool -list -keystore "$tmp/release.jks" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::Keystore, store password, or alias is invalid."
+            exit 1
+          fi
+          echo "Signing material and alias validated. Secret values were not printed."

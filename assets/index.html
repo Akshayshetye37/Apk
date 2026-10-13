@@ -287,15 +287,44 @@ const seed={
  audit:[],
  seq:{booking:1000,reservation:0,invoice:1,expense:1}
 };
-// Storage adapter: sandboxed previews may deny localStorage access entirely.
-const aureliaStorage=(()=>{let memory={};let store=null;try{store=window.localStorage;const probe='__aurelia_storage_probe__';store.setItem(probe,'1');store.removeItem(probe);}catch(_){store=null;}return {getItem(k){try{return store?store.getItem(k):(memory[k]??null)}catch(_){return memory[k]??null}},setItem(k,v){try{if(store){store.setItem(k,String(v));return}}catch(_){}memory[k]=String(v)},removeItem(k){try{if(store){store.removeItem(k);return}}catch(_){}delete memory[k]}}})();
+// PMS records require durable storage. Never silently fall back to volatile memory,
+// which can make a save appear successful and then lose hotel records on restart.
+const aureliaStorage=(()=>{
+ let store;
+ try{
+   store=window.localStorage;
+   const probe='__aurelia_storage_probe__';
+   store.setItem(probe,'1');
+   if(store.getItem(probe)!=='1')throw new Error('Persistent storage read-back failed');
+   store.removeItem(probe);
+ }catch(error){
+   console.error('Aurelia PMS requires working persistent browser storage; refusing volatile-memory mode.',error);
+   throw new Error('Persistent storage is unavailable. Aurelia PMS has stopped to avoid losing hotel records.');
+ }
+ return {
+   getItem(key){return store.getItem(key)},
+   setItem(key,value){store.setItem(key,String(value))},
+   removeItem(key){store.removeItem(key)}
+ };
+})();
 function loadAureliaDB(){
  const primary=aureliaStorage.getItem('aurelia_pms_v3');
- if(primary){try{const parsed=JSON.parse(primary);if(parsed&&typeof parsed==='object')return parsed;}catch(e){console.warn('Primary PMS data could not be parsed; trying recovery snapshot.',e);}}
- try{
-   const backup=aureliaStorage.getItem('aurelia_pms_v3_autobackup');
-   if(backup){const parsed=JSON.parse(backup);if(parsed&&typeof parsed==='object'){console.warn('Loaded PMS recovery snapshot. Review recent changes and save to restore the main copy.');return parsed;}}
- }catch(e){console.warn('PMS recovery snapshot could not be loaded.',e);}
+ const backup=aureliaStorage.getItem('aurelia_pms_v3_autobackup');
+ const hasStoredData=primary!==null||backup!==null;
+ const isPmsRecord=value=>value&&typeof value==='object'&&!Array.isArray(value)&&
+   value.settings&&typeof value.settings==='object'&&
+   Array.isArray(value.rooms)&&Array.isArray(value.guests)&&Array.isArray(value.bookings);
+ if(primary!==null){
+   try{const parsed=JSON.parse(primary);if(isPmsRecord(parsed))return parsed;console.error('Primary PMS data failed schema validation.');}
+   catch(e){console.error('Primary PMS data could not be parsed; checking recovery snapshot without modifying either copy.',e);}
+ }
+ if(backup!==null){
+   try{const parsed=JSON.parse(backup);if(isPmsRecord(parsed)){console.warn('Loaded the local PMS recovery snapshot. Review recent changes and validate a separate backup before continuing.');return parsed;}console.error('PMS recovery snapshot failed schema validation.');}
+   catch(e){console.error('PMS recovery snapshot could not be parsed. Existing stored data was left untouched.',e);}
+ }
+ if(hasStoredData){
+   throw new Error('Aurelia PMS could not safely read existing hotel records. No demo data was loaded and no stored copy was overwritten. Do not clear app data; preserve the device and seek recovery support.');
+ }
  return seed;
 }
 let DB=loadAureliaDB();
@@ -627,12 +656,12 @@ function inspectImportFile(e){
  document.getElementById('importInfo').textContent=selectedImportFile?`${selectedImportFile.name} · ${Math.round(selectedImportFile.size/1024)} KB · ready for inspection/import`:'Select a file to inspect before importing.';
 }
 function importSelected(){
- if(!selectedImportFile){toast('Choose an import file first');return}
- const name=selectedImportFile.name.toLowerCase();
- if(name.endsWith('.json')){
-  const reader=new FileReader();reader.onload=()=>{try{const obj=JSON.parse(reader.result);if(!obj||typeof obj!=='object')throw new Error('Invalid JSON');DB=obj;save();setupNav();refreshBrand();showPage('dashboard');audit('JSON import completed',selectedImportFile.name);save();toast('JSON data imported')}catch(e){toast('Invalid JSON backup')}};reader.readAsText(selectedImportFile);return;
- }
- toast('File accepted. Native Flutter import adapter should parse PDF/XLSX/images and map fields safely before committing them.');
+  // RELEASE SAFETY HOLD: the legacy importer replaces the live DB before validating schema and relationships.
+  // Keep current records untouched until a staged, transactional importer/restore is implemented.
+  if(!selectedImportFile){toast('Choose an import file first');return}
+  const info=document.getElementById('importInfo');
+  if(info)info.textContent='Import is temporarily disabled to protect existing hotel records. A validated, recoverable restore workflow is required before this file can be applied.';
+  toast('Import blocked for data safety. Existing PMS records were not changed.');
 }
 function setupNav(){
  const side=document.getElementById('sideNav'); side.innerHTML=MODULES.map(([id,n])=>`<button data-nav="${id}" onclick="showPage('${id}')">${n}</button>`).join('');
@@ -2913,27 +2942,11 @@ function aureliaConnectDrive(){
  }catch(e){aureliaDriveStatus('Could not start Google sign-in: '+(e.message||e));}
 }
 async function aureliaUploadDriveBackup(){
- if(!aureliaDriveAccessToken){aureliaDriveStatus('Connect Google Drive first.');toast('Google Drive is not connected');return}
- const payload=JSON.stringify({app:'AURELIA PMS',version:4,exportedAt:new Date().toISOString(),data:DB});
- try{
-  const headers={Authorization:'Bearer '+aureliaDriveAccessToken};
-  const list=await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q='+encodeURIComponent("name='AURELIA-PMS-AutoBackup.json' and trashed=false")+'&fields=files(id,name)',{headers});
-  if(!list.ok)throw new Error('Drive file lookup failed ('+list.status+'). Reconnect Google Drive if authorization expired.');
-  const found=await list.json();
-  const boundary='aurelia_'+Date.now();
-  const metadata={name:'AURELIA-PMS-AutoBackup.json',mimeType:'application/json',parents:['appDataFolder']};
-  let url='https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime';
-  let method='POST',bodyMeta=metadata;
-  if(found.files?.length){url='https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(found.files[0].id)+'?uploadType=multipart&fields=id,name,modifiedTime';method='PATCH';bodyMeta={name:'AURELIA-PMS-AutoBackup.json',mimeType:'application/json'};}
-  const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(bodyMeta)+'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+payload+'\r\n--'+boundary+'--';
-  const res=await fetch(url,{method,headers:{...headers,'Content-Type':'multipart/related; boundary='+boundary},body});
-  if(!res.ok)throw new Error('Drive upload failed ('+res.status+'). Check OAuth scope and Google Drive API configuration.');
-  const result=await res.json();DB.settings.lastDriveBackupAt=new Date().toISOString();
-  // Persist the backup timestamp without scheduling another cloud upload.
-  aureliaStorage.setItem('aurelia_pms_v3',JSON.stringify(DB));
-  aureliaDriveStatus('Google Drive backup successful at '+new Date().toLocaleString()+'. File: '+(result.name||'AURELIA-PMS-AutoBackup.json'));
-  toast('Google Drive backup complete');
- }catch(e){aureliaDriveStatus('Google Drive backup failed: '+(e.message||e));}
+  // RELEASE SAFETY HOLD: the current backup payload is plaintext JSON. Do not upload PMS records until
+  // authenticated encryption, recovery-key separation, and restore verification are implemented.
+  aureliaDriveStatus('Cloud backup is disabled for safety: this build does not yet encrypt backup contents. Existing local records were not uploaded.');
+  if(typeof toast==='function')toast('Cloud backup disabled until encrypted backup/recovery is implemented.');
+  return false;
 }
 function aureliaQueueDriveBackup(){
  if(DB.settings.backupDestination!=='drive'||!aureliaDriveAccessToken)return;

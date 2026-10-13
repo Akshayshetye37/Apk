@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -21,7 +22,8 @@ class AureliaSecureVault {
   static const FlutterSecureStorage _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
-      resetOnError: true,
+      // Never silently reset encrypted preferences: doing so can orphan keys
+      // and make existing encrypted data unrecoverable. Surface errors instead.
     ),
   );
 
@@ -33,6 +35,20 @@ class AureliaSecureVault {
 
   static Future<void> deleteSecret(String key) =>
       _storage.delete(key: key);
+}
+
+/// Allow only the bundled PMS asset and explicit external-app schemes.
+/// Remote web content must never receive access to the native JavaScript bridge.
+bool isAllowedTopLevelNavigation(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || uri.pathSegments.contains('..')) return false;
+  if (uri.scheme == 'file' &&
+      uri.host.isEmpty &&
+      uri.path.startsWith('/android_asset/flutter_assets/')) {
+    return true;
+  }
+  if (uri.scheme == 'tel' || uri.scheme == 'mailto') return true;
+  return uri.scheme == 'about' && uri.path == 'blank';
 }
 
 void main() {
@@ -64,7 +80,14 @@ class PmsWebViewPage extends StatefulWidget {
   State<PmsWebViewPage> createState() => _PmsWebViewPageState();
 }
 
-class _PmsWebViewPageState extends State<PmsWebViewPage> {
+class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObserver {
+  static const MethodChannel _securityChannel = MethodChannel('com.example.aurelia_pms/security');
+  static const Duration _inactivityLimit = Duration(minutes: 5);
+  final TextEditingController _pinInput = TextEditingController();
+  final TextEditingController _confirmPinInput = TextEditingController();
+  Timer? _inactivityTimer;
+  bool _locked = true, _settingPin = true, _securityBusy = false;
+  String _lockMessage = 'Set a PIN to protect this device.';
   late final WebViewController _controller;
   bool _loading = true;
   int _progress = 0;
@@ -72,6 +95,8 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_initializeSecurity());
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel('AureliaNative', onMessageReceived: (message) { unawaited(_handleNativeMessage(message.message)); })
@@ -91,16 +116,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
             debugPrint('Aurelia PMS WebView error: ${error.description}');
           },
           onNavigationRequest: (request) {
-            final uri = Uri.tryParse(request.url);
-            // The JavaScript bridge is intended only for our bundled local PMS.
-            // Never let a remote page become top-level while the bridge is installed.
-            if (uri != null && uri.scheme == 'file' && uri.path.startsWith('/android_asset/flutter_assets/')) {
-              return NavigationDecision.navigate;
-            }
-            if (uri != null && (uri.scheme == 'tel' || uri.scheme == 'mailto')) {
-              return NavigationDecision.navigate;
-            }
-            if (uri != null && uri.scheme == 'about' && uri.path == 'blank') {
+            if (isAllowedTopLevelNavigation(request.url)) {
               return NavigationDecision.navigate;
             }
             debugPrint('Blocked non-local top-level navigation: ${request.url}');
@@ -141,12 +157,80 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
   }
 
 
+  Future<void> _initializeSecurity() async {
+    try {
+      final hash = await AureliaSecureVault.readSecret('app_pin_hash_v1');
+      if (!mounted) return;
+      setState(() { _settingPin = hash == null || hash.isEmpty; _locked = true; _lockMessage = _settingPin ? 'Set a 4–8 digit PIN to protect this device.' : 'Unlock Aurelia PMS to continue.'; });
+    } catch (_) { if (mounted) setState(() { _settingPin = true; _locked = true; _lockMessage = 'Secure storage unavailable. App remains locked.'; }); }
+  }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused || state == AppLifecycleState.detached || state == AppLifecycleState.resumed) { _inactivityTimer?.cancel(); if (mounted) setState(() => _locked = true); }
+  }
+  void _recordActivity() { if (_locked) return; _inactivityTimer?.cancel(); _inactivityTimer = Timer(_inactivityLimit, () { if (mounted) setState(() { _locked = true; _lockMessage = 'Locked after five minutes of inactivity.'; }); }); }
+  String _newSalt() => base64UrlEncode(List<int>.generate(16, (_) => Random.secure().nextInt(256)));
+  Future<String> _pinHash(String pin, String salt) async {
+    final hash = await _securityChannel.invokeMethod<String>('derivePinHash', {'pin': pin, 'salt': salt, 'iterations': 120000});
+    if (hash == null || hash.length != 64) throw StateError('PIN derivation failed');
+    return hash;
+  }
+  Future<void> _setPin() async {
+    final pin = _pinInput.text;
+    if (pin.length < 4 || pin.length > 8 || !pin.runes.every((digit) => digit >= 48 && digit <= 57)) { setState(() => _lockMessage = 'PIN must contain 4–8 digits.'); return; }
+    if (pin != _confirmPinInput.text) { setState(() => _lockMessage = 'PINs do not match.'); return; }
+    setState(() => _securityBusy = true);
+    try {
+      final salt = _newSalt(); final hash = await _pinHash(pin, salt);
+      await AureliaSecureVault.writeSecret('app_pin_salt_v1', salt); await AureliaSecureVault.writeSecret('app_pin_hash_v1', hash);
+      await AureliaSecureVault.writeSecret('app_pin_attempts_v1', '0'); await AureliaSecureVault.deleteSecret('app_pin_lock_until_v1');
+      if (!mounted) return; _pinInput.clear(); _confirmPinInput.clear();
+      setState(() { _settingPin = false; _locked = false; _lockMessage = 'App unlocked.'; }); _recordActivity();
+    } catch (_) { if (mounted) setState(() => _lockMessage = 'Could not store PIN securely. App remains locked.'); }
+    finally { if (mounted) setState(() => _securityBusy = false); }
+  }
+  Future<void> _unlockPin() async {
+    if (_securityBusy) return; setState(() => _securityBusy = true);
+    try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final until = int.tryParse(await AureliaSecureVault.readSecret('app_pin_lock_until_v1') ?? '');
+      if (until != null && now < until) { setState(() => _lockMessage = 'Too many attempts. Wait ' + ((until - now) ~/ 1000).toString() + ' seconds.'); return; }
+      final salt = await AureliaSecureVault.readSecret('app_pin_salt_v1'); final expected = await AureliaSecureVault.readSecret('app_pin_hash_v1');
+      if (salt == null || expected == null) { setState(() { _settingPin = true; _lockMessage = 'PIN configuration missing. Set a new PIN.'; }); return; }
+      final actual = await _pinHash(_pinInput.text, salt); _pinInput.clear();
+      if (actual == expected) { await AureliaSecureVault.writeSecret('app_pin_attempts_v1', '0'); await AureliaSecureVault.deleteSecret('app_pin_lock_until_v1'); if (!mounted) return; setState(() { _locked = false; _lockMessage = 'App unlocked.'; }); _recordActivity(); }
+      else {
+        final attempts = (int.tryParse(await AureliaSecureVault.readSecret('app_pin_attempts_v1') ?? '0') ?? 0) + 1;
+        await AureliaSecureVault.writeSecret('app_pin_attempts_v1', attempts.toString());
+        if (attempts >= 5) { final exponent = min(4, attempts - 5).toInt(); final delay = min(900, 60 * (1 << exponent)).toInt(); await AureliaSecureVault.writeSecret('app_pin_lock_until_v1', (now + delay * 1000).toString()); setState(() => _lockMessage = 'Too many failures. Locked for ' + delay.toString() + ' seconds.'); }
+        else { setState(() => _lockMessage = 'Incorrect PIN. ' + (5 - attempts).toString() + ' attempts remain before lockout.'); }
+      }
+    } catch (_) { if (mounted) setState(() => _lockMessage = 'Secure verification failed. App remains locked.'); }
+    finally { if (mounted) setState(() => _securityBusy = false); }
+  }
+  Future<void> _authenticateDevice() async {
+    if (_securityBusy) return; setState(() => _securityBusy = true);
+    try { final ok = await _securityChannel.invokeMethod<bool>('authenticateDevice') ?? false; if (ok && mounted) { await AureliaSecureVault.writeSecret('app_pin_attempts_v1', '0'); await AureliaSecureVault.deleteSecret('app_pin_lock_until_v1'); setState(() { _locked = false; _lockMessage = 'Device authentication successful.'; }); _recordActivity(); } else if (mounted) { setState(() => _lockMessage = 'Device authentication cancelled or unavailable. Use PIN.'); } }
+    catch (_) { if (mounted) setState(() => _lockMessage = 'Device authentication unavailable. Use PIN.'); }
+    finally { if (mounted) setState(() => _securityBusy = false); }
+  }
+  Widget _lockOverlay() => Positioned.fill(child: Material(color: const Color(0xFF102C36), child: SafeArea(child: Center(child: SingleChildScrollView(padding: const EdgeInsets.all(24), child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 380), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    const Icon(Icons.lock_rounded, size: 52, color: Colors.white), const SizedBox(height: 16), const Text('Aurelia PMS', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)), const SizedBox(height: 12),
+    Text(_lockMessage, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)), const SizedBox(height: 20),
+    TextField(controller: _pinInput, obscureText: true, keyboardType: TextInputType.number, maxLength: 8, enabled: !_securityBusy, decoration: const InputDecoration(filled: true, fillColor: Colors.white, labelText: 'PIN', counterText: '', border: OutlineInputBorder())),
+    if (_settingPin) TextField(controller: _confirmPinInput, obscureText: true, keyboardType: TextInputType.number, maxLength: 8, enabled: !_securityBusy, decoration: const InputDecoration(filled: true, fillColor: Colors.white, labelText: 'Confirm PIN', counterText: '', border: OutlineInputBorder())),
+    const SizedBox(height: 12), FilledButton(onPressed: _securityBusy ? null : (_settingPin ? _setPin : _unlockPin), child: Text(_securityBusy ? 'Please wait…' : (_settingPin ? 'Set PIN securely' : 'Unlock'))),
+    if (!_settingPin) OutlinedButton.icon(onPressed: _securityBusy ? null : _authenticateDevice, icon: const Icon(Icons.fingerprint), label: const Text('Use device screen lock'), style: OutlinedButton.styleFrom(foregroundColor: Colors.white)),
+    const SizedBox(height: 12), const Text('Locks when backgrounded and after five minutes without interaction.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white60, fontSize: 12)),
+  ])))))));
+
   Future<void> _handleNativeMessage(String raw) async {
     String? requestId;
     try {
       if (raw.length > 22 * 1024 * 1024) throw const FormatException('Request too large');
       final value = jsonDecode(raw);
       if (value is! Map<String, dynamic>) throw const FormatException('Invalid request');
+      if (_locked) throw const FormatException('App is locked');
       final rawId = value['requestId'];
       if (rawId is String) {
         final cleaned = rawId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
@@ -181,10 +265,26 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         final bytes = base64Decode(dataValue);
         if (bytes.length > 15 * 1024 * 1024) throw const FormatException('File too large');
         final temp = await getTemporaryDirectory();
-        final file = File('${temp.path}/$safeName');
-        await file.writeAsBytes(bytes, flush: true);
-        await Share.shareXFiles([XFile(file.path, mimeType: mime, name: safeName)], subject: safeName);
-        await _controller.runJavaScript('window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);');
+        // Use a unique temporary path to avoid collisions between exports.
+        final file = File('${temp.path}/aurelia_${DateTime.now().microsecondsSinceEpoch}_$safeName');
+        try {
+          await file.writeAsBytes(bytes, flush: true);
+          await Share.shareXFiles(
+            [XFile(file.path, mimeType: mime, name: safeName)],
+            subject: safeName,
+          );
+          await _controller.runJavaScript(
+            'window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);',
+          );
+        } finally {
+          // Share targets may read asynchronously; cleanup is best-effort and
+          // should not turn a successful share into a bridge failure.
+          try {
+            if (await file.exists()) await file.delete();
+          } catch (cleanupError) {
+            debugPrint('Aurelia temporary export cleanup failed: $cleanupError');
+          }
+        }
         return;
       }
       throw const FormatException('Unsupported native action');
@@ -228,7 +328,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       },
       child: Scaffold(
         body: SafeArea(
-          child: Stack(
+          child: Listener(behavior: HitTestBehavior.translucent, onPointerDown: (_) => _recordActivity(), child: Stack(
             children: [
               WebViewWidget(controller: _controller),
               if (_loading)
@@ -238,8 +338,9 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
                     value: _progress == 100 ? null : _progress / 100,
                   ),
                 ),
+              if (_locked) _lockOverlay(),
             ],
-          ),
+          )),
         ),
       ),
     );
