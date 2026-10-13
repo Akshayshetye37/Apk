@@ -38,8 +38,8 @@ jobs:
       - name: Apply Android WebView API compatibility fix
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
-          sed -i '/platformController\\.setDomStorageEnabled(true);/d' lib/main.dart
-          sed -i '/platformController\\.setJavaScriptCanOpenWindowsAutomatically(true);/d' lib/main.dart
+          sed -i '/platformController\.setDomStorageEnabled(true);/d' lib/main.dart
+          sed -i '/platformController\.setJavaScriptCanOpenWindowsAutomatically(true);/d' lib/main.dart
           if grep -Eq 'setDomStorageEnabled|setJavaScriptCanOpenWindowsAutomatically' lib/main.dart; then
             echo "ERROR: unsupported AndroidWebViewController calls remain."
             exit 1
