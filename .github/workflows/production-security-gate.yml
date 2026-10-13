@@ -27,6 +27,8 @@ jobs:
       - name: Require committed lockfile
         run: |
           test -s pubspec.lock || { echo "::error::pubspec.lock is missing. Generate it with Flutter 3.35.5, review it, and commit it."; exit 1; }
+      - name: Run static security checks
+        run: python3 scripts/security_static_check.py
       - name: Resolve dependencies without changing lockfile
         run: flutter pub get --enforce-lockfile
       - name: Analyze
