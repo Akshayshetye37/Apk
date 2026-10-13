@@ -31,7 +31,9 @@ For a persistent, updateable production APK, configure these GitHub Actions repo
 - `ANDROID_KEY_ALIAS`: signing key alias.
 - `ANDROID_KEY_PASSWORD`: signing key password.
 
-Without all four secrets, CI uses the temporary debug key so a test APK can still be built. That APK is not suitable for production distribution or reliable future app updates. Keep the keystore and passwords private and backed up securely.
+**The release workflow fails closed if any required secret is missing or invalid; it never falls back to debug signing.** Before a release, add all four values under GitHub repository Settings → Secrets and variables → Actions → New repository secret. Generate/store the keystore outside the repository, Base64-encode the keystore bytes for `ANDROID_KEYSTORE_BASE64`, and set the matching store password, key alias, and key password. Use a trusted offline backup of the keystore and restrict access to repository secrets. Never commit the keystore or print secret values in logs. The workflow validates the keystore/alias and compares the APK signer certificate fingerprint with the configured keystore certificate.
+
+**Rotation:** do not casually replace the signing key for an existing app; Android updates generally need the same signing identity unless a supported app-signing key upgrade is configured. Preserve the current keystore and credentials in secure offline storage, document the certificate fingerprint, and plan any key upgrade through the applicable distribution channel before rotating secrets. Replacing repository secrets alone does not migrate already-installed apps to a new signing identity.
 
 ## Build
 
@@ -48,4 +50,4 @@ Fresh installs start with no sample guests, bookings, reservations, expenses, or
 - HTML-generated CSV/JSON/blob exports are handed to a narrowly scoped native share handler. It validates request type, size, MIME type, and filename; it does not expose arbitrary filesystem access to JavaScript.
 - This does not make the app production-secure by itself. PMS records remain in WebView local storage and are not automatically encrypted by `flutter_secure_storage`. Client-side PIN checks are not server-enforced authentication. Review these issues before storing real guest or payment data.
 - Static CI checks are guardrails, not penetration tests or real-device tests. Backups and imports still require tamper/malformed-input testing on the actual APK.
-- Direct Flutter dependencies are pinned to explicit versions. Commit a generated `pubspec.lock` for reproducible transitive dependency resolution before production release.
+- Direct Flutter dependencies are pinned to explicit versions. `pubspec.lock` is currently absent; the release workflow now fails until it is generated, reviewed, and committed. The workflow pins Flutter 3.35.5, enforces the lockfile, and runs static analysis/tests before release.
