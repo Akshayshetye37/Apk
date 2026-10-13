@@ -137,7 +137,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       final rawId = value['requestId'];
       if (rawId is String) {
         final cleaned = rawId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
-        requestId = cleaned.substring(0, cleaned.length.clamp(0, 64));
+        requestId = cleaned.substring(0, cleaned.length.clamp(0, 64).toInt());
       }
       if (value['type'] == 'generateQr') {
         final text = value['text'];
