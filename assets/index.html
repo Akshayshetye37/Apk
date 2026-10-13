@@ -3198,7 +3198,12 @@ async function aureliaVerifyBiometric(){
 <script id="aurelia-export-and-ui-reliability-fix">
 (function(){
   function safeToast(msg){ if(typeof window.toast==='function') window.toast(msg); else console.info(msg); }
-  function csvCell(v){ return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'; }
+  function csvCell(v){
+    let text=String(v==null?'':v);
+    // Spreadsheet formula-injection defense for untrusted guest/import text.
+    if(/^[\\u0000-\\u0020]*[=+\\-@]/.test(text)) text="'"+text;
+    return '"'+text.replace(/"/g,'""')+'"';
+  }
   function csvDownload(rows,name){
     const csv='\ufeff'+rows.map(r=>r.map(csvCell).join(',')).join('\r\n');
     downloadBlob(new Blob([csv],{type:'text/csv;charset=utf-8;'}),name);
