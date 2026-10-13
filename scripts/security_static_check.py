@@ -13,6 +13,10 @@ gradle = (root / "android/app/build.gradle.kts").read_text(encoding="utf-8")
 workflow = (root / ".github/workflows/build-apk.yml").read_text(encoding="utf-8")
 errors = []
 
+# Persistent storage failure must not silently downgrade to volatile in-memory storage.
+if "refusing volatile-memory mode" not in html or "Persistent storage is unavailable" not in html:
+    errors.append("PMS must fail closed rather than claim durability when persistent storage is unavailable.")
+
 # Corrupt or unrecognized stored PMS data must never silently fall back to demo seed data.
 if "const hasStoredData=primary!==null||backup!==null;" not in html or "if(hasStoredData)" not in html:
     errors.append("PMS storage recovery must fail closed when existing stored records cannot be parsed or validated.")
