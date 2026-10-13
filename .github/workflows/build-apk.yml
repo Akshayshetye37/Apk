@@ -65,6 +65,15 @@ jobs:
           test -f "$PROJECT_DIR/android/app/build.gradle.kts"
           echo "Using the Android project configuration in the checkout; no self-copy is needed."
 
+      - name: Remove generated placeholder widget test
+        run: |
+          set -euo pipefail
+          # flutter create generates a demo test that references MyApp, which this WebView app does not define.
+          # Preserve any real test tracked in source control.
+          if ! git ls-files --error-unmatch test/widget_test.dart >/dev/null 2>&1; then
+            rm -f test/widget_test.dart
+          fi
+
       - name: Harden Android network, backup, and release configuration
         run: python3 "$GITHUB_WORKSPACE/scripts/harden_android.py" "$PROJECT_DIR"
 
