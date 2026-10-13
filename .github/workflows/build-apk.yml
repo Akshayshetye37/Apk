@@ -63,6 +63,9 @@ jobs:
       - name: Test
         run: flutter test --reporter expanded
 
+      - name: Generate Android platform files
+        run: flutter create --platforms=android .
+
       - name: Align Gradle wrapper with Android Gradle Plugin minimum
         shell: bash
         run: |
@@ -108,6 +111,9 @@ jobs:
 
       - name: Resolve dependencies from committed lockfile
         run: flutter pub get --enforce-lockfile
+
+      - name: Generate Android platform files
+        run: flutter create --platforms=android .
 
       - name: Align Gradle wrapper with Android Gradle Plugin minimum
         shell: bash
