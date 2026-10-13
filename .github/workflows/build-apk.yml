@@ -3,6 +3,8 @@ name: Build Aurelia PMS APK
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     paths:
       - '.github/workflows/**'
       - 'assets/**'
@@ -16,10 +18,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: aurelia-production-apk-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
+    # Signing secrets are only used for trusted pushes/manual runs on this repository's main branch.
+    if: github.repository == 'Akshayshetye37/Apk' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,6 +43,7 @@ jobs:
       - name: Apply Android WebView API compatibility fix
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          set -euo pipefail
           sed -i '/platformController\.setDomStorageEnabled(true);/d' lib/main.dart
           sed -i '/platformController\.setJavaScriptCanOpenWindowsAutomatically(true);/d' lib/main.dart
           if grep -Eq 'setDomStorageEnabled|setJavaScriptCanOpenWindowsAutomatically' lib/main.dart; then
@@ -68,8 +76,6 @@ jobs:
       - name: Remove generated placeholder widget test
         run: |
           set -euo pipefail
-          # flutter create generates a demo test that references MyApp, which this WebView app does not define.
-          # Preserve any real test tracked in source control.
           if ! git ls-files --error-unmatch test/widget_test.dart >/dev/null 2>&1; then
             rm -f test/widget_test.dart
           fi
@@ -107,39 +113,66 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] && [ -n "${ANDROID_KEY_ALIAS:-}" ] && [ -n "${ANDROID_KEY_PASSWORD:-}" ]; then
-            KEY_PATH="$PROJECT_DIR/android/app/release-keystore.jks"
-            umask 077
-            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEY_PATH"
-            test -s "$KEY_PATH"
-            keytool -list -keystore "$KEY_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
-            echo "ANDROID_KEYSTORE_PATH=$KEY_PATH" >> "$GITHUB_ENV"
-            echo "Release signing keystore and alias validated."
-          else
-            echo "ERROR: Production signing secrets are missing. Refusing to produce a release APK with a debug key."
+          missing=()
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then missing+=("$name"); fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'ERROR: Required repository signing secret(s) missing or empty: %s\n' "${missing[*]}" >&2
             exit 1
           fi
+
+          umask 077
+          KEY_PATH="$RUNNER_TEMP/aurelia-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.jks"
+          cleanup() { rm -f "$KEY_PATH"; }
+          trap cleanup EXIT
+          if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEY_PATH"; then
+            echo "ERROR: ANDROID_KEYSTORE_BASE64 is not valid Base64." >&2
+            exit 1
+          fi
+          chmod 600 "$KEY_PATH"
+          if [[ ! -s "$KEY_PATH" ]] || ! keytool -list -keystore "$KEY_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "ERROR: Decoded keystore is unreadable or the configured password/alias is invalid." >&2
+            exit 1
+          fi
+          echo "ANDROID_KEYSTORE_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          # Preserve the validated file for the Gradle build; the always() cleanup step removes it.
+          trap - EXIT
+          echo "Release keystore is readable and the configured alias is present."
 
       - name: Build release APK
         working-directory: ${{ env.PROJECT_DIR }}
         env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build apk --release --obfuscate --split-debug-info=build/symbols
-
-      - name: Verify APK signature
-        working-directory: ${{ env.PROJECT_DIR }}
         run: |
+          set -euo pipefail
+          test -s "$ANDROID_KEYSTORE_PATH"
+          flutter build apk --release --obfuscate --split-debug-info=build/symbols
+
+      - name: Verify APK signature against configured production keystore
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
           APK="build/app/outputs/flutter-apk/app-release.apk"
           test -s "$APK"
-          "$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)/apksigner" verify --verbose "$APK"
-          "$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-certs.txt"
+          BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-certs.txt"
           keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > "$RUNNER_TEMP/keystore-cert.txt"
           APK_CERT=$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2); exit}' "$RUNNER_TEMP/apk-certs.txt" | tr -d ':')
           KEY_CERT=$(awk -F': ' '/SHA256:/ {print tolower($2); exit}' "$RUNNER_TEMP/keystore-cert.txt" | tr -d ':')
-          test -n "$APK_CERT" && test -n "$KEY_CERT" && test "$APK_CERT" = "$KEY_CERT"
-          echo "APK certificate matches configured production keystore."
+          if [[ -z "$APK_CERT" || -z "$KEY_CERT" || "$APK_CERT" != "$KEY_CERT" ]]; then
+            echo "ERROR: APK signer certificate does not match the configured production keystore." >&2
+            exit 1
+          fi
+          echo "APK signature is valid and its certificate matches the configured production keystore."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -147,3 +180,12 @@ jobs:
           name: aurelia-pms-release-apk
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
+          retention-days: 14
+
+      - name: Clean up temporary signing material
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f "${ANDROID_KEYSTORE_PATH:-}" "$RUNNER_TEMP/apk-certs.txt" "$RUNNER_TEMP/keystore-cert.txt"
+          echo "Temporary signing files removed."
