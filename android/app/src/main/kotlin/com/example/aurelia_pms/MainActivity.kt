@@ -7,7 +7,7 @@ import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import java.security.spec.PBEKeySpec
+import javax.crypto.spec.PBEKeySpec
 import javax.crypto.SecretKeyFactory
 
 class MainActivity : FlutterActivity() {
