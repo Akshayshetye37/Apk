@@ -627,12 +627,12 @@ function inspectImportFile(e){
  document.getElementById('importInfo').textContent=selectedImportFile?`${selectedImportFile.name} · ${Math.round(selectedImportFile.size/1024)} KB · ready for inspection/import`:'Select a file to inspect before importing.';
 }
 function importSelected(){
- if(!selectedImportFile){toast('Choose an import file first');return}
- const name=selectedImportFile.name.toLowerCase();
- if(name.endsWith('.json')){
-  const reader=new FileReader();reader.onload=()=>{try{const obj=JSON.parse(reader.result);if(!obj||typeof obj!=='object')throw new Error('Invalid JSON');DB=obj;save();setupNav();refreshBrand();showPage('dashboard');audit('JSON import completed',selectedImportFile.name);save();toast('JSON data imported')}catch(e){toast('Invalid JSON backup')}};reader.readAsText(selectedImportFile);return;
- }
- toast('File accepted. Native Flutter import adapter should parse PDF/XLSX/images and map fields safely before committing them.');
+  // RELEASE SAFETY HOLD: the legacy importer replaces the live DB before validating schema and relationships.
+  // Keep current records untouched until a staged, transactional importer/restore is implemented.
+  if(!selectedImportFile){toast('Choose an import file first');return}
+  const info=document.getElementById('importInfo');
+  if(info)info.textContent='Import is temporarily disabled to protect existing hotel records. A validated, recoverable restore workflow is required before this file can be applied.';
+  toast('Import blocked for data safety. Existing PMS records were not changed.');
 }
 function setupNav(){
  const side=document.getElementById('sideNav'); side.innerHTML=MODULES.map(([id,n])=>`<button data-nav="${id}" onclick="showPage('${id}')">${n}</button>`).join('');
@@ -2913,27 +2913,11 @@ function aureliaConnectDrive(){
  }catch(e){aureliaDriveStatus('Could not start Google sign-in: '+(e.message||e));}
 }
 async function aureliaUploadDriveBackup(){
- if(!aureliaDriveAccessToken){aureliaDriveStatus('Connect Google Drive first.');toast('Google Drive is not connected');return}
- const payload=JSON.stringify({app:'AURELIA PMS',version:4,exportedAt:new Date().toISOString(),data:DB});
- try{
-  const headers={Authorization:'Bearer '+aureliaDriveAccessToken};
-  const list=await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q='+encodeURIComponent("name='AURELIA-PMS-AutoBackup.json' and trashed=false")+'&fields=files(id,name)',{headers});
-  if(!list.ok)throw new Error('Drive file lookup failed ('+list.status+'). Reconnect Google Drive if authorization expired.');
-  const found=await list.json();
-  const boundary='aurelia_'+Date.now();
-  const metadata={name:'AURELIA-PMS-AutoBackup.json',mimeType:'application/json',parents:['appDataFolder']};
-  let url='https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime';
-  let method='POST',bodyMeta=metadata;
-  if(found.files?.length){url='https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(found.files[0].id)+'?uploadType=multipart&fields=id,name,modifiedTime';method='PATCH';bodyMeta={name:'AURELIA-PMS-AutoBackup.json',mimeType:'application/json'};}
-  const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(bodyMeta)+'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+payload+'\r\n--'+boundary+'--';
-  const res=await fetch(url,{method,headers:{...headers,'Content-Type':'multipart/related; boundary='+boundary},body});
-  if(!res.ok)throw new Error('Drive upload failed ('+res.status+'). Check OAuth scope and Google Drive API configuration.');
-  const result=await res.json();DB.settings.lastDriveBackupAt=new Date().toISOString();
-  // Persist the backup timestamp without scheduling another cloud upload.
-  aureliaStorage.setItem('aurelia_pms_v3',JSON.stringify(DB));
-  aureliaDriveStatus('Google Drive backup successful at '+new Date().toLocaleString()+'. File: '+(result.name||'AURELIA-PMS-AutoBackup.json'));
-  toast('Google Drive backup complete');
- }catch(e){aureliaDriveStatus('Google Drive backup failed: '+(e.message||e));}
+  // RELEASE SAFETY HOLD: the current backup payload is plaintext JSON. Do not upload PMS records until
+  // authenticated encryption, recovery-key separation, and restore verification are implemented.
+  aureliaDriveStatus('Cloud backup is disabled for safety: this build does not yet encrypt backup contents. Existing local records were not uploaded.');
+  if(typeof toast==='function')toast('Cloud backup disabled until encrypted backup/recovery is implemented.');
+  return false;
 }
 function aureliaQueueDriveBackup(){
  if(DB.settings.backupDestination!=='drive'||!aureliaDriveAccessToken)return;
