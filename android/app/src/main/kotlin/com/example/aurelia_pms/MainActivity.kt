@@ -38,7 +38,13 @@ class MainActivity : FlutterActivity() {
                     if (!keyguard.isDeviceSecure) { result.success(false) } else {
                         @Suppress("DEPRECATION")
                         val intent = keyguard.createConfirmDeviceCredentialIntent("Unlock Aurelia PMS", "Confirm your screen lock to access hotel records")
-                        if (intent == null) result.success(false) else { pendingDeviceAuth = result; @Suppress("DEPRECATION"); startActivityForResult(intent, deviceAuthRequestCode) }
+                        if (intent == null) {
+                            result.success(false)
+                        } else {
+                            pendingDeviceAuth = result
+                            @Suppress("DEPRECATION")
+                            startActivityForResult(intent, deviceAuthRequestCode)
+                        }
                     }
                 }
                 else -> result.notImplemented()
