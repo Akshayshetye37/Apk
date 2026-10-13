@@ -2,6 +2,12 @@
 
 Flutter/WebView Android wrapper for the supplied Aurelia PMS HTML application.
 
+See [CHECKLIST.md](CHECKLIST.md) for the repository, CI build, app feature, file export, permission, and device-test checklist. Items remain unchecked until they are verified; a successful build alone does not prove app behavior.
+
+## Hotel timezone
+
+Aurelia PMS is configured to use the IANA timezone `Asia/Kolkata` (India Standard Time, UTC+05:30) for the HTML app's date/time display and India-local date defaults. This does not change the Android device's system timezone. Verify date-only booking boundaries and exports on a real device before relying on them for financial or occupancy reporting.
+
 ## Android security hardening
 
 The build workflow configures:

@@ -11,6 +11,9 @@ on:
       - 'lib/**'
       - 'pubspec.yaml'
       - 'scripts/**'
+      - 'android/**'
+      - 'README.md'
+      - 'CHECKLIST.md'
 
 permissions:
   contents: read
