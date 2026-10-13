@@ -242,33 +242,21 @@ const seed={
  settings:{features:{},hotelName:'AURELIA 5★ HOTEL',phone:'+91',address:'Hotel address',gst:'',upi:'hotel@upi',currency:'₹',paymentAnnouncement:true,logo:'',checkoutMessage:'Thank you for staying with us. We hope to welcome you again.',dueAlertHours:5},
  rooms:[
   {id:'r101',number:'101',type:'Standard',rate:3000,status:'available'},
-  {id:'r102',number:'102',type:'Deluxe',rate:4500,status:'occupied'},
+  {id:'r102',number:'102',type:'Deluxe',rate:4500,status:'available'},
   {id:'r201',number:'201',type:'Suite',rate:5200,status:'available'},
-  {id:'r301',number:'301',type:'Standard',rate:3000,status:'reserved'}
+  {id:'r301',number:'301',type:'Standard',rate:3000,status:'available'}
  ],
- guests:[
-  {id:'g1',name:'Priya Deshmukh',phone:'919876543210',email:'',idType:'Passport',idNumber:'P-DEMO-01',idPhoto:'',occupants:[],vehicles:[{id:'v1',reg:'MH12AB1234',type:'Car',photo:''}]},
-  {id:'g2',name:'Arjun Malhotra',phone:'919812345678',email:'',idType:'Aadhaar',idNumber:'XXXX-XXXX-1234',idPhoto:'',occupants:[],vehicles:[]}
- ],
- bookings:[
-  {id:'b1',sr:'BKG-001001',guestId:'g1',roomId:'r102',checkIn:'2026-10-06T12:00',checkOut:'2026-10-08T11:00',guests:1,base:9000,discount:500,paid:9500,status:'active',charges:[
-    {id:'c1',item:'Room charges',qty:1,rate:9000,amount:9000,at:'2026-10-06T12:00'},
-    {id:'c2',item:'Water Bottle',qty:2,rate:30,amount:60,at:'2026-10-06T15:20'},
-    {id:'c3',item:'Pomfret',qty:1,rate:850,amount:850,at:'2026-10-06T19:05'}
-  ],payments:[{id:'p1',amount:9500,method:'UPI',status:'verified',at:'2026-10-06T20:00',ref:'TXN-DEMO-001'}]},
-  {id:'b2',sr:'BKG-001002',guestId:'g2',roomId:'r201',checkIn:'2026-10-06T14:00',checkOut:'2026-10-06T20:00',guests:1,base:10000,discount:0,paid:3000,status:'active',charges:[
-    {id:'c4',item:'Room charges',qty:1,rate:10000,amount:10000,at:'2026-10-06T14:00'}
-  ],payments:[{id:'p2',amount:3000,method:'Cash',status:'verified',at:'2026-10-06T14:10',ref:'CASH-001'}]}
- ],
+ guests:[],
+ bookings:[],
  inventory:[
-  {id:'i1',name:'Water Bottle',unit:'bottle',opening:100,purchased:1000,issued:580,waste:20,sell:30,reorder:100},
-  {id:'i2',name:'Soap',unit:'piece',opening:50,purchased:0,issued:2,waste:0,sell:20,reorder:10},
-  {id:'i3',name:'Pomfret',unit:'piece',opening:20,purchased:0,issued:0,waste:0,sell:850,reorder:5}
+  {id:'i1',name:'Water Bottle',unit:'bottle',opening:0,purchased:0,issued:0,waste:0,sell:30,reorder:100},
+  {id:'i2',name:'Soap',unit:'piece',opening:0,purchased:0,issued:0,waste:0,sell:20,reorder:10},
+  {id:'i3',name:'Pomfret',unit:'piece',opening:0,purchased:0,issued:0,waste:0,sell:850,reorder:5}
  ],
- expenses:[{id:'e1',title:'Cleaning supplies',amount:500,category:'Operations',at:'2026-10-06T10:00',status:'active'}],
- reservations:[{id:'res1',sr:'RES-000001',guestId:'g1',roomId:'r301',from:'2026-10-20T14:00',to:'2026-10-22T11:00',status:'confirmed'}],
- audit:[{id:'a1',at:'2026-10-06T20:00',action:'Payment verified',detail:'₹9,500 · BKG-001001'}],
- seq:{booking:1002,reservation:1,invoice:1,expense:2}
+ expenses:[],
+ reservations:[],
+ audit:[],
+ seq:{booking:1000,reservation:0,invoice:1,expense:1}
 };
 // Storage adapter: sandboxed previews may deny localStorage access entirely.
 const aureliaStorage=(()=>{let memory={};let store=null;try{store=window.localStorage;const probe='__aurelia_storage_probe__';store.setItem(probe,'1');store.removeItem(probe);}catch(_){store=null;}return {getItem(k){try{return store?store.getItem(k):(memory[k]??null)}catch(_){return memory[k]??null}},setItem(k,v){try{if(store){store.setItem(k,String(v));return}}catch(_){}memory[k]=String(v)},removeItem(k){try{if(store){store.removeItem(k);return}}catch(_){}delete memory[k]}}})();
@@ -310,6 +298,57 @@ function inventoryPeriodRange(period){const end=Date.now();let start=0;if(period
 function inventoryPeriodRows(period){const {start,end}=inventoryPeriodRange(period);return DB.inventoryLedger.filter(t=>{const tm=new Date(t.at).getTime();return tm>=start&&tm<=end&&(t.type==='purchase'||t.type==='sale'||t.type==='waste')})}
 function inventoryReport(period){const rows=period==='All Time'?DB.inventoryLedger.filter(t=>t.type==='purchase'||t.type==='sale'||t.type==='waste'):inventoryPeriodRows(period);const purchased=rows.filter(x=>x.type==='purchase').reduce((s,x)=>s+Number(x.amount||0),0),sales=rows.filter(x=>x.type==='sale').reduce((s,x)=>s+Number(x.amount||0),0),qtyPurchased=rows.filter(x=>x.type==='purchase').reduce((s,x)=>s+Number(x.qty||0),0),qtySold=rows.filter(x=>x.type==='sale').reduce((s,x)=>s+Number(x.qty||0),0),waste=rows.filter(x=>x.type==='waste').reduce((s,x)=>s+Number(x.qty||0),0);return {period,rows,purchased,sales,qtyPurchased,qtySold,waste,net:sales-purchased}}
 DB.inventoryLedger=Array.isArray(DB.inventoryLedger)?DB.inventoryLedger:[];
+
+/* Remove only the application's known built-in sample records. Keep real records
+   and real inventory transactions untouched so financial reports remain reliable. */
+function aureliaRemoveDemoEntries(manual=false){
+ if(manual && !confirm('Remove only the built-in Aurelia demo guest, booking, reservation, expense and sample stock records? Real records and real transactions will be kept. Export your data first if you need a separate copy.')) return;
+ let removed=0;
+ const demoGuest = g =>
+   (g.id==='g1' && g.name==='Priya Deshmukh' && g.idNumber==='P-DEMO-01') ||
+   (g.id==='g2' && g.name==='Arjun Malhotra' && g.idNumber==='XXXX-XXXX-1234');
+ const beforeGuests=(DB.guests||[]).length;
+ DB.guests=(DB.guests||[]).filter(g=>!demoGuest(g));
+ removed+=beforeGuests-DB.guests.length;
+ const demoBooking = b =>
+   (b.id==='b1' && b.sr==='BKG-001001' && b.guestId==='g1' && String(b.checkIn||'').startsWith('2026-10-06')) ||
+   (b.id==='b2' && b.sr==='BKG-001002' && b.guestId==='g2' && String(b.checkIn||'').startsWith('2026-10-06'));
+ const beforeBookings=(DB.bookings||[]).length;
+ DB.bookings=(DB.bookings||[]).filter(b=>!demoBooking(b));
+ removed+=beforeBookings-DB.bookings.length;
+ const beforeReservations=(DB.reservations||[]).length;
+ DB.reservations=(DB.reservations||[]).filter(r=>!(r.id==='res1' && r.sr==='RES-000001' && r.guestId==='g1' && String(r.from||'').startsWith('2026-10-20')));
+ removed+=beforeReservations-DB.reservations.length;
+ const beforeExpenses=(DB.expenses||[]).length;
+ DB.expenses=(DB.expenses||[]).filter(e=>!(e.id==='e1' && e.title==='Cleaning supplies' && Number(e.amount)===500 && e.at==='2026-10-06T10:00'));
+ removed+=beforeExpenses-DB.expenses.length;
+ const beforeAudit=(DB.audit||[]).length;
+ DB.audit=(DB.audit||[]).filter(a=>!(a.id==='a1' && a.action==='Payment verified' && a.detail==='₹9,500 · BKG-001001'));
+ removed+=beforeAudit-DB.audit.length;
+ const demoLedgerIds=new Set(['mig-open-i1','mig-purchase-i1','mig-sale-i1','mig-waste-i1','mig-open-i2','mig-sale-i2','mig-open-i3']);
+ const beforeLedger=DB.inventoryLedger.length;
+ DB.inventoryLedger=DB.inventoryLedger.filter(t=>!demoLedgerIds.has(t.id) || !String(t.note||'').startsWith('Migrated '));
+ removed+=beforeLedger-DB.inventoryLedger.length;
+ (DB.inventory||[]).forEach(i=>{
+   if(!['i1','i2','i3'].includes(i.id)) return;
+   const hasRealTransactions=DB.inventoryLedger.some(t=>t.itemId===i.id);
+   if(!hasRealTransactions && ['Water Bottle','Soap','Pomfret'].includes(i.name)){
+     if(Number(i.opening||0)!==0 || Number(i.purchased||0)!==0 || Number(i.issued||0)!==0 || Number(i.waste||0)!==0) removed++;
+     i.opening=0;i.purchased=0;i.issued=0;i.waste=0;i.cycleStartedAt=new Date().toISOString();
+   }
+ });
+ ['r102','r301'].forEach(roomId=>{
+   const hasRealStay=(DB.bookings||[]).some(b=>b.roomId===roomId && !['cancelled','checked-out','checked_out'].includes(String(b.status||'').toLowerCase()));
+   const hasRealReservation=(DB.reservations||[]).some(r=>r.roomId===roomId && !['cancelled','checked-out','checked_out'].includes(String(r.status||'').toLowerCase()));
+   const room=(DB.rooms||[]).find(r=>r.id===roomId);
+   if(room && !hasRealStay && !hasRealReservation && ['occupied','reserved'].includes(String(room.status||'').toLowerCase())){room.status='available';removed++;}
+ });
+ if(removed){save();}
+ if(manual){toast(removed ? 'Built-in demo entries removed. Real financial records were kept.' : 'No built-in demo entries found.');showPage('settings');}
+ return removed;
+}
+aureliaRemoveDemoEntries(false);
+
 DB.inventory.forEach(i=>{
  if(!i.cycleStartedAt){
   const oldOpening=Number(i.opening||0),oldPurchased=Number(i.purchased||0),oldIssued=Number(i.issued||0),oldWaste=Number(i.waste||0),hist=new Date(Date.now()-86400000).toISOString(),now=new Date().toISOString();
@@ -2311,8 +2350,10 @@ async function sendBookingTerms(id){
   const baseSettings = pages.settings;
   pages.settings = function(){
     let html = baseSettings();
+    const demoCleanup = `<section class="card" style="margin-top:14px"><h3>Demo data</h3><p class="muted">Remove only built-in sample guest, booking, reservation, expense and sample stock entries. Real records and real inventory transactions are preserved.</p><button type="button" class="btn danger" onclick="aureliaRemoveDemoEntries(true)">Remove demo entries</button></section>`;
     const upload = `<div class="field full" style="margin-top:12px"><label for="upiQrFile">UPI payment QR image</label><input id="upiQrFile" type="file" accept="image/*" onchange="saveUpiQrImage(event)"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:10px"><img id="upiQrPreview" src="${esc(DB.settings.upiQrImage||"")}" alt="UPI QR preview" style="width:120px;height:120px;object-fit:contain;border:1px solid var(--line);border-radius:12px;background:#fff;${DB.settings.upiQrImage?"":"display:none"}"><span class="muted">Upload your bank/UPI QR image. It will be saved with this browser's local PMS data.</span><button type="button" class="btn small" onclick="clearUpiQrImage()">Remove QR</button></div></div>`;
     html = html.replace(/(\$\{field\("UPI","upi",DB\.settings\.upi\)\})/, '$1' + upload);
+    html = html + demoCleanup;
     return html;
   };
   window.saveUpiQrImage = function(event){

@@ -30,3 +30,7 @@ Without all four secrets, CI uses the temporary debug key so a test APK can stil
 ## Build
 
 Open the GitHub Actions tab and download `aurelia-pms-release-apk` from a successful run. Confirm the run's signature verification step passed. Test QR upload, PMS workflows, and saved-data behavior on a real Android device before production use.
+
+## Demo data and financial reports
+
+Fresh installs start with no sample guests, bookings, reservations, expenses, or sample stock balances, so demo revenue and expenses do not inflate financial reports. Settings includes **Remove demo entries**, which removes only known built-in sample records and matching sample stock-migration rows; unrelated guest records, real transactions, and financial data are preserved.
