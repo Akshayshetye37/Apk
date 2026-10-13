@@ -90,6 +90,9 @@ jobs:
       - name: Harden Android network, backup, and release configuration
         run: python3 "$GITHUB_WORKSPACE/scripts/harden_android.py" "$PROJECT_DIR"
 
+      - name: Run static security checks
+        run: python3 scripts/security_static_check.py
+
       - name: Get dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: flutter pub get

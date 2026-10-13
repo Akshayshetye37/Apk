@@ -86,3 +86,17 @@ When a build fails, copy the first meaningful error from the GitHub Actions log 
 - [ ] Offline mode tested.
 - [ ] PDF/CSV export tested.
 - [ ] India timezone behavior tested on a real device.
+
+
+## Security review and testing
+
+- [x] Static security guardrail script added to CI.
+- [ ] QR generation tested with airplane mode enabled and no external QR requests.
+- [ ] CSV/JSON export shared from an actual APK and opened in a compatible app.
+- [ ] Native bridge rejects oversized payloads, invalid MIME types, path traversal filenames, and unsupported message types.
+- [ ] Unauthorized access and incorrect PIN attempts tested against the actual APK; client-side PIN checks are not server authentication.
+- [ ] Permission denial tested on device.
+- [ ] Tampered backups and malformed/oversized imports rejected without corrupting existing records.
+- [ ] Offline dashboard, bookings, reports, and exports tested on device.
+- [ ] Local storage threat model reviewed; PMS records are not encrypted merely by native secure storage.
+- [ ] Production data approved only after authentication and at-rest protections are implemented and tested.

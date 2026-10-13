@@ -40,3 +40,12 @@ Open the GitHub Actions tab and download `aurelia-pms-release-apk` from a succes
 ## Demo data and financial reports
 
 Fresh installs start with no sample guests, bookings, reservations, expenses, or sample stock balances, so demo revenue and expenses do not inflate financial reports. Settings includes **Remove demo entries**, which removes only known built-in sample records and matching sample stock-migration rows; unrelated guest records, real transactions, and financial data are preserved.
+
+
+## Security status and limitations
+
+- Invoice payment QR codes are generated locally in the Android app. The invoice QR payload is not sent to an external QR-generation service.
+- HTML-generated CSV/JSON/blob exports are handed to a narrowly scoped native share handler. It validates request type, size, MIME type, and filename; it does not expose arbitrary filesystem access to JavaScript.
+- This does not make the app production-secure by itself. PMS records remain in WebView local storage and are not automatically encrypted by `flutter_secure_storage`. Client-side PIN checks are not server-enforced authentication. Review these issues before storing real guest or payment data.
+- Static CI checks are guardrails, not penetration tests or real-device tests. Backups and imports still require tamper/malformed-input testing on the actual APK.
+- Direct Flutter dependencies are pinned to explicit versions. Commit a generated `pubspec.lock` for reproducible transitive dependency resolution before production release.

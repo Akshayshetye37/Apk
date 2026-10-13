@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -6,6 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:qr/qr.dart';
+import 'package:share_plus/share_plus.dart';
 
 
 /// Keystore-backed storage for native secrets such as future API tokens or
@@ -69,6 +74,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..addJavaScriptChannel('AureliaNative', onMessageReceived: (message) { unawaited(_handleNativeMessage(message.message)); })
       ..setBackgroundColor(const Color(0xFFFFFCF6))
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -119,6 +125,64 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
     }
 
     _loadLocalPms();
+  }
+
+
+  Future<void> _handleNativeMessage(String raw) async {
+    String? requestId;
+    try {
+      if (raw.length > 22 * 1024 * 1024) throw const FormatException('Request too large');
+      final value = jsonDecode(raw);
+      if (value is! Map<String, dynamic>) throw const FormatException('Invalid request');
+      final rawId = value['requestId'];
+      if (rawId is String) {
+        final cleaned = rawId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
+        requestId = cleaned.substring(0, cleaned.length.clamp(0, 64));
+      }
+      if (value['type'] == 'generateQr') {
+        final text = value['text'];
+        if (text is! String || text.isEmpty || text.length > 2048) throw const FormatException('Invalid QR content');
+        final code = QrCode.fromData(data: text, errorCorrectLevel: QrErrorCorrectLevel.M);
+        final qrImage = QrImage(code);
+        const quiet = 4;
+        final side = qrImage.moduleCount + quiet * 2;
+        final squares = <String>[];
+        for (var y = 0; y < qrImage.moduleCount; y++) {
+          for (var x = 0; x < qrImage.moduleCount; x++) {
+            if (qrImage.isDark(y, x)) squares.add('M${x + quiet} ${y + quiet}h1v1h-1z');
+          }
+        }
+        final svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 $side $side" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${squares.join()}" fill="#000"/></svg>';
+        final data = 'data:image/svg+xml;base64,${base64Encode(utf8.encode(svg))}';
+        await _controller.runJavaScript('window.aureliaNativeQrResult(${jsonEncode(requestId)},${jsonEncode(data)},null);');
+        return;
+      }
+      if (value['type'] == 'shareFile') {
+        final nameValue = value['name'], mimeValue = value['mime'], dataValue = value['data'];
+        if (nameValue is! String || mimeValue is! String || dataValue is! String) throw const FormatException('Missing file fields');
+        if (dataValue.length > 20 * 1024 * 1024) throw const FormatException('File too large');
+        final safeName = nameValue.split(RegExp(r'[/\\\\]')).last.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+        if (safeName.isEmpty || safeName == '.' || safeName == '..') throw const FormatException('Invalid file name');
+        const allowed = <String>{'text/csv','application/json','application/pdf','text/plain','text/html','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','image/png','image/jpeg','application/octet-stream'};
+        final mime = allowed.contains(mimeValue) ? mimeValue : 'application/octet-stream';
+        final bytes = base64Decode(dataValue);
+        if (bytes.length > 15 * 1024 * 1024) throw const FormatException('File too large');
+        final temp = await getTemporaryDirectory();
+        final file = File('${temp.path}/$safeName');
+        await file.writeAsBytes(bytes, flush: true);
+        await Share.shareXFiles([XFile(file.path, mimeType: mime, name: safeName)], subject: safeName);
+        await _controller.runJavaScript('window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);');
+        return;
+      }
+      throw const FormatException('Unsupported native action');
+    } catch (error) {
+      debugPrint('Aurelia native bridge rejected request: $error');
+      if (requestId != null) {
+        try {
+          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
+        } catch (_) {}
+      }
+    }
   }
 
   Future<void> _loadLocalPms() async {

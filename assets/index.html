@@ -1187,10 +1187,14 @@ function checkout(id){const b=DB.bookings.find(x=>x.id===id);if(due(b)){toast(`O
 
 function openFolio(id){if(id){const el=document.querySelector(`[data-folio="${id}"]`);if(el)el.scrollIntoView()}}
 function shareInvoice(id){viewInvoice(id)}
+
+/* Local-only QR generation via a narrow native bridge. */
+(function(){const pending=new Map();let seq=0;window.aureliaRequestLocalQr=function(text,callback){const key=String(text||'');if(!key){if(callback)callback('');return;}window.__aureliaQrCache=window.__aureliaQrCache||{};if(window.__aureliaQrCache[key]){if(callback)callback(window.__aureliaQrCache[key]);return;}if(!window.AureliaNative||!window.AureliaNative.postMessage){if(callback)callback('');return;}const id='qr'+(++seq);pending.set(id,{key,callback});window.AureliaNative.postMessage(JSON.stringify({type:'generateQr',requestId:id,text:key}));};window.aureliaNativeQrResult=function(id,dataUri,error){const p=pending.get(String(id));if(!p)return;pending.delete(String(id));if(dataUri){window.__aureliaQrCache=window.__aureliaQrCache||{};window.__aureliaQrCache[p.key]=dataUri;}if(p.callback)p.callback(dataUri||'');if(error&&window.toast)window.toast('Local QR generation failed');};window.aureliaNativeFileResult=function(id,ok,error){if(window.toast)window.toast(ok?'Android share sheet opened':('File export failed'+(error?': '+error:'')));};})();
 function viewInvoice(id){
  const b=DB.bookings.find(x=>x.id===id); if(!b){toast('Booking not found');return}
  const g=guest(b),r=room(b);
- const qr=`https://quickchart.io/qr?size=900&text=${encodeURIComponent(`upi://pay?pa=${DB.settings.upi||''}&pn=${DB.settings.hotelName||''}&am=${Math.max(0,due(b)).toFixed(2)}&cu=INR&tn=${b.sr}`)}`;
+ const qrText=`upi://pay?pa=${DB.settings.upi||''}&pn=${DB.settings.hotelName||''}&am=${Math.max(0,due(b)).toFixed(2)}&cu=INR&tn=${b.sr}`;
+ const qr=DB.settings.upiQr||((window.__aureliaQrCache||{})[qrText]||'');
  openModal('Pending invoice',`<div id="invoiceShareCard" class="card" style="box-shadow:none">
   <div class="row" style="justify-content:space-between"><div><h2 style="margin:0">${esc(DB.settings.hotelName)}</h2><div>${esc(DB.settings.address)}</div><div>${esc(DB.settings.phone)}</div></div><b>PENDING INVOICE</b></div>
   <hr><b>${esc(b.sr)}</b> · Room ${esc(r?.number||'')}<div style="margin:8px 0">${esc(g?.name||'')} · ${esc(g?.phone||'')}</div>
@@ -1198,7 +1202,7 @@ function viewInvoice(id){
   <div class="row" style="justify-content:space-between;margin-top:10px"><span>Gross charges</span><b>${money((b.charges||[]).reduce((n,c)=>n+Number(c.amount||0),0))}</b></div><div class="row" style="justify-content:space-between"><span>Discount</span><b>−${money(b.discount||0)}</b></div><div class="row" style="justify-content:space-between"><b>Net total</b><b>${money(total(b))}</b></div>
   <div class="row" style="justify-content:space-between"><span>Paid</span><b>${money(b.paid)}</b></div>
   <div class="row" style="justify-content:space-between;font-size:24px;margin-top:8px"><b>AMOUNT DUE</b><b class="due">${money(due(b))}</b></div>
-  <div class="qr-box"><div><b>SCAN / EXTRACT UPI PAYMENT QR</b></div><img src="${DB.settings.upiQr||qr}" alt="Large UPI QR"><b>${esc(DB.settings.upi||'')}</b></div>
+  <div class="qr-box"><div><b>SCAN / EXTRACT UPI PAYMENT QR</b></div><img id="aureliaInvoiceQr" src="${qr}" alt="UPI payment QR" style="min-width:180px;min-height:180px;object-fit:contain"><b>${esc(DB.settings.upi||'')}</b></div>
   <div class="muted" style="margin-top:12px">${esc(DB.settings.checkoutMessage||'')}</div>
  </div>
  <div class="share-grid" style="margin-top:12px">
@@ -1208,6 +1212,7 @@ function viewInvoice(id){
   <button class="btn primary" onclick="shareInvoiceWhatsApp('${id}')">WhatsApp guest</button>
  </div>`,
  `<button class="btn" onclick="closeModal()">Done</button>`);
+ if(!DB.settings.upiQr) setTimeout(()=>aureliaRequestLocalQr(qrText,data=>{const image=document.getElementById('aureliaInvoiceQr');if(image&&data)image.src=data;}),0);
 }
 function shareInvoiceWhatsApp(id){
  const b=DB.bookings.find(x=>x.id===id),g=guest(b);if(!b||!g?.phone){toast('Guest WhatsApp number is missing');return}
@@ -1217,7 +1222,9 @@ function shareInvoiceWhatsApp(id){
 }
 function invoiceImage(id,format){
  const b=DB.bookings.find(x=>x.id===id);if(!b)return;
- const g=guest(b),r=room(b),qr=`https://quickchart.io/qr?size=900&text=${encodeURIComponent(`upi://pay?pa=${DB.settings.upi||''}&pn=${DB.settings.hotelName||''}&am=${Math.max(0,due(b)).toFixed(2)}&cu=INR&tn=${b.sr}`)}`;
+ const g=guest(b),r=room(b);
+ const qrText=`upi://pay?pa=${DB.settings.upi||''}&pn=${DB.settings.hotelName||''}&am=${Math.max(0,due(b)).toFixed(2)}&cu=INR&tn=${b.sr}`;
+ const qr=DB.settings.upiQr||((window.__aureliaQrCache||{})[qrText]);if(!qr){aureliaRequestLocalQr(qrText,data=>{if(data)invoiceImage(id,format)});return;}
  const w=window.open('','_blank');if(!w){toast('Allow popups to generate the image');return}
  w.document.write(`<html><body style="font-family:Arial;background:#fff;padding:24px"><div style="max-width:760px;margin:auto;border:1px solid #ddd;padding:24px"><h1>${esc(DB.settings.hotelName)}</h1><div>${esc(DB.settings.address)}<br>${esc(DB.settings.phone)}</div><h2>PENDING INVOICE · ${esc(b.sr)}</h2><p><b>${esc(g?.name||'')}</b> · Room ${esc(r?.number||'')}</p>${b.charges.map(c=>`<div style="display:flex;justify-content:space-between;padding:8px;border-bottom:1px solid #eee"><span>${esc(c.item)} × ${c.qty}</span><b>${money(c.amount)}</b></div>`).join('')}<h2>AMOUNT DUE: ${money(due(b))}</h2><div style="text-align:center"><img src="${qr}" style="width:520px;height:520px;max-width:90vw"><div>${esc(DB.settings.upi||'')}</div></div></div></body></html>`);
  w.document.close();toast(`${format.toUpperCase()} invoice image prepared; use browser save/share image.`);
@@ -1227,7 +1234,8 @@ function printInvoice(id){
  const b=DB.bookings.find(x=>x.id===id); if(!b){toast('Booking not found');return}
  const g=guest(b),r=room(b);
  const rows=b.charges.map(c=>`<tr><td>${esc(c.item)} × ${c.qty}</td><td>${money(c.amount)}</td></tr>`).join('');
- const qr=`https://quickchart.io/qr?size=600&text=${encodeURIComponent(`upi://pay?pa=${DB.settings.upi||''}&pn=${DB.settings.hotelName||''}&am=${Math.max(0,due(b)).toFixed(2)}&cu=INR&tn=${b.sr}`)}`;
+ const qrText=`upi://pay?pa=${DB.settings.upi||''}&pn=${DB.settings.hotelName||''}&am=${Math.max(0,due(b)).toFixed(2)}&cu=INR&tn=${b.sr}`;
+ const qr=DB.settings.upiQr||((window.__aureliaQrCache||{})[qrText]);if(!qr){aureliaRequestLocalQr(qrText,data=>{if(data)printInvoice(id)});return;}
  const html=`<!doctype html><html><head><meta charset="utf-8"><title>${esc(b.sr)}</title><style>body{font-family:Arial;padding:28px;max-width:760px;margin:auto;color:#123842}h1{font-family:Georgia;font-style:italic}table{width:100%;border-collapse:collapse}td{padding:10px;border-bottom:1px solid #ddd}.due{font-size:24px;font-weight:800}.qr{text-align:center;margin-top:20px}.qr img{width:300px;height:300px}</style></head><body>${DB.settings.logo?`<div style="margin-bottom:10px"><img src="${DB.settings.logo}" alt="Hotel logo" style="max-width:150px;max-height:90px;object-fit:contain"></div>`:""}<h1>${esc(DB.settings.hotelName)}</h1><div>${esc(DB.settings.address)}<br>${esc(DB.settings.phone)}</div><h2>INVOICE · ${esc(b.sr)}</h2><p><b>${esc(g?.name||'')}</b> · Room ${esc(r?.number||'')}</p><table>${rows}</table><p>Total: <b>${money(total(b))}</b><br>Paid: <b>${money(b.paid)}</b><br><span class="due">Amount due: ${money(due(b))}</span></p><div class="qr"><b>PAYMENT QR</b><br><img src="${qr}"><div>${esc(DB.settings.upi||'')}</div></div><p>${esc(DB.settings.checkoutMessage||'')}</p></body></html>`;
  const w=window.open('','_blank'); if(!w){toast('Allow popups to print the invoice');return}
  w.document.open();w.document.write(html);w.document.close(); setTimeout(()=>w.print(),300);
@@ -1239,7 +1247,7 @@ function exportCSV(){
  const csv=rows.map(row=>row.map(v=>`"${String(v??'').replaceAll('"','""')}"`).join(',')).join('\n');
  downloadBlob(new Blob([csv],{type:'text/csv'}),`${DB.settings.hotelName||'hotel'}-balance-sheet.csv`);
 }
-function downloadBlob(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},800)}
+function downloadBlob(blob,name){if(window.AureliaNative&&typeof window.AureliaNative.postMessage==='function'){if(!blob||blob.size>15*1024*1024){toast('Export exceeds the 15 MB Android sharing limit');return}const reader=new FileReader();reader.onerror=()=>toast('Could not prepare export');reader.onload=()=>{const v=String(reader.result||''),i=v.indexOf(',');if(i<0){toast('Could not encode export');return}window.AureliaNative.postMessage(JSON.stringify({type:'shareFile',requestId:'file'+Date.now(),name:String(name||'aurelia-export.bin'),mime:String(blob.type||'application/octet-stream'),data:v.slice(i+1)}))};reader.readAsDataURL(blob);return}const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},800)}
 function balanceSheet(period){
  const rows=DB.bookings.map(b=>`<div class="item"><b>${esc(b.sr)}</b> · ${esc(guest(b)?.name||'')} · Room ${esc(room(b)?.number||'')}<br>Total ${money(total(b))} · Paid ${money(b.paid)} · Due ${money(due(b))}</div>`).join('');
  openModal(`${period} balance sheet`,rows||'<div class="empty">No records</div>',`<button class="btn" onclick="closeModal()">Close</button><button class="btn primary" onclick="exportCSV();closeModal()">Download CSV</button>`);
