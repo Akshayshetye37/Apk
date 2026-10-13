@@ -13,6 +13,12 @@ gradle = (root / "android/app/build.gradle.kts").read_text(encoding="utf-8")
 workflow = (root / ".github/workflows/build-apk.yml").read_text(encoding="utf-8")
 errors = []
 
+# Unsafe legacy import and plaintext cloud backup must stay disabled until safe implementations exist.
+if "Import blocked for data safety" not in html:
+    errors.append("Unsafe direct JSON import must remain disabled until a staged, validated restore exists.")
+if "does not yet encrypt backup contents" not in html or "return false;" not in html[html.find("function aureliaUploadDriveBackup"):html.find("function aureliaQueueDriveBackup")]:
+    errors.append("Plaintext cloud backup must remain disabled until authenticated encryption and recovery are implemented.")
+
 # Persistent storage failure must not silently downgrade to volatile in-memory storage.
 if "refusing volatile-memory mode" not in html or "Persistent storage is unavailable" not in html:
     errors.append("PMS must fail closed rather than claim durability when persistent storage is unavailable.")
