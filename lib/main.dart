@@ -36,6 +36,20 @@ class AureliaSecureVault {
       _storage.delete(key: key);
 }
 
+/// Allow only the bundled PMS asset and explicit external-app schemes.
+/// Remote web content must never receive access to the native JavaScript bridge.
+bool isAllowedTopLevelNavigation(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null || uri.pathSegments.contains('..')) return false;
+  if (uri.scheme == 'file' &&
+      uri.host.isEmpty &&
+      uri.path.startsWith('/android_asset/flutter_assets/')) {
+    return true;
+  }
+  if (uri.scheme == 'tel' || uri.scheme == 'mailto') return true;
+  return uri.scheme == 'about' && uri.path == 'blank';
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const AureliaPmsApp());
@@ -92,16 +106,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
             debugPrint('Aurelia PMS WebView error: ${error.description}');
           },
           onNavigationRequest: (request) {
-            final uri = Uri.tryParse(request.url);
-            // The JavaScript bridge is intended only for our bundled local PMS.
-            // Never let a remote page become top-level while the bridge is installed.
-            if (uri != null && uri.scheme == 'file' && uri.path.startsWith('/android_asset/flutter_assets/')) {
-              return NavigationDecision.navigate;
-            }
-            if (uri != null && (uri.scheme == 'tel' || uri.scheme == 'mailto')) {
-              return NavigationDecision.navigate;
-            }
-            if (uri != null && uri.scheme == 'about' && uri.path == 'blank') {
+            if (isAllowedTopLevelNavigation(request.url)) {
               return NavigationDecision.navigate;
             }
             debugPrint('Blocked non-local top-level navigation: ${request.url}');
