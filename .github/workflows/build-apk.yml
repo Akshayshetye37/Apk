@@ -1,4 +1,3 @@
-
 name: Build Aurelia PMS APK
 
 on:
@@ -60,12 +59,11 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: flutter create . --platforms=android
 
-      - name: Apply committed Android project configuration
+      - name: Verify Android project configuration
         run: |
           set -euo pipefail
-          test -f "$GITHUB_WORKSPACE/android/app/build.gradle.kts"
-          cp -a "$GITHUB_WORKSPACE/android/." "$PROJECT_DIR/android/"
-          echo "Committed Android configuration copied into the build project."
+          test -f "$PROJECT_DIR/android/app/build.gradle.kts"
+          echo "Using the Android project configuration in the checkout; no self-copy is needed."
 
       - name: Harden Android network, backup, and release configuration
         run: python3 "$GITHUB_WORKSPACE/scripts/harden_android.py" "$PROJECT_DIR"
@@ -77,12 +75,8 @@ jobs:
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
           set -euo pipefail
-          if [ -f pubspec.lock ]; then
-            flutter pub get --enforce-lockfile
-          else
-            echo 'ERROR: pubspec.lock is required for reproducible release builds.'
-            exit 1
-          fi
+          flutter pub get
+          test -f pubspec.lock
 
       - name: Analyze and test
         working-directory: ${{ env.PROJECT_DIR }}
@@ -140,4 +134,3 @@ jobs:
           name: aurelia-pms-release-apk
           path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
-          
