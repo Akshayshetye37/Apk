@@ -1,48 +1,35 @@
-
 name: Build Aurelia PMS APK
 
 on:
-  workflow_dispatch:
+  pull_request:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/**'
       - 'assets/**'
       - 'lib/**'
       - 'pubspec.yaml'
+      - 'pubspec.lock'
       - 'scripts/**'
       - 'android/**'
       - 'README.md'
       - 'CHECKLIST.md'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+concurrency:
+  group: aurelia-apk-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  validate:
+    name: Security checks, analysis, and tests
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Select authoritative Flutter project
-        run: |
-          set -euo pipefail
-          test -f pubspec.yaml
-          test -f lib/main.dart
-          test -f assets/index.html
-          echo "PROJECT_DIR=$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
-          echo "Building directly from the committed repository source."
-
-      - name: Apply Android WebView API compatibility fix
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          sed -i '/platformController\.setDomStorageEnabled(true);/d' lib/main.dart
-          sed -i '/platformController\.setJavaScriptCanOpenWindowsAutomatically(true);/d' lib/main.dart
-          if grep -Eq 'setDomStorageEnabled|setJavaScriptCanOpenWindowsAutomatically' lib/main.dart; then
-            echo "ERROR: unsupported AndroidWebViewController calls remain."
-            exit 1
-          fi
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -54,80 +41,96 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.5'
+          channel: stable
           cache: true
 
-      - name: Prepare Android platform
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter create . --platforms=android
-
-      - name: Apply committed Android project configuration
+      - name: Require committed dependency lockfile
         run: |
           set -euo pipefail
-          test -f "$GITHUB_WORKSPACE/android/app/build.gradle.kts"
-          cp -a "$GITHUB_WORKSPACE/android/." "$PROJECT_DIR/android/"
-          echo "Committed Android configuration copied into the build project."
+          test -s pubspec.lock || { echo "::error::pubspec.lock is missing. Generate it with Flutter 3.35.5, review it, and commit it."; exit 1; }
 
-      - name: Harden Android network, backup, and release configuration
-        run: python3 "$GITHUB_WORKSPACE/scripts/harden_android.py" "$PROJECT_DIR"
+      - name: Resolve dependencies without changing lockfile
+        run: flutter pub get --enforce-lockfile
 
       - name: Run static security checks
         run: python3 scripts/security_static_check.py
 
-      - name: Resolve dependencies
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          set -euo pipefail
-          if [ -f pubspec.lock ]; then
-            flutter pub get --enforce-lockfile
-          else
-            echo 'ERROR: pubspec.lock is required for reproducible release builds.'
-            exit 1
-          fi
+      - name: Analyze
+        run: flutter analyze --fatal-infos
 
-      - name: Analyze and test
-        working-directory: ${{ env.PROJECT_DIR }}
-        run: |
-          set -euo pipefail
-          flutter analyze --fatal-infos
-          flutter test
+      - name: Test
+        run: flutter test --reporter expanded
 
-      - name: Prepare release signing key
+  build-release:
+    name: Build and verify signed production APK
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.5'
+          channel: stable
+          cache: true
+
+      - name: Resolve dependencies from committed lockfile
+        run: flutter pub get --enforce-lockfile
+
+      - name: Prepare production signing key
         shell: bash
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_PATH: ${{ github.workspace }}/release.keystore
         run: |
           set -euo pipefail
-          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] && [ -n "${ANDROID_KEY_ALIAS:-}" ] && [ -n "${ANDROID_KEY_PASSWORD:-}" ]; then
-            KEY_PATH="$GITHUB_WORKSPACE/$PROJECT_DIR/android/app/release-keystore.jks"
-            umask 077
-            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEY_PATH"
-            test -s "$KEY_PATH"
-            keytool -list -keystore "$KEY_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
-            echo "ANDROID_KEYSTORE_PATH=$KEY_PATH" >> "$GITHUB_ENV"
-            echo "Release signing keystore and alias validated."
-          else
-            echo "ERROR: Production signing secrets are missing. Refusing to produce a release APK with a debug key."
-            exit 1
-          fi
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required production signing secret is missing: $name"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEY_PATH"
+          test -s "$KEY_PATH"
+          keytool -list -keystore "$KEY_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
+          echo "ANDROID_KEYSTORE_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          echo "Validated production keystore and alias."
 
       - name: Build release APK
-        working-directory: ${{ env.PROJECT_DIR }}
         env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build apk --release --obfuscate --split-debug-info=build/symbols
+          ENVIRONMENT: production
+        run: flutter build apk --release --obfuscate --split-debug-info=build/symbols --dart-define=ENVIRONMENT=production
 
-      - name: Verify APK signature
-        working-directory: ${{ env.PROJECT_DIR }}
+      - name: Verify APK signature and signing identity
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
+          set -euo pipefail
           APK="build/app/outputs/flutter-apk/app-release.apk"
           test -s "$APK"
-          "$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)/apksigner" verify --verbose "$APK"
-          "$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-certs.txt"
+          APKSIGNER="$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)/apksigner"
+          "$APKSIGNER" verify --verbose "$APK"
+          "$APKSIGNER" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-certs.txt"
           keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > "$RUNNER_TEMP/keystore-cert.txt"
           APK_CERT=$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2); exit}' "$RUNNER_TEMP/apk-certs.txt" | tr -d ':')
           KEY_CERT=$(awk -F': ' '/SHA256:/ {print tolower($2); exit}' "$RUNNER_TEMP/keystore-cert.txt" | tr -d ':')
@@ -138,6 +141,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: aurelia-pms-release-apk
-          path: ${{ env.PROJECT_DIR }}/build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
-          
