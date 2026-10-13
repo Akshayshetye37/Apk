@@ -177,7 +177,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
   }
   Future<void> _setPin() async {
     final pin = _pinInput.text;
-    if (pin.length < 4 || pin.length > 8 || !RegExp(r'^\d+').hasMatch(pin)) { setState(() => _lockMessage = 'PIN must contain 4–8 digits.'); return; }
+    if (pin.length < 4 || pin.length > 8 || !pin.runes.every((digit) => digit >= 48 && digit <= 57)) { setState(() => _lockMessage = 'PIN must contain 4–8 digits.'); return; }
     if (pin != _confirmPinInput.text) { setState(() => _lockMessage = 'PINs do not match.'); return; }
     setState(() => _securityBusy = true);
     try {
@@ -222,7 +222,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
     const SizedBox(height: 12), FilledButton(onPressed: _securityBusy ? null : (_settingPin ? _setPin : _unlockPin), child: Text(_securityBusy ? 'Please wait…' : (_settingPin ? 'Set PIN securely' : 'Unlock'))),
     if (!_settingPin) OutlinedButton.icon(onPressed: _securityBusy ? null : _authenticateDevice, icon: const Icon(Icons.fingerprint), label: const Text('Use device screen lock'), style: OutlinedButton.styleFrom(foregroundColor: Colors.white)),
     const SizedBox(height: 12), const Text('Locks when backgrounded and after five minutes without interaction.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white60, fontSize: 12)),
-  ]))))));
+  ])))))));
 
   Future<void> _handleNativeMessage(String raw) async {
     String? requestId;
