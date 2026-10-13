@@ -154,7 +154,6 @@ jobs:
       - name: Verify APK signature against configured production keystore
         working-directory: ${{ env.PROJECT_DIR }}
         env:
-          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
@@ -186,5 +185,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f "${ANDROID_KEYSTORE_PATH:-}" "$RUNNER_TEMP/apk-certs.txt" "$RUNNER_TEMP/keystore-cert.txt"
+          if [[ -n "${ANDROID_KEYSTORE_PATH:-}" ]]; then rm -f "$ANDROID_KEYSTORE_PATH"; fi
+          rm -f "$RUNNER_TEMP/apk-certs.txt" "$RUNNER_TEMP/keystore-cert.txt"
           echo "Temporary signing files removed."
