@@ -95,12 +95,16 @@ if 'create("release")' not in source:
         indent + "signingConfigs {\n"
         + indent + '    create("release") {\n'
         + indent + '        val releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")\n'
-        + indent + "        if (releaseStore != null) {\n"
-        + indent + "            storeFile = file(releaseStore)\n"
-        + indent + "            storePassword = System.getenv(\"ANDROID_KEYSTORE_PASSWORD\")\n"
-        + indent + "            keyAlias = System.getenv(\"ANDROID_KEY_ALIAS\")\n"
-        + indent + "            keyPassword = System.getenv(\"ANDROID_KEY_PASSWORD\")\n"
+        + indent + "        val releaseStorePassword = System.getenv(\"ANDROID_KEYSTORE_PASSWORD\")\n"
+        + indent + "        val releaseAlias = System.getenv(\"ANDROID_KEY_ALIAS\")\n"
+        + indent + "        val releasePassword = System.getenv(\"ANDROID_KEY_PASSWORD\")\n"
+        + indent + "        if (releaseStore.isNullOrBlank() || releaseStorePassword.isNullOrBlank() || releaseAlias.isNullOrBlank() || releasePassword.isNullOrBlank()) {\n"
+        + indent + "            throw GradleException(\"Release signing secrets are required; debug signing fallback is prohibited.\")\n"
         + indent + "        }\n"
+        + indent + "        storeFile = file(releaseStore)\n"
+        + indent + "        storePassword = releaseStorePassword\n"
+        + indent + "        keyAlias = releaseAlias\n"
+        + indent + "        keyPassword = releasePassword\n"
         + indent + "    }\n"
         + indent + "}\n\n"
     )
@@ -110,14 +114,11 @@ debug_signing = 'signingConfig = signingConfigs.getByName("debug")'
 if debug_signing in source:
     source = source.replace(
         debug_signing,
-        '''signingConfig = if (System.getenv("ANDROID_KEYSTORE_PATH") != null)
-                    signingConfigs.getByName("release")
-                else
-                    signingConfigs.getByName("debug")''',
+        'signingConfig = signingConfigs.getByName("release")',
         1,
     )
-elif "ANDROID_KEYSTORE_PATH" not in source:
-    raise SystemExit("ERROR: could not safely configure release signing")
+elif 'signingConfig = signingConfigs.getByName("release")' not in source:
+    raise SystemExit("ERROR: could not safely configure mandatory release signing")
 
 gradle.write_text(source, encoding="utf-8")
 proguard = android / "app/proguard-rules.pro"
