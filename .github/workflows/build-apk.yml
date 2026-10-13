@@ -69,7 +69,7 @@ jobs:
           set -euo pipefail
           WRAPPER=android/gradle/wrapper/gradle-wrapper.properties
           test -s "$WRAPPER" || { echo "::error::Gradle wrapper properties were not generated"; exit 1; }
-          sed -i -E 's#gradle-[0-9.]+-(bin|all)\\.zip#gradle-8.13-bin.zip#' "$WRAPPER"
+          sed -i -E 's#gradle-[0-9.]+-(bin|all)[.]zip#gradle-8.13-bin.zip#' "$WRAPPER"
           grep -q 'gradle-8.13-bin.zip' "$WRAPPER"
 
       - name: Compile Android debug APK for Kotlin and Gradle validation
@@ -106,7 +106,7 @@ jobs:
           set -euo pipefail
           WRAPPER=android/gradle/wrapper/gradle-wrapper.properties
           test -s "$WRAPPER" || { echo "::error::Gradle wrapper properties were not generated"; exit 1; }
-          sed -i -E 's#gradle-[0-9.]+-(bin|all)\\.zip#gradle-8.13-bin.zip#' "$WRAPPER"
+          sed -i -E 's#gradle-[0-9.]+-(bin|all)[.]zip#gradle-8.13-bin.zip#' "$WRAPPER"
           grep -q 'gradle-8.13-bin.zip' "$WRAPPER"
 
       - name: Enforce production security hold
