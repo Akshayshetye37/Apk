@@ -13,6 +13,12 @@ gradle = (root / "android/app/build.gradle.kts").read_text(encoding="utf-8")
 workflow = (root / ".github/workflows/build-apk.yml").read_text(encoding="utf-8")
 errors = []
 
+# Corrupt or unrecognized stored PMS data must never silently fall back to demo seed data.
+if "const hasStoredData=primary!==null||backup!==null;" not in html or "if(hasStoredData)" not in html:
+    errors.append("PMS storage recovery must fail closed when existing stored records cannot be parsed or validated.")
+if "No demo data was loaded and no stored copy was overwritten" not in html:
+    errors.append("PMS corruption path must preserve stored records instead of silently loading demo data.")
+
 if "quickchart.io/qr" in html.lower() or "api.qrserver.com" in html.lower():
     errors.append("External QR generation service remains in HTML.")
 if "aureliaRequestLocalQr" not in html or "generateQr" not in main:
