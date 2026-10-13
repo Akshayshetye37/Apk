@@ -151,7 +151,7 @@ if not wrapper.is_file():
     raise SystemExit(f"ERROR: Gradle wrapper properties not found: {wrapper}")
 wrapper_source = wrapper.read_text(encoding="utf-8")
 wrapper_source, wrapper_count = re.subn(
-    r"(?m)^distributionUrl=.*gradle-[0-9.]+-(?:bin|all)\\.zip$",
+    r"(?m)^distributionUrl=.*$",
     "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip",
     wrapper_source,
     count=1,
