@@ -6,7 +6,10 @@ on:
   push:
     paths:
       - 'aurelia-pms-flutter-apk-source.zip'
-      - '.github/workflows/build-apk.yml'
+      - '.github/workflows/**'
+      - 'assets/**'
+      - 'lib/**'
+      - 'pubspec.yaml'
 
 permissions:
   contents: read
