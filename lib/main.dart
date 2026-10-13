@@ -1,10 +1,34 @@
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
+
+
+/// Keystore-backed storage for native secrets such as future API tokens or
+/// integration credentials. Do not put PMS records in ordinary preferences.
+class AureliaSecureVault {
+  AureliaSecureVault._();
+
+  static const FlutterSecureStorage _storage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+      resetOnError: true,
+    ),
+  );
+
+  static Future<void> writeSecret(String key, String value) =>
+      _storage.write(key: key, value: value);
+
+  static Future<String?> readSecret(String key) =>
+      _storage.read(key: key);
+
+  static Future<void> deleteSecret(String key) =>
+      _storage.delete(key: key);
+}
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
