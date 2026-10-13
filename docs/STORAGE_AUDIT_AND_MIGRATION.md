@@ -50,3 +50,11 @@
 - [ ] Physical-device test matrix completed with model, Android version, expected/actual result, and defects.
 
 Until those items are evidenced, Priority 1 is incomplete and production release must remain blocked.
+
+
+## Follow-up safety controls (commit `7d9dd7b1ddadfffd779677c38135dbcabc954569`)
+
+- The legacy Google Drive upload function now refuses to upload the plaintext JSON payload. This is a **temporary fail-closed guard**, not encrypted backup functionality.
+- The legacy JSON import now refuses to replace the live `DB` until a staged, schema-validated, recoverable importer/restore exists. This is a **temporary data-preservation guard**, not a completed restore workflow.
+- The UI and existing records are intended to remain unchanged; behavior for cloud backup and JSON import is intentionally unavailable while these safety holds are active.
+- These changes do not encrypt `localStorage`, do not complete migration, and do not establish backup/recovery acceptance. Release remains blocked.
