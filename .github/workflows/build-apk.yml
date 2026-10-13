@@ -35,6 +35,16 @@ jobs:
           fi
           echo "PROJECT_DIR=$(dirname "$FILE")" >> "$GITHUB_ENV"
 
+      - name: Install the latest supplied PMS HTML
+        run: |
+          if [ ! -f assets/index.html ]; then
+            echo "ERROR: assets/index.html is missing from the repository."
+            exit 1
+          fi
+          mkdir -p "$PROJECT_DIR/assets"
+          cp assets/index.html "$PROJECT_DIR/assets/index.html"
+          echo "Installed repository HTML into the Flutter app."
+
       - name: Apply Android WebView API compatibility fix
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
