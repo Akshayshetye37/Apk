@@ -95,7 +95,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] && [ -n "${ANDROID_KEY_ALIAS:-}" ] && [ -n "${ANDROID_KEY_PASSWORD:-}" ]; then
-            KEY_PATH="$GITHUB_WORKSPACE/$PROJECT_DIR/android/app/release-keystore.jks"
+            KEY_PATH="$PROJECT_DIR/android/app/release-keystore.jks"
             umask 077
             printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEY_PATH"
             test -s "$KEY_PATH"
