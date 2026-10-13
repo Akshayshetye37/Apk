@@ -287,8 +287,26 @@ const seed={
  audit:[],
  seq:{booking:1000,reservation:0,invoice:1,expense:1}
 };
-// Storage adapter: sandboxed previews may deny localStorage access entirely.
-const aureliaStorage=(()=>{let memory={};let store=null;try{store=window.localStorage;const probe='__aurelia_storage_probe__';store.setItem(probe,'1');store.removeItem(probe);}catch(_){store=null;}return {getItem(k){try{return store?store.getItem(k):(memory[k]??null)}catch(_){return memory[k]??null}},setItem(k,v){try{if(store){store.setItem(k,String(v));return}}catch(_){}memory[k]=String(v)},removeItem(k){try{if(store){store.removeItem(k);return}}catch(_){}delete memory[k]}}})();
+// PMS records require durable storage. Never silently fall back to volatile memory,
+// which can make a save appear successful and then lose hotel records on restart.
+const aureliaStorage=(()=>{
+ let store;
+ try{
+   store=window.localStorage;
+   const probe='__aurelia_storage_probe__';
+   store.setItem(probe,'1');
+   if(store.getItem(probe)!=='1')throw new Error('Persistent storage read-back failed');
+   store.removeItem(probe);
+ }catch(error){
+   console.error('Aurelia PMS requires working persistent browser storage; refusing volatile-memory mode.',error);
+   throw new Error('Persistent storage is unavailable. Aurelia PMS has stopped to avoid losing hotel records.');
+ }
+ return {
+   getItem(key){return store.getItem(key)},
+   setItem(key,value){store.setItem(key,String(value))},
+   removeItem(key){store.removeItem(key)}
+ };
+})();
 function loadAureliaDB(){
  const primary=aureliaStorage.getItem('aurelia_pms_v3');
  const backup=aureliaStorage.getItem('aurelia_pms_v3_autobackup');
