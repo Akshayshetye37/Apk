@@ -125,7 +125,20 @@ if not proguard.exists():
     proguard.write_text(
         "# Keep Flutter embedding and plugin entry points safe under R8.\n"
         "-keep class io.flutter.embedding.** { *; }\n"
-        "-keep class io.flutter.plugin.** { *; }\n",
+        "-keep class io.flutter.plugin.** { *; }\n"
+        "# Flutter references Play Store deferred-component classes that are not used by this APK.\n"
+        "-dontwarn com.google.android.play.core.**\n",
+        encoding="utf-8",
+    )
+
+# Always ensure the Flutter deferred-component references don't break R8 when
+# Play Core split-install support isn't bundled. This APK does not use deferred components.
+proguard = android / "app/proguard-rules.pro"
+rules = proguard.read_text(encoding="utf-8")
+if "-dontwarn com.google.android.play.core.**" not in rules:
+    proguard.write_text(
+        rules.rstrip() + "\\n# Flutter references Play Store deferred-component APIs not used by this app.\\n"
+        "-dontwarn com.google.android.play.core.**\\n",
         encoding="utf-8",
     )
 
