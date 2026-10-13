@@ -35,6 +35,15 @@ for line in pub.splitlines():
     if re.match(r"\s{2}[a-zA-Z0-9_]+:\s+\^", line):
         errors.append("Unpinned direct dependency: " + line.strip())
         break
+# Native-backed app lock: PBKDF2 verifier, throttling, lifecycle and inactivity timeout.
+kotlin = (root / "android/app/src/main/kotlin/com/example/aurelia_pms/MainActivity.kt").read_text(encoding="utf-8")
+for required in ("PBKDF2WithHmacSHA256", "derivePinHash", "authenticateDevice", "createConfirmDeviceCredentialIntent"):
+    if required not in kotlin:
+        errors.append("Native app-lock security implementation is missing " + required + ".")
+for required in ("app_pin_hash_v1", "app_pin_salt_v1", "app_pin_lock_until_v1", "Duration(minutes: 5)", "WidgetsBindingObserver"):
+    if required not in main:
+        errors.append("App lock is missing required control " + required + ".")
+
 if "base64Decode(dataValue)" not in main or "15 * 1024 * 1024" not in main:
     errors.append("Native export size validation missing.")
 if "replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')" not in main:
