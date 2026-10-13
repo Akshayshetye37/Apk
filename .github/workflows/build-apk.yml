@@ -43,7 +43,9 @@ jobs:
           fi
           mkdir -p "$PROJECT_DIR/assets"
           cp assets/index.html "$PROJECT_DIR/assets/index.html"
-          echo "Installed repository HTML into the Flutter app."
+          if [ -f lib/main.dart ]; then cp lib/main.dart "$PROJECT_DIR/lib/main.dart"; fi
+          if [ -f pubspec.yaml ]; then cp pubspec.yaml "$PROJECT_DIR/pubspec.yaml"; fi
+          echo "Installed repository HTML, Flutter wrapper, and dependencies into the app."
 
       - name: Apply Android WebView API compatibility fix
         working-directory: ${{ env.PROJECT_DIR }}
