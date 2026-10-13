@@ -130,16 +130,99 @@ jobs:
           """, encoding="utf-8")
           ET.indent(tree, space="    ")
           tree.write(manifest, encoding="utf-8", xml_declaration=True)
-          print("Applied HTTPS-only network policy and disabled Android backup/transfer.")
-          PY
+
+          # Enable R8 optimization and configure proper release signing when
+          # repository Actions secrets provide a release keystore.
+          gradle = Path("android/app/build.gradle.kts")
+          if not gradle.exists():
+              raise SystemExit(f"ERROR: expected Gradle file not found: {gradle}")
+          source = gradle.read_text(encoding="utf-8")
+          if "isMinifyEnabled = true" not in source:
+              source = source.replace(
+                  "        release {",
+                  """        release {
+                      isMinifyEnabled = true
+                      isShrinkResources = true
+                      proguardFiles(
+                          getDefaultProguardFile("proguard-android-optimize.txt"),
+                          "proguard-rules.pro"
+                      )""",
+                  1,
+              )
+          source = source.replace(
+              'signingConfig = signingConfigs.getByName("debug")',
+              '''signingConfig = if (System.getenv("ANDROID_KEYSTORE_PATH") != null)
+                          signingConfigs.getByName("release")
+                      else
+                          signingConfigs.getByName("debug")''',
+              1,
+          )
+          if 'create("release")' not in source:
+              source = source.replace(
+                  "    buildTypes {",
+                  """    signingConfigs {
+          create("release") {
+              val releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")
+              if (releaseStore != null) {
+                  storeFile = file(releaseStore)
+                  storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                  keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                  keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+              }
+          }
+      }
+
+      buildTypes {""",
+                  1,
+              )
+          gradle.write_text(source, encoding="utf-8")
+          proguard = Path("android/app/proguard-rules.pro")
+          if not proguard.exists():
+              proguard.write_text(
+                  """# Keep Flutter embedding and plugin entry points safe under R8.
+          -keep class io.flutter.embedding.** { *; }
+          -keep class io.flutter.plugin.** { *; }
+          """,
+                  encoding="utf-8",
+              )
+          print("Applied HTTPS-only network policy, disabled backup, and enabled R8.")
 
       - name: Get dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: flutter pub get
 
+      - name: Prepare release signing key
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] && [ -n "${ANDROID_KEY_ALIAS:-}" ] && [ -n "${ANDROID_KEY_PASSWORD:-}" ]; then
+            KEY_PATH="$GITHUB_WORKSPACE/$PROJECT_DIR/android/app/release-keystore.jks"
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEY_PATH"
+            echo "ANDROID_KEYSTORE_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+            echo "Release signing keystore configured."
+          else
+            echo "::warning::Release keystore secrets are missing. APK will use the temporary debug key and is not suitable for production distribution or future signed updates."
+          fi
+
       - name: Build release APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: flutter build apk --release
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build apk --release --obfuscate --split-debug-info=build/symbols
+
+      - name: Verify APK signature
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)/apksigner" verify --verbose "$APK"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
