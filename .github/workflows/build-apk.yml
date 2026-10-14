@@ -138,7 +138,18 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$KEY_PATH" >> "$GITHUB_ENV"
           # Preserve the validated file for the Gradle build; the always() cleanup step removes it.
           trap - EXIT
-          echo "Release keystore is readable and the configured alias is present."
+          KEY_CERT=$(keytool -list -v -keystore "$KEY_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" | awk -F': ' '/SHA256:/ {print toupper($2); exit}')
+          EXPECTED_CERT="3B:EE:A1:E6:FF:13:C7:50:E7:D2:13:00:82:29:AF:38:15:3F:A8:32:8D:A9:C1:A2:48:13:4D:D6:93:3D:4A:36"
+          if [[ -z "$KEY_CERT" ]]; then
+            echo "ERROR: Could not extract SHA-256 fingerprint from configured keystore alias." >&2
+            exit 1
+          fi
+          echo "Configured keystore alias SHA-256 fingerprint: $KEY_CERT"
+          if [[ "$KEY_CERT" != "$EXPECTED_CERT" ]]; then
+            echo "ERROR: Configured keystore does not match the intended aurelia-release-new.jks certificate. Check ANDROID_KEYSTORE_BASE64 and ANDROID_KEY_ALIAS secrets." >&2
+            exit 1
+          fi
+          echo "Configured keystore matches the intended Aurelia release certificate."
 
       - name: Build release APK
         working-directory: ${{ env.PROJECT_DIR }}
@@ -188,8 +199,11 @@ jobs:
           keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > "$RUNNER_TEMP/keystore-cert.txt"
           APK_CERT=$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2); exit}' "$RUNNER_TEMP/apk-certs.txt" | tr -d ':')
           KEY_CERT=$(awk -F': ' '/SHA256:/ {print tolower($2); exit}' "$RUNNER_TEMP/keystore-cert.txt" | tr -d ':')
-          if [[ -z "$APK_CERT" || -z "$KEY_CERT" || "$APK_CERT" != "$KEY_CERT" ]]; then
-            echo "ERROR: APK signer certificate does not match the configured production keystore." >&2
+          EXPECTED_CERT="3BEEA1E6FF13C750E7D213008229AF38153FA8328DA9C1A248134DD6933D4A36"
+          echo "Actual APK signer SHA-256 fingerprint: $APK_CERT"
+          echo "Expected release SHA-256 fingerprint: $EXPECTED_CERT"
+          if [[ -z "$APK_CERT" || -z "$KEY_CERT" || "$APK_CERT" != "$EXPECTED_CERT" || "$KEY_CERT" != "$EXPECTED_CERT" ]]; then
+            echo "ERROR: APK signer, configured keystore, or intended release fingerprint do not match." >&2
             exit 1
           fi
           echo "APK signature is valid and its certificate matches the configured production keystore."
