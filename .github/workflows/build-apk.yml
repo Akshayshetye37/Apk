@@ -151,6 +151,28 @@ jobs:
           test -s "$ANDROID_KEYSTORE_PATH"
           flutter build apk --release --obfuscate --split-debug-info=build/symbols
 
+      - name: Sign APK with configured production keystore
+        working-directory: ${{ env.PROJECT_DIR }}
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          test -s "$APK"
+          BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)"
+          # Sign explicitly with the configured production key so generated Gradle
+          # defaults cannot silently leave the artifact signed by a different key.
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$ANDROID_KEYSTORE_PATH" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD \
+            --key-pass env:ANDROID_KEY_PASSWORD \
+            --out "$RUNNER_TEMP/aurelia-release-signed.apk" \
+            "$APK"
+          mv "$RUNNER_TEMP/aurelia-release-signed.apk" "$APK"
+
       - name: Verify APK signature against configured production keystore
         working-directory: ${{ env.PROJECT_DIR }}
         env:
