@@ -49,8 +49,8 @@ void main() {
           '{"v":1,"salt":"AA==","hash":"AA==","mem":999999999,"ops":2,"parallelism":1}';
     final service = PinKdfService(storage);
 
-    expect(
-      await service.checkProvisioningState(),
+    await expectLater(
+      service.checkProvisioningState(),
       throwsFormatException,
     );
     expect(
