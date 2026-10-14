@@ -42,12 +42,12 @@ class AureliaMigrationStore {
             id INTEGER PRIMARY KEY CHECK (id = 1),
             schema_version INTEGER NOT NULL,
             payload_json TEXT NOT NULL,
-            payload_sha256 TEXT NOT NULL,
+            payload_digest TEXT NOT NULL,
             record_counts_json TEXT NOT NULL,
             migrated_at TEXT NOT NULL
           )
         ''');
-        await db.execute('CREATE TABLE migration_log (id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT NOT NULL, payload_sha256 TEXT NOT NULL, record_counts_json TEXT NOT NULL, verified_at TEXT NOT NULL)');
+        await db.execute('CREATE TABLE migration_log (id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT NOT NULL, payload_digest TEXT NOT NULL, record_counts_json TEXT NOT NULL, verified_at TEXT NOT NULL)');
       },
     );
     return _database!;
@@ -89,7 +89,7 @@ class AureliaMigrationStore {
         'id': 1,
         'schema_version': decoded['migrationProtocol'] is int ? decoded['migrationProtocol'] : 1,
         'payload_json': payloadJson,
-        'payload_sha256': digest,
+        'payload_digest': digest,
         'record_counts_json': countsJson,
         'migrated_at': DateTime.now().toUtc().toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -97,7 +97,7 @@ class AureliaMigrationStore {
         'source_key': (decoded['storageKeys'] is List && (decoded['storageKeys'] as List).isNotEmpty)
             ? (decoded['storageKeys'] as List).first.toString()
             : 'unknown',
-        'payload_sha256': digest,
+        'payload_digest': digest,
         'record_counts_json': countsJson,
         'verified_at': DateTime.now().toUtc().toIso8601String(),
       });
@@ -132,7 +132,7 @@ class AureliaMigrationStore {
     if (rows.isEmpty) return null;
     final row = rows.first;
     final payload = row['payload_json'] as String;
-    if (_fnv1a64(payload) != row['payload_sha256']) {
+    if (_fnv1a64(payload) != row['payload_digest']) {
       throw StateError('Stored PMS snapshot digest mismatch');
     }
     return jsonDecode(payload) as Map<String, dynamic>;
