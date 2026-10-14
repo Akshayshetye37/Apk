@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:local_auth/local_auth.dart';
+import 'native_migration_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -52,7 +54,7 @@ class AureliaPmsApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF17365D)),
         useMaterial3: true,
       ),
-      home: const PmsWebViewPage(),
+      home: const SecureLifecycleGate(child: PmsWebViewPage()),
     );
   }
 }
@@ -68,6 +70,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
   late final WebViewController _controller;
   bool _loading = true;
   int _progress = 0;
+  bool _migrationBusy = false;
 
   @override
   void initState() {
@@ -75,6 +78,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel('AureliaNative', onMessageReceived: (message) { unawaited(_handleNativeMessage(message.message)); })
+      ..addJavaScriptChannel('MigrationChannel', onMessageReceived: (message) { unawaited(_handleMigrationPayload(message.message)); })
       ..setBackgroundColor(const Color(0xFFFFFCF6))
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -140,6 +144,33 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
     _loadLocalPms();
   }
 
+
+  Future<void> _handleMigrationPayload(String raw) async {
+    if (_migrationBusy) {
+      debugPrint('Aurelia migration request ignored: another migration is active');
+      return;
+    }
+    _migrationBusy = true;
+    try {
+      final result = await AureliaMigrationStore.instance.ingest(raw);
+      // The JS callback intentionally retains localStorage. Deletion is not
+      // enabled until a separately tested reconciliation/restore flow exists.
+      await _controller.runJavaScript(
+        'window.aureliaMigrationResult?.(${jsonEncode(result)});',
+      );
+      debugPrint('Aurelia encrypted snapshot verified: ${jsonEncode(result['counts'])}');
+    } catch (error, stack) {
+      debugPrint('Aurelia migration failed; source browser storage retained: $error');
+      debugPrintStack(stackTrace: stack);
+      try {
+        await _controller.runJavaScript(
+          'window.aureliaMigrationResult?.(${jsonEncode({'verified': false, 'error': 'Native migration failed'})});',
+        );
+      } catch (_) {}
+    } finally {
+      _migrationBusy = false;
+    }
+  }
 
   Future<void> _handleNativeMessage(String raw) async {
     String? requestId;
@@ -244,4 +275,98 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       ),
     );
   }
+}
+
+
+/// Covers sensitive WebView content whenever the app is backgrounded and
+/// requires device authentication on return. This is a session lock, not a
+/// substitute for server-side authorization or a separately verified PIN.
+class SecureLifecycleGate extends StatefulWidget {
+  final Widget child;
+  const SecureLifecycleGate({super.key, required this.child});
+
+  @override
+  State<SecureLifecycleGate> createState() => _SecureLifecycleGateState();
+}
+
+class _SecureLifecycleGateState extends State<SecureLifecycleGate>
+    with WidgetsBindingObserver {
+  final LocalAuthentication _auth = LocalAuthentication();
+  bool _locked = false;
+  bool _authInProgress = false;
+  bool _everResumed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      if (mounted) setState(() => _locked = true);
+    } else if (state == AppLifecycleState.resumed) {
+      if (_everResumed && _locked) {
+        unawaited(_authenticate());
+      }
+      _everResumed = true;
+    }
+  }
+
+  Future<void> _authenticate() async {
+    if (_authInProgress || !mounted) return;
+    _authInProgress = true;
+    try {
+      final canCheck = await _auth.isDeviceSupported();
+      final available = await _auth.canCheckBiometrics;
+      if (!canCheck && !available) return;
+      final ok = await _auth.authenticate(
+        localizedReason: 'Unlock Aurelia PMS',
+        options: const AuthenticationOptions(
+          stickyAuth: true,
+          biometricOnly: false,
+          useErrorDialogs: true,
+        ),
+      );
+      if (ok && mounted) setState(() => _locked = false);
+    } catch (error) {
+      debugPrint('Aurelia unlock failed; app remains locked: $error');
+    } finally {
+      _authInProgress = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      widget.child,
+      if (_locked)
+        Positioned.fill(
+          child: AbsorbPointer(
+            absorbing: true,
+            child: ColoredBox(
+              color: const Color(0xFF172F27),
+              child: Center(
+                child: ElevatedButton(
+                  onPressed: _authenticate,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFB99A60),
+                  ),
+                  child: const Text('Tap to Unlock', style: TextStyle(color: Colors.white)),
+                ),
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
 }
