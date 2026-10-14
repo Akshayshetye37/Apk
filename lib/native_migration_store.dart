@@ -19,7 +19,7 @@ class AureliaMigrationStore {
   static final AureliaMigrationStore instance = AureliaMigrationStore._();
 
   static const _vault = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true, resetOnError: true),
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
   static const _keyName = 'aurelia_sqlcipher_key_v1';
   static const _databaseName = 'aurelia_pms_encrypted.db';

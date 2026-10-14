@@ -25,7 +25,6 @@ class AureliaSecureVault {
   static const FlutterSecureStorage _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
-      resetOnError: true,
     ),
   );
 
@@ -327,7 +326,6 @@ class _AureliaSecurityGateState extends State<AureliaSecurityGate>
   static const _secureStorage = FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
-      resetOnError: true,
     ),
   );
 
