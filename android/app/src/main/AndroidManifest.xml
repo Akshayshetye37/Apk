@@ -6,6 +6,7 @@
     <application
         android:label="Aurelia PMS"
         android:name="${applicationName}"
+        android:icon="@drawable/hotel_icon"
         android:usesCleartextTraffic="false"
         android:allowBackup="false"
         android:fullBackupContent="false"
