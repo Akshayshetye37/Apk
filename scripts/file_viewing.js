@@ -4,7 +4,7 @@
   const MAX_BYTES = 15 * 1024 * 1024;
   const mimeByExt = {pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',csv:'text/csv',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'};
   function ext(file) { return String(file.name || '').split('.').pop().toLowerCase(); }
-  function nativeShare(file, mime) {
+  function nativeShare(file, mime, action) {
     return new Promise(function (resolve, reject) {
       if (!window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function') {
         reject(new Error('Native file sharing is available in the installed Android app only.'));
@@ -24,7 +24,7 @@
           d.ok ? resolve() : reject(new Error(d.error || 'Could not export file.'));
         };
         window.addEventListener('aurelia-native-file-result', handler);
-        window.AureliaNative.postMessage(JSON.stringify({type:'shareFile', requestId:requestId, name:file.name || 'aurelia-export.' + ext({name:'file.csv'}), mime:mime || file.type || 'application/octet-stream', data:base64}));
+        window.AureliaNative.postMessage(JSON.stringify({type:action === 'saveFile' ? 'saveFile' : 'shareFile', requestId:requestId, name:file.name || 'aurelia-export.csv', mime:mime || file.type || 'application/octet-stream', data:base64}));
         setTimeout(function () {
           window.removeEventListener('aurelia-native-file-result', handler);
           reject(new Error('No response from Android file handler.'));
@@ -121,7 +121,13 @@
   window.aureliaPreviewFile = showPreview;
   window.aureliaShareExportFile = function (blob, name, mime) {
     const file = new File([blob], name || 'aurelia-export.csv', {type:mime || blob.type || 'application/octet-stream'});
-    nativeShare(file, mime).catch(function (e) { alert('Export failed: ' + e.message); });
+    nativeShare(file, mime, 'shareFile').catch(function (e) { alert('Export failed: ' + e.message); });
+  };
+  window.aureliaSaveExportFile = function (blob, name, mime) {
+    const file = new File([blob], name || 'aurelia-export.csv', {type:mime || blob.type || 'application/octet-stream'});
+    nativeShare(file, mime, 'saveFile').catch(function (e) {
+      if (e.message !== 'Save cancelled') alert('Save failed: ' + e.message);
+    });
   };
   // Intercept generated download links: WebView does not reliably download blob URLs.
   document.addEventListener('click', function (event) {
@@ -129,7 +135,7 @@
     if (!a || !a.href || !a.href.startsWith('blob:')) return;
     event.preventDefault();
     fetch(a.href).then(function (r) { return r.blob(); }).then(function (blob) {
-      window.aureliaShareExportFile(blob, a.download || 'aurelia-export', blob.type);
+      window.aureliaSaveExportFile(blob, a.download || 'aurelia-export.csv', blob.type);
     }).catch(function (e) { alert('Export failed: ' + e.message); });
   }, true);
 })();
