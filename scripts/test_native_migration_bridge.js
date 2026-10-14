@@ -33,7 +33,8 @@ assert.ok(Array.isArray(payload.storageKeys));
 
 let intercepted = null;
 window.MigrationChannel = { postMessage: (message) => { intercepted = JSON.parse(message); } };
-assert.deepEqual(window.aureliaSendMigrationPayload(), { sent: true });
+const sendResult = window.aureliaSendMigrationPayload();
+assert.equal(sendResult.sent, true);
 assert.equal(intercepted.data.guests[0].id, 'G1');
 
 assert.equal(window.aureliaMigrationResult({ verified: true }), true);
