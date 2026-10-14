@@ -27,12 +27,25 @@ class AureliaMigrationStore {
   Future<Database> _open() async {
     if (_database != null && _database!.isOpen) return _database!;
     var key = await _vault.read(key: _keyName);
+    final dir = await getApplicationSupportDirectory();
+    final databaseFile = File(p.join(dir.path, _databaseName));
     if (key == null || key.length < 40) {
+      // Never silently replace a lost key when an encrypted database exists:
+      // doing so makes the existing PMS data permanently unreadable.
+      if (await databaseFile.exists()) {
+        throw StateError(
+          'SQLCipher key is missing or invalid while the encrypted database exists. '
+          'Keep the database intact and use the documented recovery process.',
+        );
+      }
       final random = Random.secure();
       key = base64UrlEncode(List<int>.generate(32, (_) => random.nextInt(256)));
       await _vault.write(key: _keyName, value: key);
+      final writtenKey = await _vault.read(key: _keyName);
+      if (writtenKey != key) {
+        throw StateError('Could not verify secure database-key persistence.');
+      }
     }
-    final dir = await getApplicationSupportDirectory();
     _database = await openDatabase(
       p.join(dir.path, _databaseName),
       password: key,
