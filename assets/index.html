@@ -299,7 +299,14 @@ function loadAureliaDB(){
  return seed;
 }
 let DB=loadAureliaDB();
-DB.settings=DB.settings||{};DB.settings.features=DB.settings.features||{};feature_keys_placeholder=undefined;
+// Normalize partial/older backups in memory without deleting stored records.
+if(!DB || typeof DB!=='object' || Array.isArray(DB)) DB={};
+DB.settings=DB.settings&&typeof DB.settings==='object'&&!Array.isArray(DB.settings)?DB.settings:{};
+DB.settings.features=DB.settings.features&&typeof DB.settings.features==='object'&&!Array.isArray(DB.settings.features)?DB.settings.features:{};
+['rooms','guests','bookings','reservations','inventory','expenses','audit','invoices','inventoryLedger','restaurantSales','paymentSignals'].forEach(key=>{if(!Array.isArray(DB[key])) DB[key]=[];});
+DB.seq=DB.seq&&typeof DB.seq==='object'?DB.seq:{booking:1000,reservation:0,invoice:1,expense:1};
+DB.settings.featureTree=DB.settings.featureTree&&typeof DB.settings.featureTree==='object'?DB.settings.featureTree:{};
+feature_keys_placeholder=undefined;
 function save(){
  const snapshot=JSON.stringify(DB);
  aureliaStorage.setItem('aurelia_pms_v3',snapshot);
@@ -640,12 +647,22 @@ function setupNav(){
 }
 function activeNav(id){document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===id))}
 function showPage(id){
- activeNav(id); document.getElementById('searchResults').classList.remove('show');
- const fn=pages[id]||pages.dashboard;
- document.getElementById('appContent').innerHTML=fn();
- if(id==='pos' && typeof posTab!=='undefined' && posTab==='restaurant' && typeof renderRestaurantFinal==='function') renderRestaurantFinal();
- if(id==='importExport'){refreshExportRecords();document.getElementById('exportScope').onchange=refreshExportRecords;}
- window.scrollTo(0,0);
+ const content=document.getElementById('appContent');
+ try {
+  activeNav(id);
+  document.getElementById('searchResults')?.classList.remove('show');
+  const fn=pages[id]||pages.dashboard;
+  if(typeof fn!=='function') throw new Error('Page renderer is unavailable: '+id);
+  content.innerHTML=fn();
+  if(id==='pos' && typeof posTab!=='undefined' && posTab==='restaurant' && typeof renderRestaurantFinal==='function') renderRestaurantFinal();
+  if(id==='importExport'){refreshExportRecords();document.getElementById('exportScope').onchange=refreshExportRecords;}
+  window.scrollTo(0,0);
+ } catch(error) {
+  console.error('[AURELIA] Page render failed ('+id+'):',error);
+  if(content) content.innerHTML='<section class="card" role="alert"><h2>Could not load this section</h2><p>The saved records have not been deleted. This section encountered a runtime error.</p><p class="muted">Try another section, or reload the app. If the problem continues, export a backup before making changes.</p><div class="actions"><button class="btn primary" onclick="showPage(\'dashboard\')">Retry Home</button><button class="btn" onclick="showPage(\'settings\')">Open Settings</button></div></section>';
+  const toastEl=document.getElementById('toast');
+  if(toastEl){toastEl.textContent='Could not load '+String(id)+'. Saved records were not cleared.';toastEl.classList.add('show');}
+ }
 }
 function toggleMore(){document.getElementById('moreMenu').classList.toggle('show')}
 
