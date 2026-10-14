@@ -463,57 +463,9 @@ function exportStructuredSpreadsheet(scope,id){
  else if(scope==='room'){const r=Array.isArray(data)?data:[data];rows.push(['Room','Type','Rate','Status']);r.forEach(x=>rows.push([x.number,x.type,x.rate,x.status]))}
  else {rows.push(['Section','JSON']);rows.push(['AURELIA PMS',JSON.stringify(data)])}
  const table=`<table><tbody>${rows.map((row,ri)=>`<tr>${row.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
- const blob=new Blob([`<html><head><meta charset="utf-8"></head><body>${table}
+  const blob=new Blob([`<html><head><meta charset="utf-8"></head><body>${table}</body></html>`],{type:'application/vnd.ms-excel'});
 
 
-<script id="aurelia-google-drive-settings-ui">
-(function(){
-  const originalSettings = window.pagesSettings;
-  if (typeof originalSettings !== 'function') return;
-  window.pagesSettings = function(){
-    const page = originalSettings();
-    if (page.includes('aureliaGoogleDriveSettingsCard')) return page;
-    const card = `
-      <section class="card" id="aureliaGoogleDriveSettingsCard" style="margin-top:16px">
-        <div class="section-title"><h2>Google Drive Backup</h2><span class="status reserved">Not connected</span></div>
-        <p class="muted">Connect the hotel's shared Google account to store encrypted, device-specific backup versions. Each device keeps its own local PMS records and backup history; this does not synchronize or merge live records.</p>
-        <div class="subcard">
-          <div style="font-weight:800;font-size:17px;margin-bottom:6px">Cloud backup account</div>
-          <div class="muted" style="margin-bottom:12px">Sign in securely with Google when connection support is enabled. The app should request only the Drive access needed for its backup files.</div>
-          <div class="actions">
-            <button type="button" class="btn primary" onclick="aureliaConnectGoogleDrive()">Connect Google Drive</button>
-            <button type="button" class="btn" onclick="aureliaShowDriveBackupStatus()">Backup status</button>
-            <button type="button" class="btn" onclick="aureliaBackupNow()">Back up now</button>
-          </div>
-          <div id="aureliaDriveBackupStatus" role="status" class="muted" style="margin-top:12px">Status: Google Drive is not connected. Local PMS changes remain on this device.</div>
-        </div>
-        <div class="grid three" style="margin-top:12px">
-          <div class="feature-row"><b>Pending changes</b><div class="muted" id="aureliaDrivePendingCount">Not available yet</div></div>
-          <div class="feature-row"><b>Last successful backup</b><div class="muted" id="aureliaDriveLastSuccess">Never confirmed</div></div>
-          <div class="feature-row"><b>Last error</b><div class="muted" id="aureliaDriveLastError">None recorded</div></div>
-        </div>
-        <p class="muted" style="font-size:12px;margin-top:12px">Connection, encrypted snapshots, resumable uploads, durable change tracking and restore must be wired into the native Android backup service before these controls can perform real Drive operations. This panel does not claim a backup has occurred.</p>
-      </section>`;
-    return page + card;
-  };
-  window.aureliaConnectGoogleDrive = function(){
-    const el = document.getElementById('aureliaDriveBackupStatus');
-    if(el) el.textContent = 'Google sign-in is not active yet. The native Android OAuth and Drive backup service must be integrated before an account can be connected.';
-    if(typeof toast === 'function') toast('Google Drive connection is not enabled yet.');
-  };
-  window.aureliaShowDriveBackupStatus = function(){
-    const el = document.getElementById('aureliaDriveBackupStatus');
-    if(el) el.textContent = 'Not connected — no Drive backup has been confirmed. Local data remains on this device.';
-  };
-  window.aureliaBackupNow = function(){
-    const el = document.getElementById('aureliaDriveBackupStatus');
-    if(el) el.textContent = 'Back up now is unavailable until Google Drive authorization and the encrypted native backup service are implemented.';
-    if(typeof toast === 'function') toast('Drive backup service is not enabled yet.');
-  };
-})();
-<\\/script>
-
-</body></html>`],{type:'application/vnd.ms-excel'});
  downloadBlob(blob,`aurelia-${scope}.xls`);
 }
 function exportPrintDocument(scope,id,format){
@@ -1045,8 +997,7 @@ async function runGenericOcr(e,btn){
   const status=document.getElementById('guestOcrStatus') || btn?.closest('.field')?.querySelector('.muted');
   const text=await runImageOCR(file,status);
   const parsed=parseIdText(text);
-  const scope=btn?.closest('[data-occ]');
-  const type=(scope||document).querySelector('[data-setting="occIdType"]') || document.getElementById('gIdType');
+  const scope=btn?.closest('[data-occ]');  const type=(scope||document).querySelector('[data-setting="occIdType"]') || document.getElementById('gIdType');
   const num=(scope||document).querySelector('[data-setting="occIdNumber"]') || document.getElementById('gIdNumber');
   if(parsed.idType&&type)type.value=parsed.idType;
   if(parsed.idNumber&&num)num.value=parsed.idNumber;
@@ -2045,8 +1996,7 @@ function renderRestaurantFinal(){
       </div>
       ${restaurantCartHTMLFinal()}
       <div class="restaurant-summary" style="margin-top:10px">
-        <div class="bill-total"><b>GRAND TOTAL</b><div class="amount">${money(totalR)}</div></div>
-      </div>
+        <div class="bill-total"><b>GRAND TOTAL</b><div class="amount">${money(totalR)}</div></div>      </div>
       ${DB.restaurantCart.length?`<div class="actions" style="margin-top:12px">
         <button class="btn" ${childOn("restaurant","removeFood")?"":"disabled"} onclick="restaurantClearLast()">Remove Food</button>
         <button class="btn primary" ${childOn("restaurant","addToRoom")&&restaurantSelectedBooking?"":"disabled"} onclick="commitRestaurant('room')">Add in Room</button>
@@ -2428,6 +2378,54 @@ async function sendBookingTerms(id){
 
 /* Removed automatic demo booking seed: new installations start without fabricated guest or stay records. */
 </script>
+
+<script id="aurelia-google-drive-settings-ui">
+(function(){
+  const originalSettings = window.pagesSettings;
+  if (typeof originalSettings !== 'function') return;
+  window.pagesSettings = function(){
+    const page = originalSettings();
+    if (page.includes('aureliaGoogleDriveSettingsCard')) return page;
+    const card = `
+      <section class="card" id="aureliaGoogleDriveSettingsCard" style="margin-top:16px">
+        <div class="section-title"><h2>Google Drive Backup</h2><span class="status reserved">Not connected</span></div>
+        <p class="muted">Connect the hotel's shared Google account to store encrypted, device-specific backup versions. Each device keeps its own local PMS records and backup history; this does not synchronize or merge live records.</p>
+        <div class="subcard">
+          <div style="font-weight:800;font-size:17px;margin-bottom:6px">Cloud backup account</div>
+          <div class="muted" style="margin-bottom:12px">Sign in securely with Google when connection support is enabled. The app should request only the Drive access needed for its backup files.</div>
+          <div class="actions">
+            <button type="button" class="btn primary" onclick="aureliaConnectGoogleDrive()">Connect Google Drive</button>
+            <button type="button" class="btn" onclick="aureliaShowDriveBackupStatus()">Backup status</button>
+            <button type="button" class="btn" onclick="aureliaBackupNow()">Back up now</button>
+          </div>
+          <div id="aureliaDriveBackupStatus" role="status" class="muted" style="margin-top:12px">Status: Google Drive is not connected. Local PMS changes remain on this device.</div>
+        </div>
+        <div class="grid three" style="margin-top:12px">
+          <div class="feature-row"><b>Pending changes</b><div class="muted" id="aureliaDrivePendingCount">Not available yet</div></div>
+          <div class="feature-row"><b>Last successful backup</b><div class="muted" id="aureliaDriveLastSuccess">Never confirmed</div></div>
+          <div class="feature-row"><b>Last error</b><div class="muted" id="aureliaDriveLastError">None recorded</div></div>
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:12px">Connection, encrypted snapshots, resumable uploads, durable change tracking and restore must be wired into the native Android backup service before these controls can perform real Drive operations. This panel does not claim a backup has occurred.</p>
+      </section>`;
+    return page + card;
+  };
+  window.aureliaConnectGoogleDrive = function(){
+    const el = document.getElementById('aureliaDriveBackupStatus');
+    if(el) el.textContent = 'Google sign-in is not active yet. The native Android OAuth and Drive backup service must be integrated before an account can be connected.';
+    if(typeof toast === 'function') toast('Google Drive connection is not enabled yet.');
+  };
+  window.aureliaShowDriveBackupStatus = function(){
+    const el = document.getElementById('aureliaDriveBackupStatus');
+    if(el) el.textContent = 'Not connected — no Drive backup has been confirmed. Local data remains on this device.';
+  };
+  window.aureliaBackupNow = function(){
+    const el = document.getElementById('aureliaDriveBackupStatus');
+    if(el) el.textContent = 'Back up now is unavailable until Google Drive authorization and the encrypted native backup service are implemented.';
+    if(typeof toast === 'function') toast('Drive backup service is not enabled yet.');
+  };
+})();
+</script>
+
 
 <script>
 /* AURELIA follow-up fixes: all restaurant bills, QR upload, calendar inputs */
@@ -2997,8 +2995,7 @@ function aureliaBackupSettingsHTML(){
  return `<section class="card" style="margin-top:16px"><div class="section-title"><h2>Backup & security</h2></div>
  <p class="muted">Your current standalone app saves data in this browser. Download regular JSON backups and keep a copy outside this device.</p>
  <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
-  <label>Backup destination <select id="aureliaBackupDestination" style="padding:10px;border:1px solid var(--line);border-radius:10px"><option value="local">This device / browser</option><option value="drive">Google Drive (connect later)</option></select></label>
-  <button class="btn primary" onclick="aureliaDownloadBackup()">Download full backup</button>
+  <label>Backup destination <select id="aureliaBackupDestination" style="padding:10px;border:1px solid var(--line);border-radius:10px"><option value="local">This device / browser</option><option value="drive">Google Drive (connect later)</option></select></label>  <button class="btn primary" onclick="aureliaDownloadBackup()">Download full backup</button>
   <button class="btn" onclick="aureliaExportCSV('balance')">Export balance sheet CSV</button>
   <button class="btn" onclick="aureliaExportCSV('inventory')">Export restaurant inventory CSV</button>
  </div><div id="aureliaDriveNote" class="muted" style="margin-top:8px">Local autosave is active when changes are saved. Google Drive requires a secure OAuth connection and is not connected in this standalone file.</div>
