@@ -186,7 +186,8 @@ jobs:
           test -s "$APK"
           BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)"
           "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
-          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-certs.txt"
+          # apksigner may write certificate details to stderr; capture both streams.
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-certs.txt" 2>&1
           keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > "$RUNNER_TEMP/keystore-cert.txt"
           APK_CERT=$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2); exit}' "$RUNNER_TEMP/apk-certs.txt" | tr -d ':')
           KEY_CERT=$(awk -F': ' '/SHA256:/ {print tolower($2); exit}' "$RUNNER_TEMP/keystore-cert.txt" | tr -d ':')
