@@ -79,7 +79,7 @@ class PinKdfService {
 
   Future<PinVerificationResult> verifyPin(String input) async {
     if (await _activeLockout() != null) return PinVerificationResult.lockedOut;
-    if (!RegExp(r'^\d{6,12}.hasMatch(input)) {).hasMatch(input)) {
+    if (!RegExp(r'^\d{6,12}$').hasMatch(input)) {
       return _recordFailure();
     }
 
@@ -203,7 +203,7 @@ class PinKdfService {
   }
 
   void _validatePin(String pin) {
-    if (!RegExp(r'^\d{6,12}.hasMatch(pin)) {).hasMatch(pin)) {
+    if (!RegExp(r'^\d{6,12}$').hasMatch(pin)) {
       throw ArgumentError('PIN must contain 6–12 digits.');
     }
   }
@@ -214,7 +214,7 @@ class _PinPayload {
   final List<int> salt;
   final List<int> hash;
 }
-).hasMatch(input)) {
+    if (!RegExp(r'^\d{6,12}$').hasMatch(input)) {
       return _recordFailure();
     }
 
@@ -338,7 +338,7 @@ class _PinPayload {
   }
 
   void _validatePin(String pin) {
-    if (!RegExp(r'^\d{6,12}.hasMatch(pin)) {).hasMatch(pin)) {
+    if (!RegExp(r'^\d{6,12}$').hasMatch(pin)) {
       throw ArgumentError('PIN must contain 6–12 digits.');
     }
   }
@@ -349,7 +349,7 @@ class _PinPayload {
   final List<int> salt;
   final List<int> hash;
 }
-).hasMatch(pin)) {
+    if (!RegExp(r'^\d{6,12}$').hasMatch(pin)) {
       throw ArgumentError('PIN must contain 6–12 digits.');
     }
   }
