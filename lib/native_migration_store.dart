@@ -189,10 +189,24 @@ class AureliaMigrationStore {
     if (rows.isEmpty) return null;
     final row = rows.first;
     final payload = row['payload_json'] as String;
-    if (sha256.convert(utf8.encode(payload)).toString() != row['payload_digest']) {
+    final digest = sha256.convert(utf8.encode(payload)).toString();
+    if (digest != row['payload_digest']) {
       throw StateError('Stored PMS snapshot digest mismatch');
     }
-    return jsonDecode(payload) as Map<String, dynamic>;
+
+    final decoded = _decodePayload(payload);
+    final data = Map<String, dynamic>.from(decoded['data'] as Map);
+    final countsJson = jsonEncode(_counts(data));
+    if (row['schema_version'] != decoded['migrationProtocol'] ||
+        row['record_counts_json'] != countsJson) {
+      throw StateError('Stored PMS snapshot metadata mismatch');
+    }
+
+    final integrity = await db.rawQuery('PRAGMA integrity_check');
+    if (integrity.isEmpty || integrity.first.values.first != 'ok') {
+      throw StateError('Stored PMS snapshot failed SQLite integrity check');
+    }
+    return decoded;
   }
 
 }
