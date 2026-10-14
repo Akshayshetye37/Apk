@@ -54,7 +54,7 @@ class AureliaPmsApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF17365D)),
         useMaterial3: true,
       ),
-      home: const SecureLifecycleGate(child: PmsWebViewPage()),
+      home: const AureliaSecurityGate(child: PmsWebViewPage()),
     );
   }
 }
@@ -283,91 +283,199 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
 }
 
 
-/// Covers sensitive WebView content whenever the app is backgrounded and
-/// requires device authentication on return. This is a session lock, not a
-/// substitute for server-side authorization or a separately verified PIN.
-class SecureLifecycleGate extends StatefulWidget {
+/// First-run PIN provisioning and persistent lockout gate.
+class AureliaSecurityGate extends StatefulWidget {
   final Widget child;
-  const SecureLifecycleGate({super.key, required this.child});
-
+  const AureliaSecurityGate({super.key, required this.child});
   @override
-  State<SecureLifecycleGate> createState() => _SecureLifecycleGateState();
+  State<AureliaSecurityGate> createState() => _AureliaSecurityGateState();
 }
 
-class _SecureLifecycleGateState extends State<SecureLifecycleGate>
-    with WidgetsBindingObserver {
+class _AureliaSecurityGateState extends State<AureliaSecurityGate> with WidgetsBindingObserver {
+  static const _hashKey = 'aurelia_pin_hash_v1';
+  static const _saltKey = 'aurelia_pin_salt_v1';
+  static const _failedKey = 'aurelia_pin_failed_v1';
+  static const _untilKey = 'aurelia_pin_lockout_until_v1';
+  static const _storage = FlutterSecureStorage(aOptions: AndroidOptions(encryptedSharedPreferences: true, resetOnError: true));
   final LocalAuthentication _auth = LocalAuthentication();
-  bool _locked = false;
-  bool _authInProgress = false;
+  final _pin = TextEditingController();
+  final _confirm = TextEditingController();
+  bool _ready = false, _provisioning = false, _locked = true, _busy = false, _showPin = false;
+  int _failed = 0;
+  DateTime? _lockoutUntil;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_initialize());
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _pin.dispose();
+    _confirm.dispose();
     super.dispose();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      final hash = await _storage.read(key: _hashKey);
+      final failed = int.tryParse(await _storage.read(key: _failedKey) ?? '') ?? 0;
+      final millis = int.tryParse(await _storage.read(key: _untilKey) ?? '');
+      if (!mounted) return;
+      setState(() {
+        _provisioning = hash == null;
+        _failed = failed.clamp(0, 1000000);
+        _lockoutUntil = millis == null ? null : DateTime.fromMillisecondsSinceEpoch(millis);
+        _ready = true;
+      });
+      if (hash != null) unawaited(_tryBiometric());
+    } catch (_) {
+      if (mounted) setState(() { _ready = true; _error = 'Secure storage unavailable. App remains locked.'; });
+    }
+  }
+
+  String _derive(String salt, String pin) {
+    var bytes = utf8.encode(salt + ':' + pin);
+    // Iterative salted hash; replace with a reviewed password-KDF before release.
+    for (var i = 0; i < 100000; i++) {
+      bytes = sha256.convert(bytes).bytes;
+    }
+    return base64UrlEncode(bytes);
+  }
+
+  Future<void> _provision() async {
+    if (_busy) return;
+    if (!RegExp(r'^\d{6,12}$').hasMatch(_pin.text)) {
+      setState(() => _error = 'Choose a PIN of 6–12 digits.');
+      return;
+    }
+    if (_pin.text != _confirm.text) {
+      setState(() => _error = 'PINs do not match.');
+      return;
+    }
+    setState(() { _busy = true; _error = null; });
+    try {
+      final salt = base64UrlEncode(List<int>.generate(24, (_) => Random.secure().nextInt(256)));
+      final hash = _derive(salt, _pin.text);
+      await _storage.write(key: _saltKey, value: salt);
+      await _storage.write(key: _hashKey, value: hash);
+      await _storage.write(key: _failedKey, value: '0');
+      await _storage.delete(key: _untilKey);
+      if (mounted) setState(() { _provisioning = false; _locked = false; _pin.clear(); _confirm.clear(); });
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not securely save PIN.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _verifyPin() async {
+    if (_busy) return;
+    final until = _lockoutUntil;
+    if (until != null && DateTime.now().isBefore(until)) {
+      setState(() => _error = 'Locked until ' + until.toLocal().toString().substring(0, 19));
+      return;
+    }
+    setState(() { _busy = true; _error = null; });
+    try {
+      final salt = await _storage.read(key: _saltKey);
+      final expected = await _storage.read(key: _hashKey);
+      if (salt == null || expected == null) {
+        if (mounted) setState(() { _provisioning = true; _error = 'PIN setup is required.'; });
+        return;
+      }
+      if (_derive(salt, _pin.text) == expected) {
+        await _storage.write(key: _failedKey, value: '0');
+        await _storage.delete(key: _untilKey);
+        if (mounted) setState(() { _locked = false; _failed = 0; _lockoutUntil = null; _pin.clear(); });
+      } else {
+        _failed++;
+        await _storage.write(key: _failedKey, value: _failed.toString());
+        if (_failed >= 3) {
+          final duration = _failed < 6 ? const Duration(minutes: 5) : const Duration(minutes: 30);
+          final end = DateTime.now().add(duration);
+          await _storage.write(key: _untilKey, value: end.millisecondsSinceEpoch.toString());
+          if (mounted) setState(() { _lockoutUntil = end; _error = 'Too many attempts. Locked for ' + duration.inMinutes.toString() + ' minutes.'; });
+        } else if (mounted) {
+          setState(() => _error = 'Incorrect PIN. Attempt ' + _failed.toString() + ' of 3.');
+        }
+        _pin.clear();
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = 'PIN verification failed. App remains locked.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _tryBiometric() async {
+    if (_busy || _provisioning || !_locked || !mounted) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      if (await _auth.isDeviceSupported()) {
+        final ok = await _auth.authenticate(
+          localizedReason: 'Unlock Aurelia PMS',
+          options: const AuthenticationOptions(stickyAuth: true, biometricOnly: false, useErrorDialogs: true),
+        );
+        if (ok && mounted) setState(() { _locked = false; _pin.clear(); });
+      }
+    } catch (_) {
+      // PIN remains available as fallback.
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       if (mounted) setState(() => _locked = true);
-    } else if (state == AppLifecycleState.resumed && _locked) {
-      unawaited(_authenticate());
-    }
-  }
-
-  Future<void> _authenticate() async {
-    if (_authInProgress || !mounted) return;
-    _authInProgress = true;
-    try {
-      final canCheck = await _auth.isDeviceSupported();
-      final available = await _auth.canCheckBiometrics;
-      if (!canCheck && !available) return;
-      final ok = await _auth.authenticate(
-        localizedReason: 'Unlock Aurelia PMS',
-        options: const AuthenticationOptions(
-          stickyAuth: true,
-          biometricOnly: false,
-          useErrorDialogs: true,
-        ),
-      );
-      if (ok && mounted) setState(() => _locked = false);
-    } catch (error) {
-      debugPrint('Aurelia unlock failed; app remains locked: $error');
-    } finally {
-      _authInProgress = false;
+    } else if (state == AppLifecycleState.resumed && _locked && !_provisioning) {
+      unawaited(_tryBiometric());
     }
   }
 
   @override
-  Widget build(BuildContext context) => Stack(
-    fit: StackFit.expand,
-    children: [
-      widget.child,
-      if (_locked)
-        Positioned.fill(
-          child: AbsorbPointer(
-            absorbing: true,
-            child: ColoredBox(
-              color: const Color(0xFF172F27),
-              child: Center(
-                child: ElevatedButton(
-                  onPressed: _authenticate,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFB99A60),
-                  ),
-                  child: const Text('Tap to Unlock', style: TextStyle(color: Colors.white)),
-                ),
-              ),
-            ),
-          ),
-        ),
-    ],
-  );
+  Widget build(BuildContext context) {
+    if (!_ready) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (!_locked && !_provisioning) return widget.child;
+    return Scaffold(
+      backgroundColor: const Color(0xFF172F27),
+      body: SafeArea(child: Center(child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Icon(Icons.lock_outline, color: Color(0xFFB99A60), size: 56),
+            const SizedBox(height: 16),
+            Text(_provisioning ? 'Create your Aurelia PIN' : 'Unlock Aurelia PMS',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            TextField(controller: _pin, keyboardType: TextInputType.number, obscureText: !_showPin, maxLength: 12, enabled: !_busy,
+              decoration: InputDecoration(labelText: _provisioning ? 'New PIN (6–12 digits)' : 'PIN', counterText: '', filled: true, fillColor: Colors.white,
+                suffixIcon: IconButton(onPressed: () => setState(() => _showPin = !_showPin), icon: Icon(_showPin ? Icons.visibility_off : Icons.visibility)))),
+            if (_provisioning) ...[
+              const SizedBox(height: 12),
+              TextField(controller: _confirm, keyboardType: TextInputType.number, obscureText: true, maxLength: 12, enabled: !_busy,
+                decoration: const InputDecoration(labelText: 'Confirm PIN', counterText: '', filled: true, fillColor: Colors.white)),
+            ],
+            if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(color: Color(0xFFFFC4B8)), textAlign: TextAlign.center)],
+            const SizedBox(height: 16),
+            ElevatedButton(onPressed: _busy ? null : (_provisioning ? _provision : _verifyPin),
+              child: Text(_busy ? 'Please wait…' : (_provisioning ? 'Save PIN' : 'Unlock with PIN'))),
+            if (!_provisioning) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(onPressed: _busy ? null : _tryBiometric, child: const Text('Use device authentication', style: TextStyle(color: Colors.white))),
+            ],
+          ],
+        )),
+      ))),
+    );
+  }
 }
