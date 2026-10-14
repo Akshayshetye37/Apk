@@ -47,6 +47,8 @@ jobs:
                       raise SystemExit(f'JavaScript syntax check failed at block {i}')
           print(f'JavaScript syntax validated for {len(scripts)} blocks.')
           PY
+      - name: Test native migration bridge offline
+        run: node scripts/test_native_migration_bridge.js
       - name: Resolve dependencies
         run: flutter pub get
       - name: Analyze
