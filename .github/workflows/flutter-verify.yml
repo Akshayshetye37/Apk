@@ -84,16 +84,13 @@ jobs:
         run: |
           flutter pub get
           mkdir -p android/gradle/wrapper
-          if [ -f android/gradle/wrapper/gradle-wrapper.properties ]; then
-            sed -i 's#distributionUrl=.*#distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip#' android/gradle/wrapper/gradle-wrapper.properties
-          else
-            printf '%s\\n' \\
-              'distributionBase=GRADLE_USER_HOME' \\
-              'distributionPath=wrapper/dists' \\
-              'distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip' \\
-              'zipStoreBase=GRADLE_USER_HOME' \\
-              'zipStorePath=wrapper/dists' > android/gradle/wrapper/gradle-wrapper.properties
-          fi
+          cat > android/gradle/wrapper/gradle-wrapper.properties <<'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
           flutter build apk --debug
       - uses: actions/upload-artifact@v4
         with:
