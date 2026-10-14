@@ -62,6 +62,43 @@
     const file = input.files[0], e = ext(file);
     if (['pdf','png','jpg','jpeg'].includes(e) && input.hasAttribute('data-preview-file')) showPreview(file);
   }, true);
+  // Add an always-available file viewer in the Android wrapper. CSV/XLSX are handed to
+  // Android's chooser so the user can select a compatible spreadsheet app.
+  function installOpenFileControl() {
+    if (document.getElementById('aurelia-open-file-control')) return;
+    const button = document.createElement('button');
+    button.id = 'aurelia-open-file-control';
+    button.type = 'button';
+    button.textContent = 'Open file';
+    button.setAttribute('aria-label', 'Open PDF, image, CSV, or Excel file');
+    button.style.cssText = 'position:fixed;right:12px;bottom:16px;z-index:2147483000;border:0;border-radius:24px;padding:12px 18px;background:#17365d;color:white;font:600 14px sans-serif;box-shadow:0 2px 10px #0004;';
+    const picker = document.createElement('input');
+    picker.type = 'file';
+    picker.accept = '.pdf,.png,.jpg,.jpeg,.csv,.xlsx,application/pdf,image/png,image/jpeg,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    picker.style.display = 'none';
+    picker.addEventListener('change', function () {
+      const file = picker.files && picker.files[0];
+      if (!file) return;
+      const e = ext(file);
+      if (['pdf','png','jpg','jpeg'].includes(e)) {
+        if (!showPreview(file)) alert('This file type cannot be previewed.');
+      } else if (['csv','xlsx'].includes(e)) {
+        nativeShare(file, mimeByExt[e]).then(function () {
+          // Android share chooser was opened; user selects a compatible external app.
+        }).catch(function (error) { alert('Could not open file: ' + error.message); });
+      } else alert('Choose a PDF, PNG, JPG, CSV, or XLSX file.');
+      picker.value = '';
+    });
+    button.addEventListener('click', function () { picker.click(); });
+    document.body.append(button, picker);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installOpenFileControl);
+  else installOpenFileControl();
+  window.addEventListener('aurelia-native-file-result', function () {});
+  window.aureliaNativeFileResult = function (requestId, ok, error) {
+    window.dispatchEvent(new CustomEvent('aurelia-native-file-result', {detail:{requestId:requestId, ok:!!ok, error:error || null}}));
+  };
+
   // Provide reusable functions for app screens and future controls.
   window.aureliaPreviewFile = showPreview;
   window.aureliaShareExportFile = function (blob, name, mime) {
