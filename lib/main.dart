@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:crypto/crypto.dart';
 import 'core/security/pin_kdf_service.dart';
 import 'core/security/security_interfaces.dart';
 import 'package:file_picker/file_picker.dart';
