@@ -290,12 +290,14 @@ class AureliaSecurityGate extends StatefulWidget {
   final Widget child;
   final SecureStorageProvider? storage;
   final BiometricAuthProvider? auth;
+  final PinKdfService? pinService;
 
   const AureliaSecurityGate({
     super.key,
     required this.child,
     this.storage,
     this.auth,
+    this.pinService,
   });
 
   @override
@@ -331,7 +333,7 @@ class _AureliaSecurityGateState extends State<AureliaSecurityGate>
     super.initState();
     _storage = widget.storage ?? FlutterSecureStorageProvider(_secureStorage);
     _auth = widget.auth ?? LocalBiometricAuthProvider(LocalAuthentication());
-    _pinService = PinKdfService(_storage);
+    _pinService = widget.pinService ?? PinKdfService(_storage);
     WidgetsBinding.instance.addObserver(this);
     unawaited(_initialize());
   }
