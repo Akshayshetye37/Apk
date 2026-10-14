@@ -26,23 +26,33 @@ android {
         versionName = flutter.versionName
     }
 
-    signingConfigs {
-        create("release") {
-            val releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")
-                ?: throw GradleException("ANDROID_KEYSTORE_PATH is required for release signing")
-            storeFile = file(releaseStore)
-            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                ?: throw GradleException("ANDROID_KEYSTORE_PASSWORD is required for release signing")
-            keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                ?: throw GradleException("ANDROID_KEY_ALIAS is required for release signing")
-            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-                ?: throw GradleException("ANDROID_KEY_PASSWORD is required for release signing")
+    val releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")
+    val releaseStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+    val releaseSigningConfigured = listOf(
+        releaseStore, releaseStorePassword, releaseKeyAlias, releaseKeyPassword
+    ).all { !it.isNullOrBlank() }
+
+    if (releaseSigningConfigured) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseStore!!)
+                storePassword = releaseStorePassword!!
+                keyAlias = releaseKeyAlias!!
+                keyPassword = releaseKeyPassword!!
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                // Keep debug builds usable in CI; release signing requires configured secrets.
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 }
