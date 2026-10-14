@@ -100,7 +100,16 @@ void main() {
     await tester.tap(find.text('Save PIN'));
     // PIN derivation runs asynchronously; allow the KDF future to complete
     // before asserting that the gate has revealed its child.
-    await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 3)));
+    await tester.runAsync(() async {
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      while (!storage.values.containsKey(PinKdfService.payloadKey) &&
+          DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      if (!storage.values.containsKey(PinKdfService.payloadKey)) {
+        throw StateError('PIN provisioning did not finish within 30 seconds.');
+      }
+    });
     await tester.pumpAndSettle();
     expect(find.text('PMS Dashboard').hitTestable(), findsOneWidget);
 
