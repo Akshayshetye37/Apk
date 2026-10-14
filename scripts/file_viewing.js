@@ -90,7 +90,25 @@
       picker.value = '';
     });
     button.addEventListener('click', function () { picker.click(); });
-    document.body.append(button, picker);
+    const backupInput = document.createElement('input');
+    backupInput.type = 'file'; backupInput.accept = '.json,application/json'; backupInput.style.display = 'none';
+    backupInput.addEventListener('change', function () {
+      const file = backupInput.files && backupInput.files[0];
+      if (file && typeof window.aureliaImportBackupFile === 'function') window.aureliaImportBackupFile(file);
+      backupInput.value = '';
+    });
+    const importButton = document.createElement('button');
+    importButton.type = 'button'; importButton.textContent = 'Import backup';
+    importButton.style.cssText = button.style.cssText + 'bottom:68px;background:#345b45;';
+    importButton.onclick = function () { backupInput.click(); };
+    const exportButton = document.createElement('button');
+    exportButton.type = 'button'; exportButton.textContent = 'Export backup';
+    exportButton.style.cssText = button.style.cssText + 'bottom:120px;background:#6b4b21;';
+    exportButton.onclick = function () {
+      if (typeof window.aureliaDownloadBackup === 'function') window.aureliaDownloadBackup();
+      else alert('Backup export is not available on this screen.');
+    };
+    document.body.append(button, picker, importButton, exportButton, backupInput);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installOpenFileControl);
   else installOpenFileControl();
