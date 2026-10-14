@@ -189,14 +189,20 @@ jobs:
           # apksigner may write certificate details to stderr; capture both streams.
           "$BUILD_TOOLS/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/apk-certs.txt" 2>&1
           keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > "$RUNNER_TEMP/keystore-cert.txt"
-          # apksigner output formatting differs across Android Build Tools versions.
-          # Normalize whitespace and match the digest label without depending on punctuation.
-          APK_CERT=$(sed -nE '/Signer #1 certificate SHA-256 digest/ s/.*digest:[[:space:]]*//Ip' "$RUNNER_TEMP/apk-certs.txt" | head -n1 | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')
-          KEY_CERT=$(sed -nE '/SHA256:/ s/.*SHA256:[[:space:]]*//Ip' "$RUNNER_TEMP/keystore-cert.txt" | head -n1 | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')
-          EXPECTED_CERT="3beea1e6ff13c750e7d213008229af38153fa8328da9c1a248134dd6933d4a36"
+          # Read the value after the final ": " label, then canonicalize every
+          # fingerprint (APK, keystore, and expected) to lowercase hex without
+          # whitespace or colons before comparing.
+          APK_CERT=$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $NF; exit}' "$RUNNER_TEMP/apk-certs.txt" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')
+          KEY_CERT=$(awk -F': ' '/SHA256:/ {print $NF; exit}' "$RUNNER_TEMP/keystore-cert.txt" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')
+          EXPECTED_CERT=$(printf '%s' "3B:EE:A1:E6:FF:13:C7:50:E7:D2:13:00:82:29:AF:38:15:3F:A8:32:8D:A9:C1:A2:48:13:4D:D6:93:3D:4A:36" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')
           echo "Actual APK signer SHA-256 fingerprint: $APK_CERT"
+          echo "Configured keystore SHA-256 fingerprint: $KEY_CERT"
           echo "Expected release SHA-256 fingerprint: $EXPECTED_CERT"
-          if [[ -z "$APK_CERT" || -z "$KEY_CERT" || "$APK_CERT" != "$EXPECTED_CERT" || "$KEY_CERT" != "$EXPECTED_CERT" ]]; then
+          if [[ -z "$APK_CERT" || -z "$KEY_CERT" || -z "$EXPECTED_CERT" ]]; then
+            echo "ERROR: Could not extract all required SHA-256 fingerprints." >&2
+            exit 1
+          fi
+          if [[ "$APK_CERT" != "$EXPECTED_CERT" || "$KEY_CERT" != "$EXPECTED_CERT" ]]; then
             echo "ERROR: APK signer, configured keystore, or intended release fingerprint do not match." >&2
             exit 1
           fi
