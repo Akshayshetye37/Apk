@@ -342,6 +342,8 @@ class _AureliaSecurityGateState extends State<AureliaSecurityGate>
   bool _locked = true;
   bool _busy = false;
   bool _showPin = false;
+  int _lockTimeoutMinutes = 0; // 0 = immediate; -1 = never automatically lock.
+  DateTime? _backgroundedAt;
   int _failed = 0;
   DateTime? _lockoutUntil;
   String? _error;
@@ -373,10 +375,14 @@ class _AureliaSecurityGateState extends State<AureliaSecurityGate>
           0;
       final untilRaw = await _storage.read(PinKdfService.untilKey);
       final untilMillis = int.tryParse(untilRaw ?? '');
+      final savedTimeout = int.tryParse(await _storage.read('aurelia_lock_timeout_minutes_v1') ?? '') ?? 0;
+      const allowedTimeouts = <int>{-1, 0, 1, 5, 15};
+      final timeout = allowedTimeouts.contains(savedTimeout) ? savedTimeout : 0;
       if (!mounted) return;
       setState(() {
         _provisioning = state == PinProvisioningState.notProvisioned;
         _failed = failures.clamp(0, 1000000);
+        _lockTimeoutMinutes = timeout;
         _lockoutUntil = untilMillis == null
             ? null
             : DateTime.fromMillisecondsSinceEpoch(untilMillis);
@@ -490,15 +496,42 @@ class _AureliaSecurityGateState extends State<AureliaSecurityGate>
     }
   }
 
+  Future<void> _saveLockTimeout(int minutes) async {
+    const allowed = <int>{-1, 0, 1, 5, 15};
+    if (!allowed.contains(minutes)) return;
+    try {
+      await _storage.write('aurelia_lock_timeout_minutes_v1', minutes.toString());
+      if (mounted) setState(() => _lockTimeoutMinutes = minutes);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not save lock timeout setting.');
+    }
+  }
+
+  void _lockNow() {
+    if (!mounted) return;
+    setState(() => _locked = true);
+    unawaited(_tryBiometric());
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden) {
-      if (mounted) setState(() => _locked = true);
-    } else if (state == AppLifecycleState.resumed && _locked && !_provisioning) {
-      unawaited(_tryBiometric());
+    // Inactive can be a transient system UI interruption. Start the grace
+    // period only when the app actually leaves the foreground.
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _backgroundedAt ??= DateTime.now();
+      return;
     }
+    if (state != AppLifecycleState.resumed) return;
+
+    final backgroundedAt = _backgroundedAt;
+    _backgroundedAt = null;
+    if (backgroundedAt != null && _lockTimeoutMinutes != -1) {
+      final elapsed = DateTime.now().difference(backgroundedAt);
+      final shouldLock = _lockTimeoutMinutes == 0 ||
+          elapsed >= Duration(minutes: _lockTimeoutMinutes);
+      if (shouldLock && mounted) setState(() => _locked = true);
+    }
+    if (_locked && !_provisioning) unawaited(_tryBiometric());
   }
 
   Widget _lockScreen() {
@@ -594,6 +627,33 @@ class _AureliaSecurityGateState extends State<AureliaSecurityGate>
           child: IgnorePointer(ignoring: obscured, child: widget.child),
         ),
         if (obscured) _lockScreen(),
+        if (!obscured)
+          Positioned(
+            top: 4,
+            right: 4,
+            child: SafeArea(
+              child: PopupMenuButton<int>(
+                tooltip: 'Security settings',
+                icon: const Icon(Icons.security),
+                onSelected: (value) {
+                  if (value == -99) {
+                    _lockNow();
+                  } else {
+                    unawaited(_saveLockTimeout(value));
+                  }
+                },
+                itemBuilder: (context) => <PopupMenuEntry<int>>[
+                  const PopupMenuItem(value: -99, child: Text('Lock now')),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(value: 0, child: Text('Auto-lock: Immediately${_lockTimeoutMinutes == 0 ? ' ✓' : ''}')),
+                  PopupMenuItem(value: 1, child: Text('Auto-lock: 1 minute${_lockTimeoutMinutes == 1 ? ' ✓' : ''}')),
+                  PopupMenuItem(value: 5, child: Text('Auto-lock: 5 minutes${_lockTimeoutMinutes == 5 ? ' ✓' : ''}')),
+                  PopupMenuItem(value: 15, child: Text('Auto-lock: 15 minutes${_lockTimeoutMinutes == 15 ? ' ✓' : ''}')),
+                  PopupMenuItem(value: -1, child: Text('Auto-lock: Never${_lockTimeoutMinutes == -1 ? ' ✓' : ''}')),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
