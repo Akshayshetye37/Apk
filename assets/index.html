@@ -664,6 +664,8 @@ function showPage(id){
   if(toastEl){toastEl.textContent='Could not load '+String(id)+'. Saved records were not cleared.';toastEl.classList.add('show');}
  }
 }
+// Expose the real page router to inline navigation handlers.
+window.showPage = showPage;
 function toggleMore(){document.getElementById('moreMenu').classList.toggle('show')}
 
 function pagesDashboard(){
@@ -3228,7 +3230,7 @@ async function aureliaVerifyBiometric(){
   function csvCell(v){
     let text=String(v==null?'':v);
     // Spreadsheet formula-injection defense for untrusted guest/import text.
-    if(/^[\\u0000-\\u0020]*[=+\\-@]/.test(text)) text="'"+text;
+    if(/^[\u0000-\u0020]*[=+\-@]/.test(text)) text="'"+text;
     return '"'+text.replace(/"/g,'""')+'"';
   }
   function csvDownload(rows,name){
