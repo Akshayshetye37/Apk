@@ -1,6 +1,8 @@
 import 'package:aurelia_pms/core/security/pin_kdf_service.dart';
 import 'package:aurelia_pms/core/security/security_interfaces.dart';
 import 'package:aurelia_pms/main.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -58,6 +60,25 @@ void main() {
     expect(await service.verifyPin('000000'), PinVerificationResult.lockedOut);
     expect(storage.values[PinKdfService.untilKey], isNotNull);
     expect(await service.verifyPin('123456'), PinVerificationResult.lockedOut);
+  });
+
+  test('legacy hash is verified before migration and retained on failure', () async {
+    final storage = MemoryStorage();
+    var bytes = 'aurelia-salt:123456'.codeUnits;
+    // Match the legacy implementation exactly: 100,000 chained SHA-256 rounds.
+    var digest = bytes;
+    for (var i = 0; i < 100000; i++) {
+      digest = sha256.convert(digest).bytes;
+    }
+    storage.values[PinKdfService.legacySaltKey] = 'aurelia-salt';
+    storage.values[PinKdfService.legacyHashKey] = base64UrlEncode(digest);
+    final service = PinKdfService(storage);
+    expect(await service.checkProvisioningState(), PinProvisioningState.requiresMigration);
+    expect(await service.verifyPin('000000'), PinVerificationResult.incorrect);
+    expect(storage.values[PinKdfService.legacyHashKey], isNotNull);
+    expect(await service.verifyPin('123456'), PinVerificationResult.success);
+    expect(storage.values[PinKdfService.legacyHashKey], isNull);
+    expect(storage.values[PinKdfService.payloadKey], isNotNull);
   });
 
   testWidgets('gate obscures dashboard, provisions, and relocks on pause', (tester) async {
