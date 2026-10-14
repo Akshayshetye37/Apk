@@ -299,7 +299,6 @@ class _SecureLifecycleGateState extends State<SecureLifecycleGate>
   final LocalAuthentication _auth = LocalAuthentication();
   bool _locked = false;
   bool _authInProgress = false;
-  bool _everResumed = false;
 
   @override
   void initState() {
@@ -318,11 +317,8 @@ class _SecureLifecycleGateState extends State<SecureLifecycleGate>
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       if (mounted) setState(() => _locked = true);
-    } else if (state == AppLifecycleState.resumed) {
-      if (_everResumed && _locked) {
-        unawaited(_authenticate());
-      }
-      _everResumed = true;
+    } else if (state == AppLifecycleState.resumed && _locked) {
+      unawaited(_authenticate());
     }
   }
 
