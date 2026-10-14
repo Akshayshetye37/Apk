@@ -73,7 +73,7 @@ void main() {
 
   test('legacy PIN hash is retained until successful verification', () async {
     final storage = MemoryStorage();
-    var digest = utf8.encode('aurelia-salt:123456');
+    List<int> digest = utf8.encode('aurelia-salt:123456');
     for (var i = 0; i < 100000; i++) {
       digest = sha256.convert(digest).bytes;
     }
