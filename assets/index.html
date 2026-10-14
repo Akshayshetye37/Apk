@@ -3105,19 +3105,29 @@ async function aureliaVerifyBiometric(){
 
 <script id="aurelia-runtime-safety">
 (function(){
+  function showRuntimeFailure(message){
+    var toast = document.getElementById('toast');
+    var detail = String(message || 'Unknown runtime error').replace(/\\s+/g,' ').slice(0,220);
+    console.error('[AURELIA] Runtime failure:', detail);
+    if(toast){
+      toast.textContent = 'Aurelia error: ' + detail + '. Saved records were not intentionally cleared.';
+      toast.classList.add('show');
+      toast.style.maxWidth='min(94vw,760px)';
+      toast.style.whiteSpace='normal';
+      toast.style.zIndex='99999';
+    }
+  }
   window.addEventListener('error', function(event){
     try {
-      console.error('[AURELIA] Runtime error:', event.message || 'Unknown error');
-      var toast = document.getElementById('toast');
-      if (toast) {
-        toast.textContent = 'A feature encountered an error. Your saved records were not intentionally cleared; reload and try again.';
-        toast.classList.add('show');
-        window.setTimeout(function(){ toast.classList.remove('show'); }, 5000);
-      }
+      var where = event.filename ? ' ('+event.filename.split('/').pop()+':'+(event.lineno||0)+')' : '';
+      showRuntimeFailure((event.message || 'Unknown runtime error') + where);
     } catch (_) {}
   });
   window.addEventListener('unhandledrejection', function(event){
-    try { console.error('[AURELIA] Unhandled async error:', event.reason); } catch (_) {}
+    try {
+      var reason=event.reason;
+      showRuntimeFailure('Async error: '+(reason && reason.message ? reason.message : String(reason || 'Unknown rejection')));
+    } catch (_) {}
   });
 })();
 </script>
