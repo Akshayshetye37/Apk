@@ -42,13 +42,32 @@
     const bar = document.createElement('div');
     bar.style.cssText = 'display:flex;align-items:center;gap:12px;color:white;padding:8px;font:16px sans-serif;';
     const name = document.createElement('span'); name.textContent = file.name; name.style.cssText = 'flex:1;overflow-wrap:anywhere;';
+    const save = document.createElement('button');
+    save.textContent = 'Save / share';
+    save.style.cssText = 'padding:10px 12px;';
+    save.onclick = function () {
+      nativeShare(file, mimeByExt[e] || file.type || 'application/octet-stream', 'saveFile')
+        .catch(function (error) { alert('Could not save file: ' + error.message); });
+    };
+    bar.append(name, save);
+    if (e === 'pdf') {
+      const open = document.createElement('button');
+      open.textContent = 'Open PDF';
+      open.style.cssText = 'padding:10px 12px;';
+      open.onclick = function () {
+        nativeShare(file, 'application/pdf', 'shareFile')
+          .catch(function (error) { alert('Could not open PDF: ' + error.message); });
+      };
+      bar.appendChild(open);
+    }
     const close = document.createElement('button'); close.textContent = 'Close'; close.style.cssText = 'padding:10px 16px;';
     close.onclick = function () { URL.revokeObjectURL(url); overlay.remove(); };
-    bar.append(name, close);
+    bar.append(close);
     let view;
     if (e === 'pdf') {
-      view = document.createElement('iframe'); view.src = url; view.title = file.name;
-      view.style.cssText = 'border:0;background:white;flex:1;width:100%;min-height:0;';
+      view = document.createElement('div');
+      view.style.cssText = 'background:white;flex:1;width:100%;min-height:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;box-sizing:border-box;color:#172f27;font:16px sans-serif;';
+      view.textContent = 'PDF preview depends on Android WebView support. Tap Open PDF to use a PDF app, or Save / share to export it.';
     } else {
       view = document.createElement('img'); view.src = url; view.alt = file.name;
       view.style.cssText = 'object-fit:contain;width:100%;height:100%;min-height:0;';

@@ -31,7 +31,9 @@ jobs:
           from pathlib import Path
           import re, subprocess, tempfile
           html = Path('assets/index.html').read_text(encoding='utf-8')
-          scripts = re.findall(r'<script\\b[^>]*>(.*?)</script\\s*>', html, re.I | re.S)
+          scripts = re.findall(r'<script\b[^>]*>(.*?)</script\s*>', html, re.I | re.S)
+          if not scripts:
+              raise SystemExit('No inline JavaScript blocks found in assets/index.html; script validation would be ineffective.')
           scripts.extend(Path(p).read_text(encoding='utf-8') for p in [
               'scripts/interaction_reliability.js',
               'scripts/file_viewing.js',

@@ -126,18 +126,25 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       unawaited(
         platformController.setOnShowFileSelector((params) async {
           try {
-            final imageOnly = params.acceptTypes.isNotEmpty &&
-                params.acceptTypes.every(
-                  (type) => type.toLowerCase().startsWith('image/'),
-                );
+            final accepted = params.acceptTypes
+                .map((type) => type.trim().toLowerCase())
+                .where((type) => type.isNotEmpty)
+                .toList();
+            const imageExtensions = <String>{
+              '.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.heic', '.heif'
+            };
+            final imageOnly = accepted.isNotEmpty &&
+                accepted.every((type) =>
+                    type.startsWith('image/') || imageExtensions.contains(type));
             final picked = await FilePicker.platform.pickFiles(
               type: imageOnly ? FileType.image : FileType.any,
               allowMultiple: params.mode == FileSelectorMode.openMultiple,
             );
             if (picked == null) return <String>[];
+            // WebView expects file URI strings, not raw filesystem paths.
             return picked.files
                 .where((file) => file.path != null)
-                .map((file) => file.path!)
+                .map((file) => Uri.file(file.path!).toString())
                 .toList();
           } catch (error) {
             debugPrint('Aurelia PMS file selection failed: $error');
@@ -217,28 +224,16 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         final mime = allowed.contains(mimeValue) ? mimeValue : 'application/octet-stream';
         final bytes = base64Decode(dataValue);
         if (bytes.length > 15 * 1024 * 1024) throw const FormatException('File too large');
-        if (value['type'] == 'saveFile') {
-          final extension = safeName.contains('.')
-              ? safeName.split('.').last.toLowerCase()
-              : '';
-          final savedPath = await FilePicker.platform.saveFile(
-            fileName: safeName,
-            type: extension.isEmpty ? FileType.any : FileType.custom,
-            allowedExtensions: extension.isEmpty ? null : <String>[extension],
-            bytes: Uint8List.fromList(bytes),
-          );
-          if (savedPath == null) {
-            await _controller.runJavaScript(
-              'window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,"Save cancelled");',
-            );
-            return;
-          }
-        } else {
-          final temp = await getTemporaryDirectory();
-          final file = File('${temp.path}/$safeName');
-          await file.writeAsBytes(bytes, flush: true);
-          await Share.shareXFiles([XFile(file.path, mimeType: mime, name: safeName)], subject: safeName);
-        }
+        // Use Android's system chooser for both export actions. FilePicker's
+        // saveFile byte-write support is inconsistent on Android and can return
+        // a destination without actually writing the exported bytes.
+        final temp = await getTemporaryDirectory();
+        final file = File('${temp.path}/$safeName');
+        await file.writeAsBytes(bytes, flush: true);
+        await Share.shareXFiles(
+          [XFile(file.path, mimeType: mime, name: safeName)],
+          subject: safeName,
+        );
         await _controller.runJavaScript('window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
