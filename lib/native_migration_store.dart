@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:math';
 import 'package:crypto/crypto.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -80,9 +79,8 @@ class AureliaMigrationStore {
     final data = Map<String, dynamic>.from(rawData);
     final payloadJson = jsonEncode(decoded);
     final countsJson = jsonEncode(_counts(data));
-    // Digest is computed natively using a deterministic FNV-1a 64-bit marker.
-    // This is for corruption/read-back detection, not cryptographic authenticity.
-    final digest = _fnv1a64(payloadJson);
+    // SHA-256 is used for deterministic corruption/read-back detection.
+    final digest = sha256.convert(utf8.encode(payloadJson)).toString();
     final db = await _open();
 
     await db.transaction((txn) async {
@@ -112,7 +110,7 @@ class AureliaMigrationStore {
     final stored = row.first['payload_json'] as String;
     final storedData = (jsonDecode(stored) as Map<String, dynamic>)['data'] as Map<String, dynamic>;
     final storedCounts = _counts(storedData);
-    final verified = _fnv1a64(stored) == digest &&
+    final verified = sha256.convert(utf8.encode(stored)).toString() == digest &&
         jsonEncode(storedCounts) == countsJson &&
         storedData.keys.toSet().containsAll(data.keys.toSet());
 
