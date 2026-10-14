@@ -31,7 +31,7 @@ jobs:
           from pathlib import Path
           import re, subprocess, tempfile
           html = Path('assets/index.html').read_text(encoding='utf-8')
-          scripts = re.findall(r'<script\b[^>]*>(.*?)</script\s*>', html, re.I | re.S)
+          scripts = re.findall(r'<script\\b[^>]*>(.*?)</script\\s*>', html, re.I | re.S)
           scripts.extend(Path(p).read_text(encoding='utf-8') for p in [
               'scripts/interaction_reliability.js',
               'scripts/file_viewing.js',
@@ -70,3 +70,23 @@ jobs:
           else
             echo 'No Dart tests present yet; Flutter analysis remains mandatory.'
           fi
+
+  build-debug-apk:
+    runs-on: ubuntu-latest
+    needs: analyze-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.5'
+          cache: true
+      - name: Build debug APK
+        run: |
+          flutter pub get
+          flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aurelia-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
