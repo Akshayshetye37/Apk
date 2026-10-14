@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'core/security/pin_kdf_service.dart';
 import 'core/security/security_interfaces.dart';
@@ -208,7 +209,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         await _controller.runJavaScript('window.aureliaNativeQrResult(${jsonEncode(requestId)},${jsonEncode(data)},null);');
         return;
       }
-      if (value['type'] == 'shareFile') {
+      if (value['type'] == 'shareFile' || value['type'] == 'saveFile') {
         final nameValue = value['name'], mimeValue = value['mime'], dataValue = value['data'];
         if (nameValue is! String || mimeValue is! String || dataValue is! String) throw const FormatException('Missing file fields');
         if (dataValue.length > 20 * 1024 * 1024) throw const FormatException('File too large');
@@ -218,10 +219,28 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         final mime = allowed.contains(mimeValue) ? mimeValue : 'application/octet-stream';
         final bytes = base64Decode(dataValue);
         if (bytes.length > 15 * 1024 * 1024) throw const FormatException('File too large');
-        final temp = await getTemporaryDirectory();
-        final file = File('${temp.path}/$safeName');
-        await file.writeAsBytes(bytes, flush: true);
-        await Share.shareXFiles([XFile(file.path, mimeType: mime, name: safeName)], subject: safeName);
+        if (value['type'] == 'saveFile') {
+          final extension = safeName.contains('.')
+              ? safeName.split('.').last.toLowerCase()
+              : '';
+          final savedPath = await FilePicker.platform.saveFile(
+            fileName: safeName,
+            type: extension.isEmpty ? FileType.any : FileType.custom,
+            allowedExtensions: extension.isEmpty ? null : <String>[extension],
+            bytes: Uint8List.fromList(bytes),
+          );
+          if (savedPath == null) {
+            await _controller.runJavaScript(
+              'window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,"Save cancelled");',
+            );
+            return;
+          }
+        } else {
+          final temp = await getTemporaryDirectory();
+          final file = File('${temp.path}/$safeName');
+          await file.writeAsBytes(bytes, flush: true);
+          await Share.shareXFiles([XFile(file.path, mimeType: mime, name: safeName)], subject: safeName);
+        }
         await _controller.runJavaScript('window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
