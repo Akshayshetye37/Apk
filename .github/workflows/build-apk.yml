@@ -199,7 +199,7 @@ jobs:
           keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > "$RUNNER_TEMP/keystore-cert.txt"
           APK_CERT=$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print tolower($2); exit}' "$RUNNER_TEMP/apk-certs.txt" | tr -d ':')
           KEY_CERT=$(awk -F': ' '/SHA256:/ {print tolower($2); exit}' "$RUNNER_TEMP/keystore-cert.txt" | tr -d ':')
-          EXPECTED_CERT="3bee a1e6ff13c750e7d213008229af38153fa8328da9c1a248134dd6933d4a36".replace(/ /g, "")
+          EXPECTED_CERT="3beea1e6ff13c750e7d213008229af38153fa8328da9c1a248134dd6933d4a36"
           echo "Actual APK signer SHA-256 fingerprint: $APK_CERT"
           echo "Expected release SHA-256 fingerprint: $EXPECTED_CERT"
           if [[ -z "$APK_CERT" || -z "$KEY_CERT" || "$APK_CERT" != "$EXPECTED_CERT" || "$KEY_CERT" != "$EXPECTED_CERT" ]]; then
