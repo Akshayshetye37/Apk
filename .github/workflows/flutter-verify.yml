@@ -49,8 +49,14 @@ jobs:
           PY
       - name: Test native migration bridge offline
         run: node scripts/test_native_migration_bridge.js
+      - name: Require committed dependency lockfile
+        run: |
+          if [[ ! -f pubspec.lock ]]; then
+            echo 'pubspec.lock is missing. Generate it with Flutter 3.35.5 and commit it.' >&2
+            exit 1
+          fi
       - name: Resolve dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
       - name: Analyze
         run: flutter analyze --fatal-infos
       - name: Test
