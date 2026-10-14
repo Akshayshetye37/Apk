@@ -186,13 +186,13 @@ jobs:
           test -s "$APK_PATH"
           BUILD_TOOLS="$ANDROID_SDK_ROOT/build-tools/$(ls "$ANDROID_SDK_ROOT/build-tools" | sort -V | tail -n1)"
 
-          # Cryptographically verify the APK independently of certificate extraction.
+          # Verify the APK signature separately; failure stops the workflow.
           "$BUILD_TOOLS/apksigner" verify --verbose "$APK_PATH"
 
-          # Extract certificate metadata only from the --print-certs output. With
-          # --verbose, apksigner labels the value "Signer #1 certificate SHA-256 digest:".
+          # Capture the certificate report. Newer Android Build Tools can label
+          # signer records as "V2 Signer:" / "V3.0 Signer:" instead of "Signer #1".
           if ! "$BUILD_TOOLS/apksigner" verify --print-certs --verbose "$APK_PATH" > "$RUNNER_TEMP/apk-certs.txt" 2>&1; then
-            echo "ERROR: apksigner could not verify/read APK signer certificate details." >&2
+            echo "ERROR: apksigner failed while reporting APK signer certificates." >&2
             exit 1
           fi
           if ! keytool -list -v -keystore "$ANDROID_KEYSTORE_PATH" -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" > "$RUNNER_TEMP/keystore-cert.txt" 2>&1; then
@@ -200,9 +200,9 @@ jobs:
             exit 1
           fi
 
-          # Match the complete apksigner label (tolerating whitespace/case changes),
-          # then take the digest value after the label's colon.
-          APK_CERT_RAW=$(sed -nE '/Signer[[:space:]]*#?1[[:space:]]+certificate[[:space:]]+SHA-256[[:space:]]+digest[[:space:]]*:/I { s/^[^:]*:[[:space:]]*//; p; q; }' "$RUNNER_TEMP/apk-certs.txt")
+          # Match the digest label independent of signer-label format, then
+          # extract everything after "certificate SHA-256 digest:".
+          APK_CERT_RAW=$(sed -nE '/certificate[[:space:]]+SHA-256[[:space:]]+digest[[:space:]]*:/I { s/.*digest[[:space:]]*:[[:space:]]*//I; p; q; }' "$RUNNER_TEMP/apk-certs.txt")
           KEY_CERT_RAW=$(sed -nE '/SHA256[[:space:]]*:/I { s/^[^:]*:[[:space:]]*//; p; q; }' "$RUNNER_TEMP/keystore-cert.txt")
           EXPECTED_CERT_RAW="3B:EE:A1:E6:FF:13:C7:50:E7:D2:13:00:82:29:AF:38:15:3F:A8:32:8D:A9:C1:A2:48:13:4D:D6:93:3D:4A:36"
 
@@ -215,7 +215,8 @@ jobs:
 
           if [[ -z "$APK_CERT" ]]; then
             echo "ERROR: Could not extract APK signer SHA-256 digest from apksigner --print-certs --verbose output." >&2
-            echo "Expected label: Signer #1 certificate SHA-256 digest:" >&2
+            echo "Certificate report labels found:" >&2
+            grep -iE 'certificate.*SHA-256.*digest:' "$RUNNER_TEMP/apk-certs.txt" >&2 || true
             exit 1
           fi
           if [[ -z "$KEY_CERT" ]]; then
