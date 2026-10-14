@@ -28,7 +28,7 @@ class PinKdfService {
   final SecureStorageProvider storage;
   final DateTime Function() _clock;
   final Argon2id _kdf =
-      Argon2id(memory: 19456, iterations: 2, parallelism: 1);
+      Argon2id(memory: 19456, iterations: 2, parallelism: 1, hashLength: 32);
 
   static const payloadKey = 'aurelia_pin_payload';
   static const legacyHashKey = 'aurelia_pin_hash_v1';
@@ -156,7 +156,7 @@ class PinKdfService {
   }
 
   bool _verifyLegacy(String salt, String pin, String expected) {
-    var bytes = utf8.encode('$salt:$pin');
+    List<int> bytes = utf8.encode('$salt:$pin');
     for (var i = 0; i < 100000; i++) {
       bytes = sha256.convert(bytes).bytes;
     }
