@@ -90,6 +90,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
           },
           onPageFinished: (_) {
             if (mounted) setState(() => _loading = false);
+            // The bundled HTML exposes a non-destructive migration payload
+            // sender. Repeat loads are safe because the native snapshot is upserted.
+            unawaited(_controller.runJavaScript('window.aureliaSendMigrationPayload?.();').catchError((Object error) {
+              debugPrint('Aurelia migration sender unavailable: $error');
+            }));
           },
           onWebResourceError: (error) {
             debugPrint('Aurelia PMS WebView error: ${error.description}');
