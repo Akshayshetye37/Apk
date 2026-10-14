@@ -1,19 +1,10 @@
-name: Build Aurelia PMS APK
+name: Aurelia PMS — Build Release APK
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-    paths:
-      - '.github/workflows/**'
-      - 'assets/**'
-      - 'lib/**'
-      - 'pubspec.yaml'
-      - 'scripts/**'
-      - 'android/**'
-      - 'README.md'
-      - 'CHECKLIST.md'
 
 permissions:
   contents: read
