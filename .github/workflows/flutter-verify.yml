@@ -49,14 +49,26 @@ jobs:
           PY
       - name: Test native migration bridge offline
         run: node scripts/test_native_migration_bridge.js
-      - name: Require committed dependency lockfile
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Publish generated lockfile for bootstrapping
+        if: always() && hashFiles('pubspec.lock') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-pubspec-lockfile
+          path: pubspec.lock
+          if-no-files-found: error
+          retention-days: 2
+      - name: Require committed reproducible lockfile
         run: |
-          if [[ ! -f pubspec.lock ]]; then
-            echo 'pubspec.lock is missing. Generate it with Flutter 3.35.5 and commit it.' >&2
+          if ! git ls-files --error-unmatch pubspec.lock >/dev/null 2>&1; then
+            echo 'pubspec.lock is missing from version control. Download the generated-pubspec-lockfile artifact, commit it, and rerun CI.' >&2
             exit 1
           fi
-      - name: Resolve dependencies
-        run: flutter pub get --enforce-lockfile
+          if ! git diff --exit-code -- pubspec.lock; then
+            echo 'pubspec.lock changed during dependency resolution; regenerate and commit it with Flutter 3.35.5.' >&2
+            exit 1
+          fi
       - name: Analyze
         run: flutter analyze --fatal-infos
       - name: Test
