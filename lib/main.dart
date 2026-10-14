@@ -431,17 +431,22 @@ class _AureliaSecurityGateState extends State<AureliaSecurityGate>
       switch (result) {
         case PinVerificationResult.success:
           setState(() { _locked = false; _pin.clear(); _error = null; });
+          break;
         case PinVerificationResult.incorrect:
           setState(() => _error = 'Incorrect PIN. Attempt $_failed of 3.');
+          break;
         case PinVerificationResult.lockedOut:
           setState(() => _error = 'Locked out. Try again after the lockout expires.');
+          break;
         case PinVerificationResult.notProvisioned:
           setState(() {
             _provisioning = true;
             _error = 'PIN setup is required.';
           });
+          break;
         case PinVerificationResult.invalidPayload:
           setState(() => _error = 'PIN data is invalid. App remains locked.');
+          break;
       }
       _pin.clear();
     } catch (_) {
