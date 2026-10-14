@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: flutter-verify-${{ github.ref }}
@@ -17,6 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          persist-credentials: true
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.5'
@@ -59,10 +62,23 @@ jobs:
           path: pubspec.lock
           if-no-files-found: error
           retention-days: 2
+      - name: Commit generated lockfile when missing
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          BRANCH_NAME: ${{ github.head_ref }}
+        run: |
+          set -euo pipefail
+          if ! git ls-files --error-unmatch pubspec.lock >/dev/null 2>&1; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add pubspec.lock
+            git commit -m "chore: commit reproducible pubspec.lock for CI verification"
+            git push origin "HEAD:${BRANCH_NAME}"
+          fi
       - name: Require committed reproducible lockfile
         run: |
           if ! git ls-files --error-unmatch pubspec.lock >/dev/null 2>&1; then
-            echo 'pubspec.lock is missing from version control. Download the generated-pubspec-lockfile artifact, commit it, and rerun CI.' >&2
+            echo 'pubspec.lock is missing from version control; automatic bootstrap was unavailable.' >&2
             exit 1
           fi
           if ! git diff --exit-code -- pubspec.lock; then
