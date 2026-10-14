@@ -98,7 +98,10 @@ void main() {
     await tester.enterText(find.byType(TextField).first, '123456');
     await tester.enterText(find.byType(TextField).last, '123456');
     await tester.tap(find.text('Save PIN'));
-    await tester.pumpAndSettle(const Duration(seconds: 2));
+    // PIN derivation runs asynchronously; allow the KDF future to complete
+    // before asserting that the gate has revealed its child.
+    await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 3)));
+    await tester.pumpAndSettle();
     expect(find.text('PMS Dashboard').hitTestable(), findsOneWidget);
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
