@@ -54,12 +54,34 @@ class AureliaMigrationStore {
     return _database!;
   }
 
-  Map<String, dynamic> _counts(Map<String, dynamic> data) {
-    final counts = <String, dynamic>{};
+  Map<String, int> _counts(Map<String, dynamic> data) {
+    final counts = <String, int>{};
     for (final entry in data.entries) {
       if (entry.value is List) counts[entry.key] = (entry.value as List).length;
     }
     return counts;
+  }
+
+  Map<String, dynamic> _decodePayload(String source) {
+    final decoded = jsonDecode(source);
+    if (decoded is! Map<String, dynamic> ||
+        decoded['app'] != 'Aurelia PMS' ||
+        decoded['migrationProtocol'] != 1 ||
+        decoded['data'] is! Map) {
+      throw const FormatException('Unsupported or malformed migration payload');
+    }
+    final data = Map<String, dynamic>.from(decoded['data'] as Map);
+    final expectedCounts = _counts(data);
+    final suppliedCounts = decoded['counts'];
+    if (suppliedCounts != null) {
+      if (suppliedCounts is! Map ||
+          suppliedCounts.length != expectedCounts.length ||
+          expectedCounts.entries.any((entry) =>
+              suppliedCounts[entry.key] != entry.value)) {
+        throw const FormatException('Migration record counts do not match payload');
+      }
+    }
+    return decoded;
   }
 
   /// Stores the complete payload transactionally. The caller must not delete
@@ -69,20 +91,23 @@ class AureliaMigrationStore {
     if (rawPayload.length > 20 * 1024 * 1024) {
       throw const FormatException('Migration payload exceeds 20 MiB limit');
     }
-    final decoded = jsonDecode(rawPayload);
-    if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('Migration payload must be a JSON object');
-    }
-    final rawData = decoded['data'];
-    if (rawData is! Map) {
-      throw const FormatException('Migration payload has no data object');
-    }
-    final data = Map<String, dynamic>.from(rawData);
+    final decoded = _decodePayload(rawPayload);
+    final data = Map<String, dynamic>.from(decoded['data'] as Map);
     final payloadJson = jsonEncode(decoded);
     final countsJson = jsonEncode(_counts(data));
     // SHA-256 is used for deterministic corruption/read-back detection.
     final digest = sha256.convert(utf8.encode(payloadJson)).toString();
     final db = await _open();
+
+    final previousRows = await db.query(
+      'app_state',
+      columns: ['payload_digest'],
+      where: 'id = ?',
+      whereArgs: [1],
+      limit: 1,
+    );
+    final alreadyCurrent = previousRows.isNotEmpty &&
+        previousRows.first['payload_digest'] == digest;
 
     await db.transaction((txn) async {
       await txn.insert('app_state', {
@@ -93,14 +118,26 @@ class AureliaMigrationStore {
         'record_counts_json': countsJson,
         'migrated_at': DateTime.now().toUtc().toIso8601String(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-      await txn.insert('migration_log', {
-        'source_key': (decoded['storageKeys'] is List && (decoded['storageKeys'] as List).isNotEmpty)
-            ? (decoded['storageKeys'] as List).first.toString()
-            : 'unknown',
-        'payload_digest': digest,
-        'record_counts_json': countsJson,
-        'verified_at': DateTime.now().toUtc().toIso8601String(),
-      });
+      // Repeated page loads of the same snapshot must not create an
+      // unbounded log of duplicate successful migrations.
+      final logged = await txn.query(
+        'migration_log',
+        columns: ['id'],
+        where: 'payload_digest = ?',
+        whereArgs: [digest],
+        limit: 1,
+      );
+      if (logged.isEmpty) {
+        await txn.insert('migration_log', {
+          'source_key': (decoded['storageKeys'] is List &&
+                  (decoded['storageKeys'] as List).isNotEmpty)
+              ? (decoded['storageKeys'] as List).first.toString()
+              : 'unknown',
+          'payload_digest': digest,
+          'record_counts_json': countsJson,
+          'verified_at': DateTime.now().toUtc().toIso8601String(),
+        });
+      }
     });
 
     final integrity = await db.rawQuery('PRAGMA integrity_check');
@@ -109,16 +146,22 @@ class AureliaMigrationStore {
       throw StateError('SQLite integrity/read-back verification failed');
     }
     final stored = row.first['payload_json'] as String;
-    final storedData = (jsonDecode(stored) as Map<String, dynamic>)['data'] as Map<String, dynamic>;
+    final storedDecoded = _decodePayload(stored);
+    final storedData = Map<String, dynamic>.from(storedDecoded['data'] as Map);
     final storedCounts = _counts(storedData);
-    final verified = sha256.convert(utf8.encode(stored)).toString() == digest &&
-        jsonEncode(storedCounts) == countsJson &&
+    final storedCountsJson = jsonEncode(storedCounts);
+    final verified = row.first['schema_version'] == decoded['migrationProtocol'] &&
+        row.first['payload_digest'] == digest &&
+        sha256.convert(utf8.encode(stored)).toString() == digest &&
+        storedCountsJson == countsJson &&
+        storedCountsJson == row.first['record_counts_json'] &&
         storedData.keys.toSet().containsAll(data.keys.toSet());
 
     if (!verified) throw StateError('Migration snapshot did not reconcile');
     return {
       'verified': true,
-      'schemaVersion': 1,
+      'alreadyCurrent': alreadyCurrent,
+      'schemaVersion': decoded['migrationProtocol'],
       'digest': digest,
       'counts': storedCounts,
       'integrityCheck': integrity.first.values.first,
