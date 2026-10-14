@@ -997,8 +997,7 @@ async function runGenericOcr(e,btn){
   const status=document.getElementById('guestOcrStatus') || btn?.closest('.field')?.querySelector('.muted');
   const text=await runImageOCR(file,status);
   const parsed=parseIdText(text);
-  const scope=btn?.closest('[data-occ]');  const type=(scope||document).querySelector('[data-setting="occIdType"]') || document.getElementById('gIdType');
-  const num=(scope||document).querySelector('[data-setting="occIdNumber"]') || document.getElementById('gIdNumber');
+  const scope=btn?.closest('[data-occ]');  const type=(scope||document).querySelector('[data-setting="occIdType"]') || document.getElementById('gIdType');  const num=(scope||document).querySelector('[data-setting="occIdNumber"]') || document.getElementById('gIdNumber');
   if(parsed.idType&&type)type.value=parsed.idType;
   if(parsed.idNumber&&num)num.value=parsed.idNumber;
   const nameField=(scope||document).querySelector('[data-setting="occName"]')||(scope||document).getElementById?.('gName');if(parsed.name&&nameField&&!nameField.value.trim())nameField.value=parsed.name;
@@ -1997,8 +1996,7 @@ function renderRestaurantFinal(){
       ${restaurantCartHTMLFinal()}
       <div class="restaurant-summary" style="margin-top:10px">
         <div class="bill-total"><b>GRAND TOTAL</b><div class="amount">${money(totalR)}</div></div>      </div>
-      ${DB.restaurantCart.length?`<div class="actions" style="margin-top:12px">
-        <button class="btn" ${childOn("restaurant","removeFood")?"":"disabled"} onclick="restaurantClearLast()">Remove Food</button>
+      ${DB.restaurantCart.length?`<div class="actions" style="margin-top:12px">        <button class="btn" ${childOn("restaurant","removeFood")?"":"disabled"} onclick="restaurantClearLast()">Remove Food</button>
         <button class="btn primary" ${childOn("restaurant","addToRoom")&&restaurantSelectedBooking?"":"disabled"} onclick="commitRestaurant('room')">Add in Room</button>
         <button class="btn" ${childOn("restaurant","restaurantBilling")?"":"disabled"} onclick="createWalkInOpenBill()">Walk-in Bill</button>
       </div>`:""}
@@ -2997,8 +2995,7 @@ function aureliaBackupSettingsHTML(){
  <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center">
   <label>Backup destination <select id="aureliaBackupDestination" style="padding:10px;border:1px solid var(--line);border-radius:10px"><option value="local">This device / browser</option><option value="drive">Google Drive (connect later)</option></select></label>  <button class="btn primary" onclick="aureliaDownloadBackup()">Download full backup</button>
   <button class="btn" onclick="aureliaExportCSV('balance')">Export balance sheet CSV</button>
-  <button class="btn" onclick="aureliaExportCSV('inventory')">Export restaurant inventory CSV</button>
- </div><div id="aureliaDriveNote" class="muted" style="margin-top:8px">Local autosave is active when changes are saved. Google Drive requires a secure OAuth connection and is not connected in this standalone file.</div>
+  <button class="btn" onclick="aureliaExportCSV('inventory')">Export restaurant inventory CSV</button> </div><div id="aureliaDriveNote" class="muted" style="margin-top:8px">Local autosave is active when changes are saved. Google Drive requires a secure OAuth connection and is not connected in this standalone file.</div>
  <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
  <h3>PIN recovery</h3><p class="muted">Set a local app PIN for this browser. Keep a recovery code safely; clearing browser data can remove local settings.</p>
  <div class="row" style="gap:8px;flex-wrap:wrap"><input id="aureliaPinInput" type="password" inputmode="numeric" maxlength="8" placeholder="4–8 digit PIN" style="padding:10px;border:1px solid var(--line);border-radius:10px;max-width:180px"><button class="btn" onclick="aureliaSetPin()">Set / reset PIN</button><button class="btn" onclick="aureliaForgotPin()">Forgot PIN / recovery</button><button class="btn" onclick="aureliaEnrollBiometric()">Enable device biometric</button></div>
