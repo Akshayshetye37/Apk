@@ -341,7 +341,7 @@ class _AureliaSecurityGateState extends State<AureliaSecurityGate> with WidgetsB
   }
 
   String _derive(String salt, String pin) {
-    var bytes = utf8.encode(salt + ':' + pin);
+    List<int> bytes = utf8.encode(salt + ':' + pin);
     // Iterative salted hash; replace with a reviewed password-KDF before release.
     for (var i = 0; i < 100000; i++) {
       bytes = sha256.convert(bytes).bytes;
