@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:crypto/crypto.dart';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
@@ -132,18 +133,10 @@ class AureliaMigrationStore {
     if (rows.isEmpty) return null;
     final row = rows.first;
     final payload = row['payload_json'] as String;
-    if (_fnv1a64(payload) != row['payload_digest']) {
+    if (sha256.convert(utf8.encode(payload)).toString() != row['payload_digest']) {
       throw StateError('Stored PMS snapshot digest mismatch');
     }
     return jsonDecode(payload) as Map<String, dynamic>;
   }
 
-  String _fnv1a64(String value) {
-    var hash = 0xcbf29ce484222325;
-    for (final byte in utf8.encode(value)) {
-      hash ^= byte;
-      hash = (hash * 0x100000001b3) & 0xffffffffffffffff;
-    }
-    return hash.toRadixString(16).padLeft(16, '0');
-  }
 }
