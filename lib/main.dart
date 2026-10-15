@@ -262,7 +262,7 @@ class AureliaEncryptedPmsStore {
   }
 
   static Future<String> decryptPortableBackup(String envelopeJson, String passphrase) async {
-    if (passphrase.length < 1 || passphrase.length > 1024 ||
+    if (passphrase.isEmpty || passphrase.length > 1024 ||
         envelopeJson.length > 30 * 1024 * 1024) {
       throw const FormatException('Invalid encrypted backup size or passphrase.');
     }
