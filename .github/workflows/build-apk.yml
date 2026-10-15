@@ -31,6 +31,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.5'
+          cache: true
+      - name: Prepare Android platform
+        run: flutter create . --platforms=android
+      - name: Apply Android security hardening
+        run: python scripts/harden_android.py "$GITHUB_WORKSPACE"
       - name: Run static security checks
         run: python scripts/security_static_check.py
       - name: Run backup import regression tests
