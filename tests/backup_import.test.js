@@ -15,6 +15,7 @@ function createHarness(options = {}) {
   const window = {
     prompt: () => promptAnswers.length ? promptAnswers.shift() : null,
     AureliaNative: options.native ? { postMessage: message => postedMessages.push(JSON.parse(message)) } : undefined,
+    __AURELIA_SECURE_DB_READY: !!options.native,
     DB: options.db || { guests: [{ id: 'old' }], rooms: [], bookings: [], obsolete: ['remove me'] },
     toast: message => messages.push(message),
     confirm: () => options.confirm !== false,
