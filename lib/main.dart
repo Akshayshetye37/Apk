@@ -509,8 +509,8 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
               // Materialize a bounded cache copy so WebView can read the selected file.
               var path = file.path;
               final bytes = file.bytes;
-              if (path == null && bytes != null) {
-                final safeName = (file.name.split(RegExp(r'[/\\\\]')).last)
+              if (bytes != null) {
+                final safeName = file.name.split(RegExp(r'[/\\\\]')).last
                     .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
                 if (safeName.isEmpty || safeName == '.' || safeName == '..') continue;
                 final target = File('${cache.path}/upload_${DateTime.now().microsecondsSinceEpoch}_$safeName');
