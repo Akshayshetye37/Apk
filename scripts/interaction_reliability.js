@@ -159,12 +159,13 @@
             Object.defineProperty(window.DB, key, {value:candidate[key],enumerable:true,configurable:true,writable:true});
           });
           await Promise.resolve(window.save());
+          if (typeof window.aureliaWaitForSecureSave === 'function') await window.aureliaWaitForSecureSave();
         } catch (saveError) {
           Object.keys(window.DB).forEach(function (key) { delete window.DB[key]; });
           Object.keys(previous).forEach(function (key) {
             Object.defineProperty(window.DB, key, {value:previous[key],enumerable:true,configurable:true,writable:true});
           });
-          try { await Promise.resolve(window.save()); } catch (_) {}
+          try { await Promise.resolve(window.save()); if (typeof window.aureliaWaitForSecureSave === 'function') await window.aureliaWaitForSecureSave(); } catch (_) {}
           throw new Error('Could not save restored data; previous in-memory data was restored. ' + errorMessage(saveError));
         }
         notify('Backup imported and saved. Refreshing PMS view…');
