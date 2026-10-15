@@ -76,3 +76,23 @@ void main() {
     );
   });
 }
+
+test('duplicate record IDs are rejected before encryption', () async {
+  final payload = validPayload();
+  final data = payload['data'] as Map<String, dynamic>;
+  (data['guests'] as List).add({'id': 'g1', 'name': 'Duplicate'});
+  await expectLater(
+    AureliaEncryptedPmsStore.encryptPortableBackup(jsonEncode(payload), 'correct horse battery staple'),
+    throwsA(anything),
+  );
+});
+
+test('non-object records are rejected before encryption', () async {
+  final payload = validPayload();
+  final data = payload['data'] as Map<String, dynamic>;
+  data['rooms'] = ['not a room record'];
+  await expectLater(
+    AureliaEncryptedPmsStore.encryptPortableBackup(jsonEncode(payload), 'correct horse battery staple'),
+    throwsA(anything),
+  );
+});
