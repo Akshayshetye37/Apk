@@ -384,7 +384,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
   Future<void> _handleNativeMessage(String raw) async {
     String? requestId;
     try {
-      if (raw.length > 22 * 1024 * 1024) throw const FormatException('Request too large');
+      if (raw.length > 45 * 1024 * 1024) throw const FormatException('Request too large');
       final value = jsonDecode(raw);
       if (value is! Map<String, dynamic>) throw const FormatException('Invalid request');
       final rawId = value['requestId'];
@@ -435,8 +435,8 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       }
       if (value['type'] == 'savePmsData') {
         final dataValue = value['data'];
-        if (requestId == null || dataValue is! String) {
-          throw const FormatException('Missing secure database fields');
+        if (requestId == null || dataValue is! String || dataValue.length > 20 * 1024 * 1024) {
+          throw const FormatException('Missing or oversized secure database fields');
         }
         await AureliaEncryptedPmsStore.write(dataValue);
         await _controller.runJavaScript(
