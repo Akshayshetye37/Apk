@@ -595,10 +595,18 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       final html = await rootBundle.loadString('assets/index.html');
       final headEnd = html.toLowerCase().indexOf('</head>');
       if (headEnd < 0) throw const FormatException('Bundled PMS HTML has no head element.');
+      final bootstrapData = saved == null
+          ? 'null'
+          : jsonEncode(jsonDecode(saved))
+              .replaceAll('<', r'\\u003c')
+              .replaceAll('>', r'\\u003e')
+              .replaceAll('&', r'\\u0026')
+              .replaceAll('\u2028', r'\\u2028')
+              .replaceAll('\u2029', r'\\u2029');
       final bootstrap = '<script id="aurelia-secure-db-bootstrap">'
           'window.__AURELIA_SECURE_DB_READY=true;'
           'window.__AURELIA_SECURE_DB_EXISTS=${saved != null};'
-          'window.__AURELIA_SECURE_DB_BOOTSTRAP=${saved == null ? 'null' : jsonEncode(jsonDecode(saved))};'
+          'window.__AURELIA_SECURE_DB_BOOTSTRAP=$bootstrapData;'
           '</script>';
       final page = html.substring(0, headEnd) + bootstrap + html.substring(headEnd);
       await _controller.loadHtmlString(
