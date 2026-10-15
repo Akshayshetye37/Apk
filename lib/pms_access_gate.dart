@@ -85,7 +85,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Secure authentication could not be loaded. Do not clear app data or reinstall. ' + error.toString();
+        _error = 'Secure authentication could not be loaded. Do not clear app data or reinstall. ${error}';
       });
     }
   }
@@ -138,7 +138,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         await widget.deleteSecret(_saltKey);
         await widget.deleteSecret(_hashKey);
       } catch (_) {}
-      if (mounted) setState(() => _error = 'Could not securely save the PIN. Try again. ' + error.toString());
+      if (mounted) setState(() => _error = 'Could not securely save the PIN. Try again. ${error}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -147,7 +147,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
   Future<void> _verifyPin() async {
     final now = DateTime.now();
     if (_lockUntil != null && now.isBefore(_lockUntil!)) {
-      setState(() => _error = 'Too many attempts. Try again after ' + _lockUntil!.toLocal().toString() + '.');
+      setState(() => _error = 'Too many attempts. Try again after ${_lockUntil!.toLocal()}.');
       return;
     }
     if (_lockUntil != null && !now.isBefore(_lockUntil!)) {
@@ -190,13 +190,13 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
       if (mounted) {
         setState(() {
           _error = _lockUntil == null
-              ? 'Incorrect PIN. ' + (5 - _failedAttempts).toString() + ' attempts remain before a 5-minute lockout.'
+              ? 'Incorrect PIN. ${5 - _failedAttempts} attempts remain before a 5-minute lockout.'
               : 'Too many attempts. Access is locked for 5 minutes.';
         });
       }
       _pin.clear();
     } catch (error) {
-      if (mounted) setState(() => _error = 'Could not verify PIN securely. ' + error.toString());
+      if (mounted) setState(() => _error = 'Could not verify PIN securely. ${error}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -249,7 +249,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         setState(() => _error = 'Device authentication was cancelled or not accepted.');
       }
     } catch (error) {
-      if (mounted) setState(() => _error = 'Device authentication is unavailable. Use your PIN. ' + error.toString());
+      if (mounted) setState(() => _error = 'Device authentication is unavailable. Use your PIN. ${error}');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -348,7 +348,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                           _busy
                               ? 'Please wait…'
                               : (locked
-                                  ? 'Try again in ' + remaining.toString() + 's'
+                                  ? 'Try again in ${remaining}s'
                                   : (_configured ? 'Unlock' : 'Save PIN and continue')),
                         ),
                       ),
