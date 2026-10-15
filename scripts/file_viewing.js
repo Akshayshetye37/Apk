@@ -327,7 +327,7 @@
       const previousSettings = pages.settings;
       pages.settings = function () {
         let html = previousSettings.apply(this, arguments);
-        html = html.replace(/<div class="field full" style="margin-top:12px"><label for="upiQrFile">UPI payment QR image<\\/label><input id="upiQrFile" type="file" accept="image\\/\\*" onchange="saveUpiQrImage\\(event\\)">[\\s\\S]*?onclick="clearUpiQrImage\\(\\)">Remove QR<\\/button><\\/div><\\/div>/, '');
+        html = html.replace(/<div class="field full" style="margin-top:12px"><label for="upiQrFile">UPI payment QR image[\s\S]*?Remove QR<\/button><\/div><\/div>/, '');
         return html;
       };
     }
