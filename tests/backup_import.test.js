@@ -10,7 +10,11 @@ function createHarness(options = {}) {
   let lastReader;
   let reloads = 0;
   let saves = 0;
+  const postedMessages = [];
+  const promptAnswers = [...(options.promptAnswers || [])];
   const window = {
+    prompt: () => promptAnswers.length ? promptAnswers.shift() : null,
+    AureliaNative: options.native ? { postMessage: message => postedMessages.push(JSON.parse(message)) } : undefined,
     DB: options.db || { guests: [{ id: 'old' }], rooms: [], bookings: [], obsolete: ['remove me'] },
     toast: message => messages.push(message),
     confirm: () => options.confirm !== false,
@@ -41,7 +45,7 @@ function createHarness(options = {}) {
   };
   vm.runInNewContext(fs.readFileSync('scripts/interaction_reliability.js', 'utf8'), context);
   return {
-    window, messages,
+    window, messages, postedMessages,
     async importJson(content) {
       window.aureliaImportBackupFile({ size: Buffer.byteLength(content), content });
       await lastReader.done;
@@ -92,4 +96,26 @@ test('rolls in-memory data back if saving the restore fails', async () => {
   }));
   assert.equal(JSON.stringify(app.window.DB), before);
   assert.match(app.messages.at(-1), /previous in-memory data was restored/);
+});
+
+test('Android backup export requests passphrase-encrypted native output', () => {
+  const app = createHarness({ native: true, promptAnswers: ['correct horse battery staple', 'correct horse battery staple'] });
+  app.window.aureliaDownloadBackup();
+  assert.equal(app.postedMessages.length, 1);
+  assert.equal(app.postedMessages[0].type, 'exportEncryptedBackup');
+  assert.equal(app.postedMessages[0].passphrase, 'correct horse battery staple');
+  assert.equal(typeof app.postedMessages[0].data, 'string');
+});
+
+test('encrypted backup import is delegated to native decrypt-and-validate flow', async () => {
+  const app = createHarness({ native: true, promptAnswers: ['correct horse battery staple'] });
+  const envelope = {
+    app: 'AURELIA PMS ENCRYPTED BACKUP', formatVersion: 1,
+    kdf: 'PBKDF2-HMAC-SHA256', iterations: 310000, algorithm: 'AES-256-GCM',
+    salt: 'AAAAAAAAAAAAAAAAAAAAAA==', nonce: 'AAAAAAAAAAAAAAAA', ciphertext: '', tag: 'AAAAAAAAAAAAAAAAAAAAAA=='
+  };
+  await app.importJson(JSON.stringify(envelope));
+  assert.equal(app.postedMessages.length, 1);
+  assert.equal(app.postedMessages[0].type, 'restoreEncryptedBackup');
+  assert.equal(app.postedMessages[0].envelope.app, 'AURELIA PMS ENCRYPTED BACKUP');
 });
