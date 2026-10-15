@@ -100,8 +100,11 @@ When a build fails, copy the first meaningful error from the GitHub Actions log 
 - [ ] Permission denial tested on device.
 - [x] Node regression tests cover incomplete backups, unsafe property names, full database replacement, and save-failure rollback.
 - [x] Node regression tests cover encrypted backup export and native restore dispatch.
+- [x] Dart tests cover portable backup encryption, wrong passphrases, tamper detection, invalid schemas, and short passphrases.
 - [ ] AES-GCM database migration, legacy plaintext cleanup, and encrypted recovery verified on a physical device.
 - [ ] Wrong-passphrase, tampered, malformed, and oversized encrypted imports verified against the actual APK without corrupting existing records.
 - [ ] Offline dashboard, bookings, reports, and exports tested on device.
 - [ ] Local storage threat model and migration reviewed on device; native Android storage and portable backup encryption are implemented in the remediation branch but are not yet device-verified.
-- [ ] Production data approved only after authentication and at-rest protections are implemented and tested.
+- [ ] Production data approved only after encrypted storage migration, PIN/device-authentication gate, encrypted backup restore, and CSP restrictions pass physical-device testing.
+- [ ] Bundle and verify OCR/PDF libraries locally before re-enabling those optional features on Android.
+- [ ] Implement and test encrypted Google Drive upload/restore before re-enabling cloud sync.
