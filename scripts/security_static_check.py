@@ -10,6 +10,7 @@ backup = (root / 'scripts/interaction_reliability.js').read_text(encoding='utf-8
 pub = (root / 'pubspec.yaml').read_text(encoding='utf-8')
 manifest = (root / 'android/app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
 errors=[]
+if not html.strip(): errors.append('Bundled PMS HTML asset is empty; refusing to package a blank app.')
 if 'quickchart.io/qr' in html.lower() or 'api.qrserver.com' in html.lower(): errors.append('External QR generation service remains in HTML.')
 if 'aureliaRequestLocalQr' not in html or 'generateQr' not in main: errors.append('Local QR bridge is missing.')
 if "type:'shareFile'" not in html or "value['type'] == 'shareFile'" not in main: errors.append('Native file export bridge is missing.')
