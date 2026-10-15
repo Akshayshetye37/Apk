@@ -142,6 +142,131 @@ class AureliaEncryptedPmsStore {
     await _writeEnvelope('aurelia-pms-recovery.enc', envelope);
   }
 
+  static const int _backupIterations = 310000;
+  static const String _backupAad = 'aurelia-pms-portable-backup-v1';
+  static final Pbkdf2 _backupKdf = Pbkdf2(
+    macAlgorithm: Hmac.sha256(),
+    iterations: _backupIterations,
+    bits: 256,
+  );
+
+  static void _validateTree(Object? value, int depth, List<int> count) {
+    if (depth > 40) throw const FormatException('Backup data is nested too deeply.');
+    count[0]++;
+    if (count[0] > 250000) throw const FormatException('Backup contains too many data items.');
+    if (value == null || value is String || value is bool) return;
+    if (value is num) {
+      if (!value.isFinite) throw const FormatException('Backup contains an invalid number.');
+      return;
+    }
+    if (value is List) {
+      for (final item in value) {
+        _validateTree(item, depth + 1, count);
+      }
+      return;
+    }
+    if (value is Map<String, dynamic>) {
+      for (final entry in value.entries) {
+        if (const {'__proto__', 'prototype', 'constructor'}.contains(entry.key)) {
+          throw const FormatException('Backup contains an unsafe property name.');
+        }
+        _validateTree(entry.value, depth + 1, count);
+      }
+      return;
+    }
+    throw const FormatException('Backup contains an unsupported data value.');
+  }
+
+  static Map<String, dynamic> _validateBackupPayload(String json) {
+    if (json.length > 20 * 1024 * 1024) {
+      throw const FormatException('Backup exceeds the 20 MB limit.');
+    }
+    final decoded = jsonDecode(json);
+    if (decoded is! Map<String, dynamic> || decoded['app'] != 'AURELIA PMS' ||
+        decoded['formatVersion'] != 1 || decoded['data'] is! Map<String, dynamic>) {
+      throw const FormatException('Unsupported or invalid Aurelia backup.');
+    }
+    final data = decoded['data'] as Map<String, dynamic>;
+    if (data['guests'] is! List || data['rooms'] is! List ||
+        (data['bookings'] is! List && data['reservations'] is! List)) {
+      throw const FormatException('Backup is missing required guest, room, or booking lists.');
+    }
+    for (final key in const ['guests','rooms','bookings','reservations','inventory','expenses','payments']) {
+      if (data.containsKey(key) && data[key] is! List) {
+        throw FormatException('The "$key" section must be a list.');
+      }
+    }
+    _validateTree(data, 0, [0]);
+    return data;
+  }
+
+  static Future<String> encryptPortableBackup(String payload, String passphrase) async {
+    if (passphrase.length < 12 || passphrase.length > 1024) {
+      throw const FormatException('Use a backup passphrase between 12 and 1024 characters.');
+    }
+    if (payload.length > 20 * 1024 * 1024) {
+      throw const FormatException('Backup exceeds the 20 MB limit.');
+    }
+    _validateBackupPayload(payload);
+    final salt = List<int>.generate(16, (_) => math.Random.secure().nextInt(256));
+    final key = await _backupKdf.deriveKey(
+      secretKey: SecretKey(utf8.encode(passphrase)),
+      nonce: salt,
+    );
+    final box = await _algorithm.encrypt(
+      utf8.encode(payload),
+      secretKey: key,
+      aad: utf8.encode(_backupAad),
+    );
+    return jsonEncode({
+      'app': 'AURELIA PMS ENCRYPTED BACKUP',
+      'formatVersion': 1,
+      'kdf': 'PBKDF2-HMAC-SHA256',
+      'iterations': _backupIterations,
+      'algorithm': 'AES-256-GCM',
+      'salt': base64Encode(salt),
+      'nonce': base64Encode(box.nonce),
+      'ciphertext': base64Encode(box.cipherText),
+      'tag': base64Encode(box.mac.bytes),
+    });
+  }
+
+  static Future<String> decryptPortableBackup(String envelopeJson, String passphrase) async {
+    if (passphrase.length < 1 || passphrase.length > 1024 ||
+        envelopeJson.length > 30 * 1024 * 1024) {
+      throw const FormatException('Invalid encrypted backup size or passphrase.');
+    }
+    final envelope = jsonDecode(envelopeJson);
+    if (envelope is! Map<String, dynamic> ||
+        envelope['app'] != 'AURELIA PMS ENCRYPTED BACKUP' ||
+        envelope['formatVersion'] != 1 ||
+        envelope['kdf'] != 'PBKDF2-HMAC-SHA256' ||
+        envelope['iterations'] != _backupIterations ||
+        envelope['algorithm'] != 'AES-256-GCM') {
+      throw const FormatException('Unsupported encrypted backup format.');
+    }
+    final salt = base64Decode(envelope['salt'] as String);
+    final nonce = base64Decode(envelope['nonce'] as String);
+    final ciphertext = base64Decode(envelope['ciphertext'] as String);
+    final tag = base64Decode(envelope['tag'] as String);
+    if (salt.length != 16 || nonce.length != 12 || tag.length != 16 ||
+        ciphertext.length > 20 * 1024 * 1024) {
+      throw const FormatException('Encrypted backup envelope is invalid or too large.');
+    }
+    final key = await _backupKdf.deriveKey(
+      secretKey: SecretKey(utf8.encode(passphrase)),
+      nonce: salt,
+    );
+    final clear = await _algorithm.decrypt(
+      SecretBox(ciphertext, nonce: nonce, mac: Mac(tag)),
+      secretKey: key,
+      aad: utf8.encode(_backupAad),
+    );
+    final payload = utf8.decode(clear);
+    final data = _validateBackupPayload(payload);
+    return jsonEncode(data);
+  }
+
   static Future<void> _writeEnvelope(String name, String envelope) async {
     final target = await _file(name);
     final temporary = await _file('$name.tmp');
@@ -267,6 +392,47 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         final cleaned = rawId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
         requestId = cleaned.substring(0, cleaned.length.clamp(0, 64).toInt());
       }
+      if (value['type'] == 'exportEncryptedBackup') {
+        final dataValue = value['data'];
+        final passphrase = value['passphrase'];
+        if (requestId == null || dataValue is! String || passphrase is! String) {
+          throw const FormatException('Missing encrypted backup fields');
+        }
+        final payload = jsonEncode({
+          'app': 'AURELIA PMS',
+          'formatVersion': 1,
+          'exportedAt': DateTime.now().toUtc().toIso8601String(),
+          'data': jsonDecode(dataValue),
+        });
+        final envelope = await AureliaEncryptedPmsStore.encryptPortableBackup(payload, passphrase);
+        final temp = await getTemporaryDirectory();
+        final file = File('${temp.path}/aurelia-pms-backup-${DateTime.now().toUtc().toIso8601String().replaceAll(':', '-')}.aurelia');
+        await file.writeAsString(envelope, flush: true);
+        await Share.shareXFiles(
+          [XFile(file.path, mimeType: 'application/octet-stream', name: 'aurelia-pms-encrypted-backup.aurelia')],
+          subject: 'Encrypted Aurelia PMS backup',
+        );
+        await _controller.runJavaScript(
+          'window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},true,null);',
+        );
+        return;
+      }
+      if (value['type'] == 'restoreEncryptedBackup') {
+        final envelopeValue = value['envelope'];
+        final passphrase = value['passphrase'];
+        if (requestId == null || envelopeValue is! Map<String, dynamic> || passphrase is! String) {
+          throw const FormatException('Missing encrypted restore fields');
+        }
+        final restored = await AureliaEncryptedPmsStore.decryptPortableBackup(
+          jsonEncode(envelopeValue),
+          passphrase,
+        );
+        await AureliaEncryptedPmsStore.write(restored);
+        await _controller.runJavaScript(
+          'window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},true,null);',
+        );
+        return;
+      }
       if (value['type'] == 'savePmsData') {
         final dataValue = value['data'];
         if (requestId == null || dataValue is! String) {
@@ -318,7 +484,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       debugPrint('Aurelia native bridge rejected request: $error');
       if (requestId != null) {
         try {
-          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
+          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
         } catch (_) {}
       }
     }
