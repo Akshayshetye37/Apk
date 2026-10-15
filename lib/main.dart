@@ -393,15 +393,24 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
                 params.acceptTypes.every(
                   (type) => type.toLowerCase().startsWith('image/'),
                 );
+            final backupFile = params.acceptTypes.any((type) {
+              final lower = type.toLowerCase();
+              return lower.contains('json') || lower.contains('aurelia');
+            });
             final picked = await FilePicker.platform.pickFiles(
               type: imageOnly ? FileType.image : FileType.any,
               allowMultiple: params.mode == FileSelectorMode.openMultiple,
             );
             if (picked == null) return <String>[];
-            return picked.files
-                .where((file) => file.path != null)
-                .map((file) => file.path!)
-                .toList();
+            const blockedExtensions = <String>{
+              'apk','exe','bat','cmd','sh','js','html','htm','jar','dex','so','dll','msi'
+            };
+            final maxBytes = backupFile ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
+            return picked.files.where((file) {
+              if (file.path == null || file.size > maxBytes) return false;
+              final extension = (file.extension ?? '').toLowerCase();
+              return !blockedExtensions.contains(extension);
+            }).map((file) => file.path!).toList();
           } catch (error) {
             debugPrint('Aurelia PMS file selection failed: $error');
             return <String>[];
