@@ -141,7 +141,7 @@
       pages.importExport = function () {
         let html = originalImportExport.apply(this, arguments);
         if (html.includes('aureliaDriveFolderIdCard')) return html;
-        const current = String((window.DB && DB.settings && DB.settings.googleDriveFolderId) || '');
+        const current = String((typeof DB !== 'undefined' && DB.settings && DB.settings.googleDriveFolderId) || '');
         const escaped = typeof window.esc === 'function' ? esc(current) : current.replace(/[&<>"]/g, '');
         html += '<section class="card" id="aureliaDriveFolderIdCard" style="margin-top:16px">' +
           '<div class="section-title"><h2>Google Drive backup target</h2><span class="status reserved">Not connected</span></div>' +
@@ -157,7 +157,7 @@
   } catch (error) { console.warn('Could not add Drive target field:', error); }
   window.aureliaSaveDriveFolderId = function () {
     const input = document.getElementById('aureliaDriveFolderId');
-    if (!input || !window.DB || !DB.settings) return;
+    if (!input || typeof DB === 'undefined' || !DB.settings) return;
     const id = input.value.trim();
     if (id.length > 200 || /[\\/\s]/.test(id)) {
       const status = document.getElementById('aureliaDriveFolderIdStatus');
@@ -173,10 +173,116 @@
   window.aureliaClearDriveFolderId = function () {
     const input = document.getElementById('aureliaDriveFolderId');
     if (input) input.value = '';
-    if (window.DB && DB.settings) { delete DB.settings.googleDriveFolderId; if (typeof window.save === 'function') save(); }
+    if (typeof DB !== 'undefined' && DB.settings) { delete DB.settings.googleDriveFolderId; if (typeof window.save === 'function') save(); }
     const status = document.getElementById('aureliaDriveFolderIdStatus');
     if (status) status.textContent = 'Folder ID cleared. Cloud upload is not enabled.';
   };
+
+  // Intercept the app's print-window pattern. On Android, render that printable
+  // HTML into a real PDF and open it with the device's PDF handler instead of relying
+  // on unsupported WebView pop-up windows.
+  const originalWindowOpen = window.open.bind(window);
+  window.open = function (url, target, features) {
+    const blank = url == null || String(url) === '' || String(url) === 'about:blank';
+    if (!blank || !window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function') {
+      return originalWindowOpen(url, target, features);
+    }
+    let source = '';
+    let sent = false;
+    const doc = {
+      open: function () { source = ''; },
+      write: function (chunk) { source += String(chunk || ''); },
+      writeln: function (chunk) { source += String(chunk || '') + '\\n'; },
+      close: function () {
+        if (sent || !source) return;
+        sent = true;
+        if (source.length > 2 * 1024 * 1024) {
+          if (typeof window.toast === 'function') toast('Document is too large to convert to PDF.');
+          return;
+        }
+        let title = 'aurelia-document';
+        try {
+          const parsed = new DOMParser().parseFromString(source, 'text/html');
+          title = (parsed.querySelector('title')?.textContent || parsed.querySelector('h1')?.textContent || title).trim();
+        } catch (_) {}
+        title = title.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80) || 'aurelia-document';
+        const requestId = 'print_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        let settled = false;
+        const handler = function (event) {
+          const detail = event.detail || {};
+          if (detail.requestId !== requestId || settled) return;
+          settled = true;
+          window.removeEventListener('aurelia-native-file-result', handler);
+          clearTimeout(timeout);
+          if (!detail.ok && typeof window.toast === 'function') toast('PDF export failed: ' + String(detail.error || 'Unknown error'));
+        };
+        const timeout = setTimeout(function () {
+          if (settled) return;
+          settled = true;
+          window.removeEventListener('aurelia-native-file-result', handler);
+          if (typeof window.toast === 'function') toast('PDF export timed out. Try saving a smaller document.');
+        }, 45000);
+        window.addEventListener('aurelia-native-file-result', handler);
+        try {
+          window.AureliaNative.postMessage(JSON.stringify({
+            type: 'exportHtmlPdf', requestId: requestId,
+            name: title + '.pdf', html: source, action: 'open'
+          }));
+        } catch (error) {
+          settled = true; clearTimeout(timeout);
+          window.removeEventListener('aurelia-native-file-result', handler);
+          if (typeof window.toast === 'function') toast('PDF export failed: ' + error.message);
+        }
+      }
+    };
+    return {document:doc, closed:false, focus:function(){}, print:function(){}, close:function(){}, stop:function(){}};
+  };
+
+  // Persist occupant ID images with the guest instead of running OCR without retaining
+  // the source image. OCR is optional; upload/preview/save must work independently.
+  document.addEventListener('change', function (event) {
+    const input = event.target;
+    if (!input || !input.matches || !input.matches('input[data-occ-camera],input[data-occ-photo]')) return;
+    const file = input.files && input.files[0];
+    const scope = input.closest('[data-occ]');
+    if (!file || !scope) return;
+    if (!/^image\\//i.test(file.type) || file.size > 8 * 1024 * 1024) {
+      input.value = '';
+      if (typeof window.toast === 'function') toast('Choose an image no larger than 8 MiB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onerror = function () { if (typeof window.toast === 'function') toast('Could not read occupant ID image.'); };
+    reader.onload = function () {
+      scope.dataset.occupantIdPhoto = String(reader.result || '');
+      let preview = scope.querySelector('[data-occ-photo-preview]');
+      if (!preview) {
+        preview = document.createElement('img');
+        preview.setAttribute('data-occ-photo-preview', '');
+        preview.alt = 'Occupant ID image preview';
+        preview.style.cssText = 'display:block;max-width:180px;max-height:140px;object-fit:contain;margin-top:8px;border:1px solid var(--line);border-radius:8px;';
+        const field = input.closest('.field');
+        if (field) field.appendChild(preview);
+      }
+      preview.src = scope.dataset.occupantIdPhoto;
+      const status = input.closest('.field')?.querySelector('.muted');
+      if (status) status.textContent = 'ID image selected and ready to save with the guest record.';
+    };
+    reader.readAsDataURL(file);
+  }, true);
+
+  // The existing settings patch added a second input with id=upiQrFile. Remove that
+  // duplicate markup so the visible QR picker maps to the correct handler and preview.
+  try {
+    if (typeof pages !== 'undefined' && pages && typeof pages.settings === 'function') {
+      const previousSettings = pages.settings;
+      pages.settings = function () {
+        let html = previousSettings.apply(this, arguments);
+        html = html.replace(/<div class="field full" style="margin-top:12px"><label for="upiQrFile">UPI payment QR image<\\/label><input id="upiQrFile" type="file" accept="image\\/\\*" onchange="saveUpiQrImage\\(event\\)">[\\s\\S]*?onclick="clearUpiQrImage\\(\\)">Remove QR<\\/button><\\/div><\\/div>/, '');
+        return html;
+      };
+    }
+  } catch (_) {}
 
   window.aureliaNativeFileResult = function (requestId, ok, error) {
     window.dispatchEvent(new CustomEvent('aurelia-native-file-result', {detail:{requestId:requestId, ok:!!ok, error:error || null}}));
