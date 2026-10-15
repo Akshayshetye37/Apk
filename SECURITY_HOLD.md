@@ -24,8 +24,8 @@ The hold remains until authentication tests pass; sensitive records and backups 
 - This branch implements AES-256-GCM encrypted app-private PMS snapshots with an Android-backed key, a first-run PIN gate, a five-attempt lockout, background locking, and device authentication where supported. Legacy localStorage is migrated and cleared only after encrypted save acknowledgement. These changes still need physical-device migration, recovery, and bypass testing.
 - Android backup export now uses a portable passphrase-encrypted envelope with PBKDF2-HMAC-SHA256 and AES-256-GCM. The app does not store the passphrase. Browser-preview exports remain plaintext and show a warning. Legacy plaintext imports remain supported with a warning.
 - Encrypted restore validates the payload before replacing the database and writes an encrypted recovery snapshot. Test wrong passphrases, tampered files, malformed data, large payloads, and storage failures.
-- Google Drive Settings controls are not connected to a complete native backup service. OAuth, encrypted versioning, upload confirmation, retries, and restoration remain outstanding.
-- PDF/CSV/print behavior still needs physical-device testing. The native file-sharing bridge exists, but the HTML app still contains window.open() print paths that may fail in Android WebView.
+- Google Drive upload is disabled in this Android build because the existing path sent plaintext JSON and did not provide verified encrypted recovery. OAuth, encrypted versioning, upload confirmation, retries, and restoration remain outstanding.
+- PDF/CSV/print behavior still needs physical-device testing. The native file-sharing bridge exists, but the HTML app still contains window.open() print paths that may fail in Android WebView. The Android CSP also blocks remote JavaScript libraries; OCR and dynamic jsPDF are intentionally disabled until their libraries are bundled locally.
 - pubspec.lock is generated in CI for review but has not yet been committed. Release build, signing, APK installation, and update behavior remain to be verified.
 - Static checks and CI tests are not a penetration test or device validation.
 
