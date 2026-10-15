@@ -54,7 +54,7 @@ jobs:
             test -s pubspec.lock
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add pubspec.lock
+            git add -f pubspec.lock
             if ! git diff --cached --quiet; then
               git commit -m "chore: commit generated Flutter dependency lockfile"
               git push origin "HEAD:${BRANCH_NAME}"
