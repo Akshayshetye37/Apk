@@ -114,6 +114,9 @@ jobs:
       - name: Run static security checks
         run: python3 scripts/security_static_check.py
 
+      - name: Run backup import regression tests
+        run: node --test tests/backup_import.test.js
+
       - name: Resolve dependencies
         working-directory: ${{ env.PROJECT_DIR }}
         run: |
