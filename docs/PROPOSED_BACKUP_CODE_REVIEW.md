@@ -48,3 +48,31 @@ The newer snippets improve the conceptual direction (one envelope and file-type 
 9. **Dependencies and bridge integration are missing.** `googleapis`, `crypto`, `open_filex`, and `printing` are not declared in the current `pubspec.yaml`. The proposed methods are not wired to the current WebView bridge or tested against Android save/print flows.
 
 **Decision:** keep cloud backup and document open/save/print disabled until an implementation targets the current store, has bounded parsing and a transactional commit/rollback design, passes automated corruption/failure tests, and is verified on physical Android devices.
+
+## Follow-up review: bounded document handler, app-aligned envelope, and negative tests
+
+The latest proposal adds useful defensive checks, but it still cannot be merged as-is:
+
+### Document handler
+- The filename expression still accepts `.` and `..` (and names such as `report..pdf`). Reject dot-segments explicitly and require a normalized basename with an extension consistent with the requested type.
+- A Base64 character-count bound is a good pre-allocation guard, but the decoder must still reject malformed/non-canonical Base64, and the decoded byte count must remain authoritative. Keep the overall request limit at the native bridge boundary too, before converting or copying the message.
+- The PDF header plus `%%EOF` tail check, PNG signature, and JPEG markers are only shallow consistency checks—not deep structural validation or proof that a document is safe. Do not describe these checks as deep validation. CSV is currently allowlisted but has no UTF-8/content validation.
+- The delayed temporary-file deletion remains unawaited and may race with the external viewer. Define a lifecycle policy and handle deletion errors; do not silently claim reliable cleanup.
+- The print method uses the document title as a filename validation input, conflating display title and path-safe filename. Validate the title separately, and enforce a bounded payload before decoding.
+
+### Backup envelope and restore
+- This introduces a new envelope schema rather than using the existing `AureliaEncryptedPmsStore.encryptPortableBackup` / `decryptPortableBackup` format in `lib/main.dart`. A second format creates migration and compatibility risk; extend the existing implementation unless a versioned migration is explicitly designed.
+- The current app schema requires `app: AURELIA PMS`, `formatVersion: 1`, `data`, and validated `guests`, `rooms`, and `bookings` or `reservations` lists. The proposed `posTransactions` / `folios` / `reservations` schema is not compatible.
+- The proposed checksum is external to the envelope. It is useful only if the expected checksum is delivered through a trusted channel. AES-GCM already authenticates the encrypted payload; a digest is primarily useful for transfer/read-back integrity and must be compared to a trusted expected value.
+- `envelopeBytes` has no pre-parse size bound; the decoded ciphertext bound is checked only after JSON and Base64 allocation. Bound the envelope first, then validate exact fields/types and encoded lengths before Base64 decoding.
+- This code returns a string but does not commit it through the existing encrypted store and WebView hydration path. It is not a transactional restore implementation. Reuse the current bridge restore path so validation and durable write happen before live UI state changes.
+- The snippets import `crypto`, `googleapis`, and `http_auth_client.dart`, but those dependencies/files are not configured in the repository. Drive upload is not implemented in this code, either.
+
+### Negative tests
+- `test/security_negative_tests.dart` does not import the proposed service classes, so it will not compile as shown.
+- The tampering test keeps the original checksum, so it fails at the checksum comparison before AES-GCM MAC verification; it does not prove the MAC check works. Add a separate test that modifies ciphertext and recomputes the external digest, then asserts authenticated decryption still fails.
+- The schema test expects `FormatException`, but the proposed restore catches validation exceptions and wraps them in a generic `Exception`; the expectation does not match the implementation.
+- The 21-million-character allocation test is expensive and tests a helper that is not currently present in the repository. Prefer a pure preflight validator test that proves oversized input is rejected without invoking the decoder, plus a bridge-level maximum-message test.
+- Include tests for `.`, `..`, path separators, filename/extension mismatch, malformed Base64, encoded length at and just above the limit, empty and truncated files, PDF/PNG/JPEG marker failures, and temporary cleanup failure.
+
+**Decision:** these are design inputs, not production code. Keep the current production hold. The safe next implementation should extend the existing portable backup format and restore path, add a small independently testable document validation layer, and only then wire the new operations into the native bridge.
