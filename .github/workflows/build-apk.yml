@@ -52,13 +52,13 @@ jobs:
           path: pubspec.lock
           if-no-files-found: error
           retention-days: 7
-      - name: Analyze Flutter source
-        run: flutter analyze --fatal-infos
       - name: Remove generated placeholder widget test
         run: |
           if ! git ls-files --error-unmatch test/widget_test.dart >/dev/null 2>&1; then
             rm -f test/widget_test.dart
           fi
+      - name: Analyze Flutter source
+        run: flutter analyze --fatal-infos
       - name: Run Flutter tests
         run: flutter test
       - name: Run static security checks
