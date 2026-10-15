@@ -271,6 +271,55 @@
     reader.readAsDataURL(file);
   }, true);
 
+  // The PMS model previously discarded occupant ID images when saving a guest or booking.
+  // Carry the selected data URL into the saved occupant record, preserving prior images.
+  try {
+    if (typeof window.saveGuest === 'function') {
+      const originalSaveGuest = window.saveGuest;
+      window.saveGuest = function (id) {
+        const container = document.getElementById('guestOccList');
+        const rows = container ? Array.from(container.querySelectorAll('[data-occ]')) : [];
+        const photos = rows.map(row => row.dataset.occupantIdPhoto || '');
+        const name = document.getElementById('gName')?.value?.trim() || '';
+        const phone = document.getElementById('gPhone')?.value?.trim() || '';
+        const existing = id && typeof DB !== 'undefined' ? DB.guests.find(g => g.id === id) : null;
+        const prior = (existing && existing.occupants || []).map(o => o.idPhoto || '');
+        const wasOpen = !!container;
+        const result = originalSaveGuest.apply(this, arguments);
+        if (wasOpen && !document.getElementById('guestOccList') && typeof DB !== 'undefined') {
+          const guest = id ? DB.guests.find(g => g.id === id) : [...DB.guests].reverse().find(g => g.name === name && g.phone === phone);
+          if (guest && Array.isArray(guest.occupants)) {
+            guest.occupants = guest.occupants.map((o, i) => ({...o, idPhoto: photos[i] || prior[i] || o.idPhoto || ''}));
+            if (typeof window.save === 'function') save();
+          }
+        }
+        return result;
+      };
+    }
+    if (typeof window.saveBookingForm === 'function') {
+      const originalSaveBookingForm = window.saveBookingForm;
+      window.saveBookingForm = function (id) {
+        const container = document.getElementById('occList');
+        const rows = container ? Array.from(container.querySelectorAll('[data-occ]')) : [];
+        const photos = rows.map(row => row.dataset.occupantIdPhoto || '');
+        const name = document.getElementById('bkGuest')?.value?.trim() || 'Guest';
+        const phone = document.getElementById('bkPhone')?.value?.trim() || '';
+        const existing = typeof DB !== 'undefined' ? DB.guests.find(g => g.name.toLowerCase() === name.toLowerCase() && g.phone === phone) : null;
+        const prior = (existing && existing.occupants || []).map(o => o.idPhoto || '');
+        const wasOpen = !!container;
+        const result = originalSaveBookingForm.apply(this, arguments);
+        if (wasOpen && !document.getElementById('occList') && typeof DB !== 'undefined') {
+          const guest = [...DB.guests].reverse().find(g => g.name.toLowerCase() === name.toLowerCase() && g.phone === phone);
+          if (guest && Array.isArray(guest.occupants)) {
+            guest.occupants = guest.occupants.map((o, i) => ({...o, idPhoto: photos[i] || prior[i] || o.idPhoto || ''}));
+            if (typeof window.save === 'function') save();
+          }
+        }
+        return result;
+      };
+    }
+  } catch (error) { console.warn('Could not install occupant image persistence:', error); }
+
   // The existing settings patch added a second input with id=upiQrFile. Remove that
   // duplicate markup so the visible QR picker maps to the correct handler and preview.
   try {
