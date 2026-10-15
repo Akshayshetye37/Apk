@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -21,7 +23,7 @@ class AureliaSecureVault {
   static const FlutterSecureStorage _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
-      resetOnError: true,
+      resetOnError: false,
     ),
   );
 
@@ -33,6 +35,119 @@ class AureliaSecureVault {
 
   static Future<void> deleteSecret(String key) =>
       _storage.delete(key: key);
+}
+
+
+/// Encrypted, app-private storage for the authoritative PMS database.
+/// AES-256-GCM encrypts each snapshot with a random nonce. The key is kept in
+/// Android Keystore-backed secure storage; ciphertext files are never plaintext.
+class AureliaEncryptedPmsStore {
+  AureliaEncryptedPmsStore._();
+
+  static const String _keyName = 'aurelia_pms_database_key_v1';
+  static const String _aad = 'aurelia-pms-database-v1';
+  static final AesGcm _algorithm = AesGcm.with256bits();
+  static Future<void> _pendingWrite = Future<void>.value();
+
+  static Future<Directory> _directory() async {
+    final directory = await getApplicationSupportDirectory();
+    await directory.create(recursive: true);
+    return directory;
+  }
+
+  static Future<File> _file(String name) async =>
+      File('${(await _directory()).path}/$name');
+
+  static Future<SecretKey> _key({required bool createIfMissing}) async {
+    final stored = await AureliaSecureVault.readSecret(_keyName);
+    if (stored != null) {
+      final bytes = base64Decode(stored);
+      if (bytes.length != 32) {
+        throw StateError('The saved PMS encryption key is invalid. Data was not changed.');
+      }
+      return SecretKey(bytes);
+    }
+    if (!createIfMissing) {
+      throw StateError('The PMS encryption key is missing. Data was not changed.');
+    }
+    final bytes = List<int>.generate(32, (_) => math.Random.secure().nextInt(256));
+    await AureliaSecureVault.writeSecret(_keyName, base64Encode(bytes));
+    return SecretKey(bytes);
+  }
+
+  static Future<String?> read() async {
+    final primary = await _file('aurelia-pms-primary.enc');
+    final recovery = await _file('aurelia-pms-recovery.enc');
+    if (!await primary.exists() && !await recovery.exists()) return null;
+
+    final key = await _key(createIfMissing: false);
+    Object? primaryError;
+    for (final file in <File>[primary, recovery]) {
+      if (!await file.exists()) continue;
+      try {
+        final envelope = jsonDecode(await file.readAsString());
+        if (envelope is! Map<String, dynamic> || envelope['version'] != 1 ||
+            envelope['algorithm'] != 'AES-256-GCM') {
+          throw const FormatException('Unsupported encrypted PMS data format.');
+        }
+        final box = SecretBox(
+          base64Decode(envelope['ciphertext'] as String),
+          nonce: base64Decode(envelope['nonce'] as String),
+          mac: Mac(base64Decode(envelope['tag'] as String)),
+        );
+        final clear = await _algorithm.decrypt(
+          box,
+          secretKey: key,
+          aad: utf8.encode(_aad),
+        );
+        final text = utf8.decode(clear);
+        if (jsonDecode(text) is! Map<String, dynamic>) {
+          throw const FormatException('Encrypted PMS data has an invalid root structure.');
+        }
+        return text;
+      } catch (error) {
+        primaryError ??= error;
+      }
+    }
+    throw StateError('Encrypted PMS data could not be opened. The original files were preserved. Details: $primaryError');
+  }
+
+  static Future<void> write(String json) {
+    final next = _pendingWrite.then((_) => _writeNow(json));
+    _pendingWrite = next.catchError((Object _) {});
+    return next;
+  }
+
+  static Future<void> _writeNow(String json) async {
+    if (json.length > 20 * 1024 * 1024) {
+      throw const FormatException('PMS database exceeds the 20 MB storage limit.');
+    }
+    if (jsonDecode(json) is! Map<String, dynamic>) {
+      throw const FormatException('PMS database must be a JSON object.');
+    }
+    final key = await _key(createIfMissing: true);
+    final box = await _algorithm.encrypt(
+      utf8.encode(json),
+      secretKey: key,
+      aad: utf8.encode(_aad),
+    );
+    final envelope = jsonEncode({
+      'version': 1,
+      'algorithm': 'AES-256-GCM',
+      'nonce': base64Encode(box.nonce),
+      'ciphertext': base64Encode(box.cipherText),
+      'tag': base64Encode(box.mac.bytes),
+    });
+    await _writeEnvelope('aurelia-pms-primary.enc', envelope);
+    await _writeEnvelope('aurelia-pms-recovery.enc', envelope);
+  }
+
+  static Future<void> _writeEnvelope(String name, String envelope) async {
+    final target = await _file(name);
+    final temporary = await _file('$name.tmp');
+    await temporary.writeAsString(envelope, flush: true);
+    await temporary.rename(target.path);
+  }
 }
 
 void main() {
@@ -152,6 +267,17 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         final cleaned = rawId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
         requestId = cleaned.substring(0, cleaned.length.clamp(0, 64).toInt());
       }
+      if (value['type'] == 'savePmsData') {
+        final dataValue = value['data'];
+        if (requestId == null || dataValue is! String) {
+          throw const FormatException('Missing secure database fields');
+        }
+        await AureliaEncryptedPmsStore.write(dataValue);
+        await _controller.runJavaScript(
+          'window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},true,null);',
+        );
+        return;
+      }
       if (value['type'] == 'generateQr') {
         final text = value['text'];
         if (text is! String || text.isEmpty || text.length > 2048) throw const FormatException('Invalid QR content');
@@ -192,7 +318,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       debugPrint('Aurelia native bridge rejected request: $error');
       if (requestId != null) {
         try {
-          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
+          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
         } catch (_) {}
       }
     }
@@ -200,10 +326,33 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
 
   Future<void> _loadLocalPms() async {
     try {
-      await _controller.loadFlutterAsset('assets/index.html');
+      // Decrypt before app JavaScript executes so legacy localStorage is never
+      // authoritative in the native app. If decryption fails, fail closed.
+      final saved = await AureliaEncryptedPmsStore.read();
+      final html = await rootBundle.loadString('assets/index.html');
+      final headEnd = html.toLowerCase().indexOf('</head>');
+      if (headEnd < 0) throw const FormatException('Bundled PMS HTML has no head element.');
+      final bootstrap = '<script id="aurelia-secure-db-bootstrap">'
+          'window.__AURELIA_SECURE_DB_READY=true;'
+          'window.__AURELIA_SECURE_DB_EXISTS=${saved != null};'
+          'window.__AURELIA_SECURE_DB_BOOTSTRAP=${saved == null ? 'null' : jsonEncode(jsonDecode(saved))};'
+          '</script>';
+      final page = html.substring(0, headEnd) + bootstrap + html.substring(headEnd);
+      await _controller.loadHtmlString(
+        page,
+        baseUrl: 'file:///android_asset/flutter_assets/assets/index.html',
+      );
     } catch (e) {
-      debugPrint('Could not load Aurelia PMS asset: $e');
+      debugPrint('Could not safely open Aurelia PMS data: $e');
       if (mounted) setState(() => _loading = false);
+      // Never fall back to seed data when encrypted records exist but cannot be
+      // decrypted. This avoids a false empty state and accidental overwrites.
+      await _controller.loadHtmlString(
+        '<!doctype html><html><meta name="viewport" content="width=device-width">'
+        '<body style="font:16px sans-serif;padding:24px"><h2>Aurelia PMS data could not be opened</h2>'
+        '<p>Your saved data has not been deleted or replaced. Do not uninstall the app or clear its data. '
+        'Restore access to the device encryption key or recover from a trusted backup before continuing.</p></body></html>',
+      );
     }
   }
 
