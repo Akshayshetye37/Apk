@@ -329,13 +329,21 @@ Future<Uint8List> _renderHtmlPdf(String source) async {
           final normalized = rows.map((r) => <String>[...r, ...List<String>.filled(width - r.length, '')]).toList();
           widgets.add(pw.Padding(
             padding: const pw.EdgeInsets.only(bottom: 10),
-            child: pw.TableHelper.fromTextArray(
-              data: normalized,
-              headerCount: 1,
-              cellStyle: const pw.TextStyle(fontSize: 7),
-              headerStyle: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
-              cellPadding: const pw.EdgeInsets.all(4),
+            child: pw.Table(
               border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.4),
+              children: normalized.asMap().entries.map((entry) => pw.TableRow(
+                decoration: entry.key == 0 ? const pw.BoxDecoration(color: PdfColors.grey300) : null,
+                children: entry.value.map((cell) => pw.Padding(
+                  padding: const pw.EdgeInsets.all(4),
+                  child: pw.Text(
+                    cell,
+                    style: pw.TextStyle(
+                      fontSize: 7,
+                      fontWeight: entry.key == 0 ? pw.FontWeight.bold : pw.FontWeight.normal,
+                    ),
+                  ),
+                )).toList(),
+              )).toList(),
             ),
           ));
         }
