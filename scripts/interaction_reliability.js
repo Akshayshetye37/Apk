@@ -11,7 +11,7 @@
   function errorMessage(error) { return error && error.message ? error.message : String(error); }
   function getLiveDb() {
     if (typeof DB !== 'undefined' && DB && typeof DB === 'object') return DB;
-    return getLiveDb() && typeof getLiveDb() === 'object' ? getLiveDb() : null;
+    return window.DB && typeof window.DB === 'object' ? window.DB : null;
   }
   function isNativeSecureApp() {
     return !!(window.AureliaNative && typeof window.AureliaNative.postMessage === 'function' && window.__AURELIA_SECURE_DB_READY);
