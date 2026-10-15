@@ -22,6 +22,7 @@ The hold remains until authentication tests pass; sensitive records and backups 
 ## Known limitations at the time this hold was added
 
 - PMS records are currently stored in WebView `localStorage`; native secure storage does not encrypt that store.
+- Local JSON backup exports are plaintext and may contain guest/payment data. Import validation reduces malformed-input and prototype-pollution risk, but does not provide encryption or cryptographic authenticity.
 - Google Drive Settings controls are not connected to a complete native backup service.
 - The screenshot-reported print/export path uses `window.open()`, which is not reliable in Android WebView and needs a native-supported flow plus physical-device testing.
 - Static security checks and CI compilation are not penetration tests or device validation.
