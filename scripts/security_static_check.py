@@ -6,6 +6,7 @@ import sys
 root = Path(__file__).resolve().parents[1]
 html = (root / 'assets/index.html').read_text(encoding='utf-8')
 main = (root / 'lib/main.dart').read_text(encoding='utf-8')
+gate = (root / 'lib/pms_access_gate.dart').read_text(encoding='utf-8')
 backup = (root / 'scripts/interaction_reliability.js').read_text(encoding='utf-8')
 pub = (root / 'pubspec.yaml').read_text(encoding='utf-8')
 manifest = (root / 'android/app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
@@ -19,7 +20,8 @@ if 'Google Drive sync is disabled in this Android build' not in html: errors.app
 if 'window.__AURELIA_SECURE_DB_READY)return false' not in html: errors.append('Dynamic remote PDF JavaScript must remain disabled in the native app.')
 if 'Pbkdf2(' not in main or 'exportEncryptedBackup' not in main or 'restoreEncryptedBackup' not in main: errors.append('Portable passphrase-encrypted backup/restore is missing.')
 if 'local_auth: 2.3.0' not in pub or 'FlutterFragmentActivity' not in (root / 'android/app/src/main/kotlin/com/example/aurelia_pms/MainActivity.kt').read_text(encoding='utf-8') or 'android.permission.USE_BIOMETRIC' not in manifest: errors.append('Native PIN/device authentication support is incomplete.')
-if '_pinLockUntilKey' not in main or '310000' not in main or 'didChangeAppLifecycleState' not in main: errors.append('PIN lockout or background-session locking is missing.')
+if '_lockUntilKey' not in gate or '310000' not in gate or 'didChangeAppLifecycleState' not in main: errors.append('PIN lockout or background-session locking is missing.')
+if 'PmsAccessGate' not in main or 'local_auth' not in gate: errors.append('Native PIN/device authentication gate is missing.')
 if 'FLAG_SECURE' not in activity: errors.append('Android screenshots and recent-app previews must be protected.')
 if not html.strip(): errors.append('Bundled PMS HTML asset is empty; refusing to package a blank app.')
 if 'quickchart.io/qr' in html.lower() or 'api.qrserver.com' in html.lower(): errors.append('External QR generation service remains in HTML.')
