@@ -598,11 +598,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       final bootstrapData = saved == null
           ? 'null'
           : jsonEncode(jsonDecode(saved))
-              .replaceAll('<', r'\\u003c')
-              .replaceAll('>', r'\\u003e')
-              .replaceAll('&', r'\\u0026')
-              .replaceAll('\u2028', r'\\u2028')
-              .replaceAll('\u2029', r'\\u2029');
+              .replaceAll('<', r'\u003c')
+              .replaceAll('>', r'\u003e')
+              .replaceAll('&', r'\u0026')
+              .replaceAll('\u2028', r'\u2028')
+              .replaceAll('\u2029', r'\u2029');
       final bootstrap = '<script id="aurelia-secure-db-bootstrap">'
           'window.__AURELIA_SECURE_DB_READY=true;'
           'window.__AURELIA_SECURE_DB_EXISTS=${saved != null};'
