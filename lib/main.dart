@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:cryptography/cryptography.dart';
 import 'pms_access_gate.dart';
@@ -400,17 +401,33 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
             final picked = await FilePicker.platform.pickFiles(
               type: imageOnly ? FileType.image : FileType.any,
               allowMultiple: params.mode == FileSelectorMode.openMultiple,
+              withData: true,
             );
             if (picked == null) return <String>[];
             const blockedExtensions = <String>{
               'apk','exe','bat','cmd','sh','js','html','htm','jar','dex','so','dll','msi'
             };
             final maxBytes = backupFile ? 30 * 1024 * 1024 : 15 * 1024 * 1024;
-            return picked.files.where((file) {
-              if (file.path == null || file.size > maxBytes) return false;
+            final selectedPaths = <String>[];
+            final cache = await getTemporaryDirectory();
+            for (final file in picked.files) {
               final extension = (file.extension ?? '').toLowerCase();
-              return !blockedExtensions.contains(extension);
-            }).map((file) => file.path!).toList();
+              if (file.size > maxBytes || blockedExtensions.contains(extension)) continue;
+              // Some Android document providers expose bytes but no stable filesystem path.
+              // Materialize a bounded cache copy so WebView can read the selected file.
+              var path = file.path;
+              final bytes = file.bytes;
+              if (path == null && bytes != null) {
+                final safeName = (file.name.split(RegExp(r'[/\\\\]')).last)
+                    .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+                if (safeName.isEmpty || safeName == '.' || safeName == '..') continue;
+                final target = File('${cache.path}/upload_${DateTime.now().microsecondsSinceEpoch}_$safeName');
+                await target.writeAsBytes(bytes, flush: true);
+                path = target.path;
+              }
+              if (path != null) selectedPaths.add(path);
+            }
+            return selectedPaths;
           } catch (error) {
             debugPrint('Aurelia PMS file selection failed: $error');
             return <String>[];
@@ -518,20 +535,56 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         await _controller.runJavaScript('window.aureliaNativeQrResult(${jsonEncode(requestId)},${jsonEncode(data)},null);');
         return;
       }
-      if (value['type'] == 'shareFile') {
+      if (value['type'] == 'shareFile' || value['type'] == 'saveFile' || value['type'] == 'openFile') {
         final nameValue = value['name'], mimeValue = value['mime'], dataValue = value['data'];
-        if (nameValue is! String || mimeValue is! String || dataValue is! String) throw const FormatException('Missing file fields');
-        if (dataValue.length > 20 * 1024 * 1024) throw const FormatException('File too large');
-        final safeName = nameValue.split(RegExp(r'[/\\\\]')).last.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-        if (safeName.isEmpty || safeName == '.' || safeName == '..') throw const FormatException('Invalid file name');
-        const allowed = <String>{'text/csv','application/json','application/pdf','text/plain','text/html','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','image/png','image/jpeg','application/octet-stream'};
-        final mime = allowed.contains(mimeValue) ? mimeValue : 'application/octet-stream';
+        if (requestId == null || nameValue is! String || mimeValue is! String || dataValue is! String) {
+          throw const FormatException('Missing file fields');
+        }
+        // Bound encoded data before base64Decode allocates the decoded buffer.
+        const maxBytes = 15 * 1024 * 1024;
+        const maxBase64Chars = (maxBytes * 4 + 2) ~/ 3;
+        if (dataValue.isEmpty || dataValue.length > maxBase64Chars) {
+          throw const FormatException('File exceeds the 15 MiB export limit');
+        }
+        final safeName = nameValue.split(RegExp(r'[/\\\\]')).last
+            .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+        if (safeName.isEmpty || safeName == '.' || safeName == '..' ||
+            safeName.length > 120 || safeName.startsWith('.')) {
+          throw const FormatException('Invalid file name');
+        }
         final bytes = base64Decode(dataValue);
-        if (bytes.length > 15 * 1024 * 1024) throw const FormatException('File too large');
+        if (bytes.isEmpty || bytes.length > maxBytes) throw const FormatException('File size is invalid');
+        final ext = safeName.contains('.') ? safeName.split('.').last.toLowerCase() : '';
+        const mimeByExtension = <String, String>{
+          'pdf':'application/pdf','png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg',
+          'webp':'image/webp','gif':'image/gif','bmp':'image/bmp','csv':'text/csv',
+          'json':'application/json','txt':'text/plain','xml':'application/xml',
+          'html':'text/html','htm':'text/html','xls':'application/vnd.ms-excel',
+          'xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'doc':'application/msword','docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'ppt':'application/vnd.ms-powerpoint','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'zip':'application/zip','rtf':'application/rtf',
+        };
+        final mime = mimeByExtension[ext] ?? (mimeValue == 'application/octet-stream' ? mimeValue : mimeValue);
         final temp = await getTemporaryDirectory();
         final file = File('${temp.path}/$safeName');
         await file.writeAsBytes(bytes, flush: true);
-        await Share.shareXFiles([XFile(file.path, mimeType: mime, name: safeName)], subject: safeName);
+        if (value['type'] == 'saveFile') {
+          final savedPath = await FilePicker.platform.saveFile(
+            dialogTitle: 'Save Aurelia export',
+            fileName: safeName,
+            type: FileType.any,
+            bytes: bytes,
+          );
+          if (savedPath == null) throw const FormatException('Save cancelled');
+        } else if (value['type'] == 'openFile') {
+          final result = await OpenFilex.open(file.path, type: mime);
+          if (result.type != ResultType.done) {
+            throw StateError('No compatible external app could open this file: ${result.message}');
+          }
+        } else {
+          await Share.shareXFiles([XFile(file.path, mimeType: mime, name: safeName)], subject: safeName);
+        }
         await _controller.runJavaScript('window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
