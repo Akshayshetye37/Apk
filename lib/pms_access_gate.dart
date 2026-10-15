@@ -85,7 +85,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Secure authentication could not be loaded. Do not clear app data or reinstall. ${error}';
+        _error = 'Secure authentication could not be loaded. Do not clear app data or reinstall. $error';
       });
     }
   }
