@@ -39,24 +39,25 @@ jobs:
           BRANCH_NAME: ${{ github.event.pull_request.head.ref || github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ -s pubspec.lock ]]; then
-            flutter pub get --enforce-lockfile
+          if [[ -s pubspec.lock ]] && flutter pub get --enforce-lockfile; then
+            echo "Committed dependency lockfile is consistent."
           else
             if [[ "$EVENT_NAME" == "pull_request" && "$HEAD_REPOSITORY" != "$BASE_REPOSITORY" ]]; then
-              echo "::error::pubspec.lock is missing. Fork PRs must include the generated lockfile."
+              echo "::error::Fork PR lockfile is missing or stale. Regenerate pubspec.lock and include it in the PR."
               exit 1
             fi
             if [[ "$BRANCH_NAME" == "main" ]]; then
-              echo "::error::pubspec.lock is missing on main. Add the generated lockfile in a reviewed commit."
+              echo "::error::pubspec.lock is missing or stale on main. Update it in a reviewed commit."
               exit 1
             fi
+            echo "Refreshing the lockfile on this trusted remediation branch."
             flutter pub get
             test -s pubspec.lock
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -f pubspec.lock
             if ! git diff --cached --quiet; then
-              git commit -m "chore: commit generated Flutter dependency lockfile"
+              git commit -m "chore: refresh Flutter dependency lockfile"
               git push origin "HEAD:${BRANCH_NAME}"
             fi
             flutter pub get --enforce-lockfile
