@@ -51,14 +51,14 @@ jobs:
           patches = [('scripts/interaction_reliability.js', 'aurelia-interaction-reliability-patch'), ('scripts/file_viewing.js', 'aurelia-file-viewing-patch')]
           for source_path, patch_id in patches:
               source = Path(source_path).read_text(encoding='utf-8')
-              tag = '<script id="' + patch_id + '">\\n' + source + '\\n</script>'
+              tag = '<script id="' + patch_id + '">\n' + source + '\n</script>'
               if 'id="' + patch_id + '"' not in text:
                   pos = text.lower().rfind('</body>')
                   if pos < 0:
                       raise SystemExit('Could not locate </body> in assets/index.html')
                   text = text[:pos] + tag + text[pos:]
           html.write_text(text, encoding='utf-8')
-          scripts = re.findall(r'<script\\b[^>]*>(.*?)</script\\s*>', text, re.I | re.S)
+          scripts = re.findall(r'<script\b[^>]*>(.*?)</script\s*>', text, re.I | re.S)
           for index, script in enumerate(scripts):
               if not script.strip():
                   continue
