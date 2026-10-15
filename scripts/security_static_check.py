@@ -22,8 +22,9 @@ for line in pub.splitlines():
  if re.match(r'\s{2}[a-zA-Z0-9_]+:\s+\^',line): errors.append('Unpinned direct dependency: '+line.strip()); break
 if 'base64Decode(dataValue)' not in main or '15 * 1024 * 1024' not in main: errors.append('Native export size validation missing.')
 if 'function validateBackup(data)' not in backup or 'FORBIDDEN_KEYS' not in backup: errors.append('Backup import schema and prototype-pollution validation is missing.')
+if 'restoreEncryptedBackup' not in backup or 'aureliaNativeBackupRestoreResult' not in backup: errors.append('Encrypted portable backup restore is missing.')
 if '20 * 1024 * 1024' not in backup or 'formatVersion' not in backup: errors.append('Backup size or format-version validation is missing.')
-if 'This backup is NOT encrypted' not in backup: errors.append('Plaintext backup export warning is missing.')
+if 'NOT encrypted' not in backup or 'exportEncryptedBackup' not in backup: errors.append('Encrypted Android backup export or plaintext preview warning is missing.')
 if not (root / 'tests/backup_import.test.js').is_file(): errors.append('Backup import regression tests are missing.')
 if "replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')" not in main: errors.append('Native filename sanitization missing.')
 if errors:
