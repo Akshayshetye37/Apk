@@ -288,13 +288,66 @@ const seed={
  seq:{booking:1000,reservation:0,invoice:1,expense:1}
 };
 // Storage adapter: sandboxed previews may deny localStorage access entirely.
-const aureliaStorage=(()=>{let memory={};let store=null;try{store=window.localStorage;const probe='__aurelia_storage_probe__';store.setItem(probe,'1');store.removeItem(probe);}catch(_){store=null;}return {getItem(k){try{return store?store.getItem(k):(memory[k]??null)}catch(_){return memory[k]??null}},setItem(k,v){try{if(store){store.setItem(k,String(v));return}}catch(_){}memory[k]=String(v)},removeItem(k){try{if(store){store.removeItem(k);return}}catch(_){}delete memory[k]}}})();
+const aureliaStorage=(()=>{
+ let memory={};let store=null;
+ const nativeSecure=!!(window.AureliaNative&&window.__AURELIA_SECURE_DB_READY);
+ try{store=window.localStorage;if(store)store.getItem('__aurelia_storage_probe__');}catch(_){store=null;}
+ function clearLegacy(){
+  try{if(store){['aurelia_pms_v3','aurelia_pms_v3_autobackup','aurelia_pms_v3_autobackup_time'].forEach(k=>store.removeItem(k));}}catch(_){}
+ }
+ window.__aureliaPendingDbSaves=window.__aureliaPendingDbSaves||{};
+ window.aureliaNativePmsSaveResult=function(requestId,ok,error){
+  const pending=window.__aureliaPendingDbSaves[requestId];
+  if(pending)delete window.__aureliaPendingDbSaves[requestId];
+  if(ok){
+   window.__AURELIA_SECURE_DB_EXISTS=true;
+   if(pending){try{window.__AURELIA_SECURE_DB_BOOTSTRAP=JSON.parse(pending.snapshot);}catch(_){}}
+   window.__AURELIA_MIGRATE_LEGACY=false;
+   clearLegacy();
+  }else{
+   console.error('[AURELIA] Encrypted database save failed:',error||'Unknown error');
+   try{if(typeof window.toast==='function')window.toast('SECURE SAVE FAILED. Keep the app open and export/recover your data before restarting. '+String(error||''));}catch(_){}
+  }
+ };
+ if(nativeSecure&&window.__AURELIA_SECURE_DB_EXISTS)clearLegacy();
+ return {
+  getItem(k){
+   if(nativeSecure){
+    if(k==='aurelia_pms_v3'&&window.__AURELIA_SECURE_DB_EXISTS&&window.__AURELIA_SECURE_DB_BOOTSTRAP)return JSON.stringify(window.__AURELIA_SECURE_DB_BOOTSTRAP);
+    if(!window.__AURELIA_SECURE_DB_EXISTS&&store){try{return store.getItem(k)}catch(_){}}
+    return memory[k]??null;
+   }
+   try{return store?store.getItem(k):(memory[k]??null)}catch(_){return memory[k]??null}
+  },
+  setItem(k,v){
+   const value=String(v);
+   if(nativeSecure){
+    memory[k]=value;
+    if(k==='aurelia_pms_v3'){
+     const requestId='db_'+Date.now()+'_'+Math.random().toString(36).slice(2,10);
+     window.__aureliaPendingDbSaves[requestId]={snapshot:value};
+     try{window.AureliaNative.postMessage(JSON.stringify({type:'savePmsData',requestId:requestId,data:value}));}
+     catch(error){window.aureliaNativePmsSaveResult(requestId,false,String(error));}
+    }
+    return;
+   }
+   try{if(store){store.setItem(k,value);return}}catch(_){}
+   memory[k]=value;
+  },
+  removeItem(k){
+   delete memory[k];
+   if(nativeSecure)return;
+   try{if(store){store.removeItem(k);return}}catch(_){}
+  }
+ };
+})();
 function loadAureliaDB(){
  const primary=aureliaStorage.getItem('aurelia_pms_v3');
- if(primary){try{const parsed=JSON.parse(primary);if(parsed&&typeof parsed==='object')return parsed;}catch(e){console.warn('Primary PMS data could not be parsed; trying recovery snapshot.',e);}}
+ if(window.__AURELIA_SECURE_DB_READY&&window.__AURELIA_SECURE_DB_EXISTS&&window.__AURELIA_SECURE_DB_BOOTSTRAP&&typeof window.__AURELIA_SECURE_DB_BOOTSTRAP==='object')return JSON.parse(JSON.stringify(window.__AURELIA_SECURE_DB_BOOTSTRAP));
+ if(primary){try{const parsed=JSON.parse(primary);if(parsed&&typeof parsed==='object'){if(window.__AURELIA_SECURE_DB_READY&&!window.__AURELIA_SECURE_DB_EXISTS)window.__AURELIA_MIGRATE_LEGACY=true;return parsed;}}catch(e){console.warn('Primary PMS data could not be parsed; trying recovery snapshot.',e);}}
  try{
    const backup=aureliaStorage.getItem('aurelia_pms_v3_autobackup');
-   if(backup){const parsed=JSON.parse(backup);if(parsed&&typeof parsed==='object'){console.warn('Loaded PMS recovery snapshot. Review recent changes and save to restore the main copy.');return parsed;}}
+   if(backup){const parsed=JSON.parse(backup);if(parsed&&typeof parsed==='object'){if(window.__AURELIA_SECURE_DB_READY&&!window.__AURELIA_SECURE_DB_EXISTS)window.__AURELIA_MIGRATE_LEGACY=true;console.warn('Loaded PMS recovery snapshot. Review recent changes and save to restore the main copy.');return parsed;}}
  }catch(e){console.warn('PMS recovery snapshot could not be loaded.',e);}
  return seed;
 }
@@ -317,8 +370,9 @@ function save(){
      aureliaStorage.setItem('aurelia_pms_v3_autobackup_time',new Date().toISOString());
    }
  }catch(e){ /* storage quota/privacy mode: primary save remains authoritative */ }
- try{if(typeof aureliaQueueDriveBackup==='function')aureliaQueueDriveBackup()}catch(_){}
+ try{if(!window.__AURELIA_MIGRATE_LEGACY&&typeof aureliaQueueDriveBackup==='function')aureliaQueueDriveBackup()}catch(_){}
 }
+if(window.__AURELIA_MIGRATE_LEGACY)save();
 function money(n){return `${DB.settings.currency||'₹'}${Number(n||0).toLocaleString('en-IN')}`}
 function guest(b){return DB.guests.find(g=>g.id===b.guestId)}
 function room(b){return DB.rooms.find(r=>r.id===b.roomId)}
