@@ -308,6 +308,13 @@ const aureliaStorage=(()=>{
    console.error('[AURELIA] Encrypted database save failed:',error||'Unknown error');
    try{if(typeof window.toast==='function')window.toast('SECURE SAVE FAILED. Keep the app open and export/recover your data before restarting. '+String(error||''));}catch(_){}
   }
+  if(pending&&typeof pending.resolve==='function')pending.resolve({ok:!!ok,error:error||null});
+ };
+ window.aureliaWaitForSecureSave=async function(){
+  const pending=window.__aureliaLastSecureSavePromise;
+  if(!pending)return;
+  const result=await pending;
+  if(!result.ok)throw new Error('Encrypted save failed: '+String(result.error||'unknown error'));
  };
  if(nativeSecure&&window.__AURELIA_SECURE_DB_EXISTS)clearLegacy();
  return {
@@ -325,7 +332,7 @@ const aureliaStorage=(()=>{
     memory[k]=value;
     if(k==='aurelia_pms_v3'){
      const requestId='db_'+Date.now()+'_'+Math.random().toString(36).slice(2,10);
-     window.__aureliaPendingDbSaves[requestId]={snapshot:value};
+     let resolveSave;const savePromise=new Promise(resolve=>{resolveSave=resolve});window.__aureliaLastSecureSavePromise=savePromise;window.__aureliaPendingDbSaves[requestId]={snapshot:value,resolve:resolveSave,promise:savePromise};
      try{window.AureliaNative.postMessage(JSON.stringify({type:'savePmsData',requestId:requestId,data:value}));}
      catch(error){window.aureliaNativePmsSaveResult(requestId,false,String(error));}
     }
