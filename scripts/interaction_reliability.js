@@ -1,13 +1,17 @@
-/* Aurelia PMS interaction and upload reliability patch. */
+/* Aurelia PMS interaction, encrypted backup, and import reliability patch. */
 (function () {
   'use strict';
   const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
+  const MAX_ENCRYPTED_BACKUP_BYTES = 30 * 1024 * 1024;
   const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
   function notify(message) {
     if (typeof window.toast === 'function') window.toast(message);
     else console.info('[AURELIA]', message);
   }
   function errorMessage(error) { return error && error.message ? error.message : String(error); }
+  function isNativeSecureApp() {
+    return !!(window.AureliaNative && typeof window.AureliaNative.postMessage === 'function' && window.__AURELIA_SECURE_DB_READY);
+  }
 
   window.addEventListener('error', function (event) {
     if (event && event.message) console.error('[AURELIA interaction patch]', event.message);
@@ -24,8 +28,8 @@
   document.addEventListener('change', function (event) {
     const input = event.target;
     if (!input || input.type !== 'file' || !input.files || !input.files.length) return;
-    if (input.files[0].size > MAX_BACKUP_BYTES) {
-      input.value = ''; notify('That file is larger than 20 MB. Choose a smaller image or document.');
+    if (input.files[0].size > MAX_ENCRYPTED_BACKUP_BYTES) {
+      input.value = ''; notify('That file is larger than 30 MB. Choose a smaller image or document.');
     }
   }, true);
 
@@ -59,18 +63,49 @@
       if (!Array.isArray(data[key])) throw new Error('Backup is missing the required "' + key + '" list.');
     });
     if (!Array.isArray(data.bookings) && !Array.isArray(data.reservations)) throw new Error('Backup must contain a bookings or reservations list.');
-    ['guests','rooms','bookings','reservations','inventory','expenses','payments'].forEach(function (key) {
+    ['guests','rooms','bookings','reservations','inventory','expenses','payments','audit','invoices','inventoryLedger','restaurantSales','paymentSignals'].forEach(function (key) {
       if (Object.prototype.hasOwnProperty.call(data, key) && !Array.isArray(data[key])) throw new Error('The "' + key + '" section must be a list.');
     });
     validateTree(data, 0, {nodes:0});
     return JSON.parse(JSON.stringify(data));
   }
 
-  // JSON backups are plaintext. Warn before generating a file that may contain PII.
+  window.__aureliaPendingBackupExports = {};
+  window.__aureliaPendingBackupRestores = {};
+  window.aureliaNativeBackupExportResult = function (requestId, ok, error) {
+    delete window.__aureliaPendingBackupExports[requestId];
+    if (ok) notify('Encrypted backup was handed to Android sharing. Save it somewhere private.');
+    else notify('Encrypted backup failed: ' + String(error || 'Unknown error'));
+  };
+  window.aureliaNativeBackupRestoreResult = function (requestId, ok, error) {
+    delete window.__aureliaPendingBackupRestores[requestId];
+    if (!ok) { notify('Encrypted restore failed: ' + String(error || 'Unknown error')); return; }
+    notify('Encrypted backup restored successfully. Reloading PMS…');
+    setTimeout(function () { window.location.reload(); }, 250);
+  };
+
   window.aureliaDownloadBackup = function () {
     try {
       if (!window.DB || typeof window.DB !== 'object' || Array.isArray(window.DB)) throw new Error('PMS data is not ready yet.');
-      if (!window.confirm('WARNING: This backup is NOT encrypted and may contain guest and payment records. Anyone who gets the file may read them. Store it securely and never share it publicly. Continue?')) return;
+      if (isNativeSecureApp()) {
+        const passphrase = window.prompt('Create a strong backup passphrase (at least 12 characters). It is not saved by the app. You will need it to restore this backup on any device.');
+        if (passphrase === null) return;
+        if (passphrase.length < 12 || passphrase.length > 1024) throw new Error('Use a backup passphrase between 12 and 1024 characters.');
+        const confirmation = window.prompt('Re-enter the backup passphrase to confirm.');
+        if (confirmation === null) return;
+        if (passphrase !== confirmation) throw new Error('The passphrases do not match.');
+        const requestId = 'backup_export_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+        window.__aureliaPendingBackupExports[requestId] = true;
+        window.AureliaNative.postMessage(JSON.stringify({
+          type: 'exportEncryptedBackup',
+          requestId: requestId,
+          data: JSON.stringify(window.DB),
+          passphrase: passphrase
+        }));
+        notify('Encrypting backup. Choose a private destination in the Android share sheet.');
+        return;
+      }
+      if (!window.confirm('This browser backup is NOT encrypted and may contain guest and payment records. Anyone who gets the file may read them. Continue?')) return;
       const serialized = JSON.stringify({app:'AURELIA PMS',formatVersion:1,exportedAt:new Date().toISOString(),data:window.DB}, null, 2);
       if (new Blob([serialized]).size > MAX_BACKUP_BYTES) throw new Error('Backup exceeds the 20 MB limit.');
       const url = URL.createObjectURL(new Blob([serialized], {type:'application/json;charset=utf-8'}));
@@ -78,20 +113,40 @@
       a.href = url; a.download = 'aurelia-pms-backup-' + new Date().toISOString().slice(0,10) + '.json';
       a.style.display = 'none'; document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
-      notify('Plaintext PMS backup downloaded. Keep this file private and secure.');
+      notify('Plaintext browser backup downloaded. Keep this file private and secure.');
     } catch (error) { notify('Backup failed: ' + errorMessage(error)); }
   };
 
   window.aureliaImportBackupFile = function (file) {
     if (!file) return;
-    if (file.size > MAX_BACKUP_BYTES) { notify('Import failed: backup exceeds the 20 MB limit.'); return; }
+    if (file.size > MAX_ENCRYPTED_BACKUP_BYTES) { notify('Import failed: backup exceeds the 30 MB limit.'); return; }
     const reader = new FileReader();
     reader.onerror = function () { notify('Could not read backup file.'); };
     reader.onload = async function () {
       try {
         const parsed = JSON.parse(String(reader.result || ''));
+        if (parsed && parsed.app === 'AURELIA PMS ENCRYPTED BACKUP') {
+          if (!isNativeSecureApp()) throw new Error('Encrypted backups can only be restored in the installed Android app.');
+          const passphrase = window.prompt('Enter the passphrase used when this backup was created.');
+          if (passphrase === null) return;
+          if (!passphrase) throw new Error('A backup passphrase is required.');
+          if (!window.confirm('Restore this encrypted backup? Current PMS data will be replaced. A recovery snapshot will be retained.')) return;
+          const requestId = 'backup_restore_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+          window.__aureliaPendingBackupRestores[requestId] = true;
+          window.AureliaNative.postMessage(JSON.stringify({
+            type: 'restoreEncryptedBackup',
+            requestId: requestId,
+            envelope: parsed,
+            passphrase: passphrase
+          }));
+          notify('Decrypting and validating backup before replacing local data…');
+          return;
+        }
         if (parsed && parsed.app && parsed.app !== 'AURELIA PMS') throw new Error('This backup belongs to a different application.');
         if (parsed && parsed.formatVersion !== undefined && parsed.formatVersion !== 1) throw new Error('Unsupported backup format version.');
+        if (isNativeSecureApp()) {
+          if (!window.confirm('This is a PLAINTEXT backup, not an encrypted backup. Only restore a file you trust. Continue?')) return;
+        }
         const candidate = validateBackup(parsed && parsed.data ? parsed.data : parsed);
         if (!window.DB || typeof window.DB !== 'object' || Array.isArray(window.DB) || typeof window.save !== 'function') {
           throw new Error('PMS storage is not ready; current data was not changed.');
