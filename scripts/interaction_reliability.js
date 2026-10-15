@@ -9,6 +9,10 @@
     else console.info('[AURELIA]', message);
   }
   function errorMessage(error) { return error && error.message ? error.message : String(error); }
+  function getLiveDb() {
+    if (typeof DB !== 'undefined' && DB && typeof DB === 'object') return DB;
+    return getLiveDb() && typeof getLiveDb() === 'object' ? getLiveDb() : null;
+  }
   function isNativeSecureApp() {
     return !!(window.AureliaNative && typeof window.AureliaNative.postMessage === 'function' && window.__AURELIA_SECURE_DB_READY);
   }
@@ -80,13 +84,12 @@
   window.aureliaNativeBackupRestoreResult = function (requestId, ok, error) {
     delete window.__aureliaPendingBackupRestores[requestId];
     if (!ok) { notify('Encrypted restore failed: ' + String(error || 'Unknown error')); return; }
-    notify('Encrypted backup restored successfully. Reloading PMS…');
-    setTimeout(function () { window.location.reload(); }, 250);
+    notify('Encrypted backup restored. Reloading the secure PMS session…');
   };
 
   window.aureliaDownloadBackup = function () {
     try {
-      if (!window.DB || typeof window.DB !== 'object' || Array.isArray(window.DB)) throw new Error('PMS data is not ready yet.');
+      if (!getLiveDb() || typeof getLiveDb() !== 'object' || Array.isArray(getLiveDb())) throw new Error('PMS data is not ready yet.');
       if (isNativeSecureApp()) {
         const passphrase = window.prompt('Create a strong backup passphrase (at least 12 characters). It is not saved by the app. You will need it to restore this backup on any device.');
         if (passphrase === null) return;
@@ -99,14 +102,14 @@
         window.AureliaNative.postMessage(JSON.stringify({
           type: 'exportEncryptedBackup',
           requestId: requestId,
-          data: JSON.stringify(window.DB),
+          data: JSON.stringify(getLiveDb()),
           passphrase: passphrase
         }));
         notify('Encrypting backup. Choose a private destination in the Android share sheet.');
         return;
       }
       if (!window.confirm('This browser backup is NOT encrypted and may contain guest and payment records. Anyone who gets the file may read them. Continue?')) return;
-      const serialized = JSON.stringify({app:'AURELIA PMS',formatVersion:1,exportedAt:new Date().toISOString(),data:window.DB}, null, 2);
+      const serialized = JSON.stringify({app:'AURELIA PMS',formatVersion:1,exportedAt:new Date().toISOString(),data:getLiveDb()}, null, 2);
       if (new Blob([serialized]).size > MAX_BACKUP_BYTES) throw new Error('Backup exceeds the 20 MB limit.');
       const url = URL.createObjectURL(new Blob([serialized], {type:'application/json;charset=utf-8'}));
       const a = document.createElement('a');
@@ -148,22 +151,22 @@
           if (!window.confirm('This is a PLAINTEXT backup, not an encrypted backup. Only restore a file you trust. Continue?')) return;
         }
         const candidate = validateBackup(parsed && parsed.data ? parsed.data : parsed);
-        if (!window.DB || typeof window.DB !== 'object' || Array.isArray(window.DB) || typeof window.save !== 'function') {
+        if (!getLiveDb() || typeof getLiveDb() !== 'object' || Array.isArray(getLiveDb()) || typeof window.save !== 'function') {
           throw new Error('PMS storage is not ready; current data was not changed.');
         }
         if (!window.confirm('Restore this backup? Current local PMS data will be replaced. Only restore a backup you trust.')) return;
-        const previous = JSON.parse(JSON.stringify(window.DB));
+        const previous = JSON.parse(JSON.stringify(getLiveDb()));
         try {
-          Object.keys(window.DB).forEach(function (key) { delete window.DB[key]; });
+          Object.keys(getLiveDb()).forEach(function (key) { delete getLiveDb()[key]; });
           Object.keys(candidate).forEach(function (key) {
-            Object.defineProperty(window.DB, key, {value:candidate[key],enumerable:true,configurable:true,writable:true});
+            Object.defineProperty(getLiveDb(), key, {value:candidate[key],enumerable:true,configurable:true,writable:true});
           });
           await Promise.resolve(window.save());
           if (typeof window.aureliaWaitForSecureSave === 'function') await window.aureliaWaitForSecureSave();
         } catch (saveError) {
-          Object.keys(window.DB).forEach(function (key) { delete window.DB[key]; });
+          Object.keys(getLiveDb()).forEach(function (key) { delete getLiveDb()[key]; });
           Object.keys(previous).forEach(function (key) {
-            Object.defineProperty(window.DB, key, {value:previous[key],enumerable:true,configurable:true,writable:true});
+            Object.defineProperty(getLiveDb(), key, {value:previous[key],enumerable:true,configurable:true,writable:true});
           });
           try { await Promise.resolve(window.save()); if (typeof window.aureliaWaitForSecureSave === 'function') await window.aureliaWaitForSecureSave(); } catch (_) {}
           throw new Error('Could not save restored data; previous in-memory data was restored. ' + errorMessage(saveError));
