@@ -91,7 +91,7 @@
     });
     button.addEventListener('click', function () { picker.click(); });
     const backupInput = document.createElement('input');
-    backupInput.type = 'file'; backupInput.accept = '.json,application/json'; backupInput.style.display = 'none';
+    backupInput.type = 'file'; backupInput.accept = '.json,.aurelia,application/json,application/octet-stream'; backupInput.style.display = 'none';
     backupInput.addEventListener('change', function () {
       const file = backupInput.files && backupInput.files[0];
       if (file && typeof window.aureliaImportBackupFile === 'function') window.aureliaImportBackupFile(file);
