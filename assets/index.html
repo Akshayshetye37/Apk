@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' blob:; frame-src blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Aurelia 5★ Hotel PMS — Functional Sea Breeze</title>
 <style>
@@ -986,7 +987,11 @@ async function runImageOCR(file,statusEl){
   ocrBusy=true;
   if(statusEl) statusEl.textContent='OCR is reading the ID image…';
   try{
-    if(!window.Tesseract){
+    if(window.__AURELIA_SECURE_DB_READY&&!window.Tesseract){
+      if(statusEl)statusEl.textContent='OCR is disabled in the secure Android build until its engine is bundled locally.';
+      return null;
+  }
+  if(!window.Tesseract){
       await new Promise((resolve,reject)=>{
         const sc=document.createElement('script');
         sc.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
@@ -1650,6 +1655,7 @@ table th{background:#f0e8da!important;color:#284234!important}
 }
 async function loadJsPdf(){
   if(window.jspdf?.jsPDF)return true;
+  if(window.__AURELIA_SECURE_DB_READY)return false;
   try{
     await new Promise((resolve,reject)=>{
       const sc=document.createElement("script");
@@ -2912,6 +2918,7 @@ async function runImageOCR(file,statusEl){
  ocrBusy=true;
  try{
   if(statusEl)statusEl.textContent="Loading OCR engine… first use may need internet access.";
+  if(window.__AURELIA_SECURE_DB_READY&&!window.Tesseract)throw new Error('OCR is disabled in the secure Android build until its engine is bundled locally.');
   if(!window.Tesseract){
    if(!window.aureliaTesseractLoad)window.aureliaTesseractLoad=(async()=>{
     let last;
@@ -2958,69 +2965,19 @@ function aureliaSaveGoogleClientId(){
  DB.settings.googleClientId=id;save();return id;
 }
 function aureliaConnectDrive(){
- const clientId=aureliaSaveGoogleClientId();
- if(!clientId||!clientId.endsWith('.apps.googleusercontent.com')){
-  aureliaDriveStatus('Enter a valid Google OAuth Web Client ID ending in .apps.googleusercontent.com first.');toast('Google Client ID required');return;
- }
- if(!location.protocol.startsWith('http')||location.protocol==='file:'){
-  aureliaDriveStatus('Google sign-in requires this app to be hosted on HTTPS. A local file or preview iframe origin cannot complete OAuth reliably.');
-  toast('Open the hosted HTTPS app to connect Google Drive');return;
- }
- if(!window.google?.accounts?.oauth2){
-  aureliaDriveStatus('Loading Google sign-in… If this message remains, allow access to accounts.google.com and reload.');
-  const script=document.createElement('script');script.src='https://accounts.google.com/gsi/client';script.async=true;
-  script.onload=()=>aureliaConnectDrive();script.onerror=()=>aureliaDriveStatus('Google sign-in library could not load. Check network/content blockers.');
-  document.head.appendChild(script);return;
- }
- try{
-  const client=google.accounts.oauth2.initTokenClient({
-   client_id:clientId,
-   scope:'https://www.googleapis.com/auth/drive.appdata',
-   callback:async response=>{
-    if(response.error||!response.access_token){aureliaDriveStatus('Google authorization failed: '+(response.error_description||response.error||'no access token'));return}
-    aureliaDriveAccessToken=response.access_token;
-    DB.settings.driveConnectedAt=new Date().toISOString();DB.settings.backupDestination='drive';
-    aureliaStorage.setItem('aurelia_pms_v3',JSON.stringify(DB));
-    aureliaDriveStatus('Google Drive authorized for this session. Uploading current backup…');
-    await aureliaUploadDriveBackup();
-   }
-  });
-  client.requestAccessToken({prompt:'consent'});
- }catch(e){aureliaDriveStatus('Could not start Google sign-in: '+(e.message||e));}
+ const message='Google Drive sync is disabled in this Android build until encrypted cloud uploads, upload verification, and tested restore are implemented. Use the passphrase-encrypted backup export instead.';
+ aureliaDriveStatus(message);toast('Google Drive sync is not available in this build');
 }
 async function aureliaUploadDriveBackup(){
- if(!aureliaDriveAccessToken){aureliaDriveStatus('Connect Google Drive first.');toast('Google Drive is not connected');return}
- const payload=JSON.stringify({app:'AURELIA PMS',version:4,exportedAt:new Date().toISOString(),data:DB});
- try{
-  const headers={Authorization:'Bearer '+aureliaDriveAccessToken};
-  const list=await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q='+encodeURIComponent("name='AURELIA-PMS-AutoBackup.json' and trashed=false")+'&fields=files(id,name)',{headers});
-  if(!list.ok)throw new Error('Drive file lookup failed ('+list.status+'). Reconnect Google Drive if authorization expired.');
-  const found=await list.json();
-  const boundary='aurelia_'+Date.now();
-  const metadata={name:'AURELIA-PMS-AutoBackup.json',mimeType:'application/json',parents:['appDataFolder']};
-  let url='https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime';
-  let method='POST',bodyMeta=metadata;
-  if(found.files?.length){url='https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(found.files[0].id)+'?uploadType=multipart&fields=id,name,modifiedTime';method='PATCH';bodyMeta={name:'AURELIA-PMS-AutoBackup.json',mimeType:'application/json'};}
-  const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(bodyMeta)+'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+payload+'\r\n--'+boundary+'--';
-  const res=await fetch(url,{method,headers:{...headers,'Content-Type':'multipart/related; boundary='+boundary},body});
-  if(!res.ok)throw new Error('Drive upload failed ('+res.status+'). Check OAuth scope and Google Drive API configuration.');
-  const result=await res.json();DB.settings.lastDriveBackupAt=new Date().toISOString();
-  // Persist the backup timestamp without scheduling another cloud upload.
-  aureliaStorage.setItem('aurelia_pms_v3',JSON.stringify(DB));
-  aureliaDriveStatus('Google Drive backup successful at '+new Date().toLocaleString()+'. File: '+(result.name||'AURELIA-PMS-AutoBackup.json'));
-  toast('Google Drive backup complete');
- }catch(e){aureliaDriveStatus('Google Drive backup failed: '+(e.message||e));}
+ const message='Google Drive backup is disabled because this build does not yet implement verified encrypted cloud backups. Use Export backup and keep the passphrase safe.';
+ aureliaDriveStatus(message);toast('Use the encrypted local backup option');
 }
-function aureliaQueueDriveBackup(){
- if(DB.settings.backupDestination!=='drive'||!aureliaDriveAccessToken)return;
- clearTimeout(aureliaDriveUploadTimer);
- aureliaDriveUploadTimer=setTimeout(()=>aureliaUploadDriveBackup(),2500);
-}
+function aureliaQueueDriveBackup(){ /* Cloud uploads intentionally disabled until encrypted/verified sync exists. */ }
 function aureliaSetBackupDestination(value){
- DB.settings.backupDestination=value==='drive'?'drive':'local';save();
+ DB.settings.backupDestination='local';save();
  const note=document.getElementById('aureliaDriveNote');
- if(note)note.textContent=value==='drive'?'Google Drive selected. This preview cannot authenticate or upload to Drive until OAuth/API integration is configured. Local recovery snapshots continue to be saved.':'Local device/browser selected. Local recovery snapshots are saved on each successful app save.';
- toast(value==='drive'?'Drive preference saved; connection still required':'Local backup preference saved');
+ if(note)note.textContent='Google Drive sync is disabled in this build until encrypted cloud uploads and restore can be verified. Use the passphrase-encrypted Export backup action.';
+ toast(value==='drive'?'Google Drive sync is unavailable; local encrypted storage remains active':'Local backup preference saved');
 }
 function aureliaDownloadBackup(){
   try{
