@@ -2,9 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:html/dom.dart' as dom;
+import 'package:html/parser.dart' as html_parser;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:cryptography/cryptography.dart';
 import 'pms_access_gate.dart';
@@ -306,6 +311,85 @@ class AureliaEncryptedPmsStore {
   }
 }
 
+Future<Uint8List> _renderHtmlPdf(String source) async {
+  final parsed = html_parser.parse(source);
+  final title = (parsed.querySelector('title')?.text ?? 'Aurelia PMS document').trim();
+  final widgets = <pw.Widget>[];
+  void visit(dom.Node node) {
+    if (node is dom.Element) {
+      final tag = (node.localName ?? '').toLowerCase();
+      if (const {'script','style','head','meta','link','noscript'}.contains(tag)) return;
+      if (tag == 'table') {
+        final rows = node.querySelectorAll('tr')
+            .map((row) => row.children.map((cell) => cell.text.trim()).toList())
+            .where((row) => row.isNotEmpty)
+            .toList();
+        if (rows.isNotEmpty) {
+          final width = rows.map((r) => r.length).reduce(math.max);
+          final normalized = rows.map((r) => <String>[...r, ...List<String>.filled(width - r.length, '')]).toList();
+          widgets.add(pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 10),
+            child: pw.TableHelper.fromTextArray(
+              data: normalized,
+              headerCount: 1,
+              cellStyle: const pw.TextStyle(fontSize: 7),
+              headerStyle: pw.TextStyle(fontSize: 7, fontWeight: pw.FontWeight.bold),
+              cellPadding: const pw.EdgeInsets.all(4),
+              border: pw.TableBorder.all(color: PdfColors.grey400, width: 0.4),
+            ),
+          ));
+        }
+        return;
+      }
+      if (tag == 'img') {
+        widgets.add(pw.Text('[Image attachment omitted from generated PDF]', style: const pw.TextStyle(fontSize: 8)));
+        return;
+      }
+      if (const {'h1','h2','h3','h4'}.contains(tag)) {
+        final text = node.text.trim();
+        if (text.isNotEmpty) widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 8, bottom: 5),
+          child: pw.Text(text, style: pw.TextStyle(fontSize: tag == 'h1' ? 18 : (tag == 'h2' ? 14 : 11), fontWeight: pw.FontWeight.bold)),
+        ));
+        return;
+      }
+      if (tag == 'p') {
+        final text = node.text.trim();
+        if (text.isNotEmpty) widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: 5),
+          child: pw.Text(text, style: const pw.TextStyle(fontSize: 9)),
+        ));
+        return;
+      }
+      for (final child in node.nodes) {
+        visit(child);
+      }
+    } else if (node is dom.Text) {
+      final text = node.text.trim();
+      if (text.isNotEmpty && text.length <= 500) {
+        widgets.add(pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: 3),
+          child: pw.Text(text, style: const pw.TextStyle(fontSize: 9)),
+        ));
+      }
+    }
+  }
+  final body = parsed.body;
+  if (body != null) visit(body);
+  if (widgets.isEmpty) widgets.add(pw.Text(title, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)));
+  final document = pw.Document();
+  document.addPage(pw.MultiPage(
+    pageFormat: PdfPageFormat.a4,
+    margin: const pw.EdgeInsets.all(32),
+    header: (_) => pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 8),
+      child: pw.Text(title, style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+    ),
+    build: (_) => widgets,
+  ));
+  return document.save();
+}
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const AureliaPmsApp());
@@ -533,6 +617,48 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         final svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 $side $side" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="${squares.join()}" fill="#000"/></svg>';
         final data = 'data:image/svg+xml;base64,${base64Encode(utf8.encode(svg))}';
         await _controller.runJavaScript('window.aureliaNativeQrResult(${jsonEncode(requestId)},${jsonEncode(data)},null);');
+        return;
+      }
+      if (value['type'] == 'exportHtmlPdf') {
+        final htmlValue = value['html'];
+        final nameValue = value['name'];
+        final actionValue = value['action'];
+        if (requestId == null || htmlValue is! String || nameValue is! String ||
+            (actionValue != 'open' && actionValue != 'save')) {
+          throw const FormatException('Missing printable document fields');
+        }
+        if (htmlValue.isEmpty || htmlValue.length > 2 * 1024 * 1024) {
+          throw const FormatException('Printable document exceeds the 2 MiB HTML limit');
+        }
+        final pdfBytes = await _renderHtmlPdf(htmlValue);
+        if (pdfBytes.isEmpty || pdfBytes.length > 15 * 1024 * 1024) {
+          throw const FormatException('Generated PDF exceeds the 15 MiB limit');
+        }
+        var pdfName = nameValue.split(RegExp(r'[/\\\\]')).last
+            .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+        if (pdfName.isEmpty || pdfName == '.' || pdfName == '..' || pdfName.startsWith('.')) {
+          pdfName = 'aurelia-document.pdf';
+        }
+        if (!pdfName.toLowerCase().endsWith('.pdf')) pdfName = '$pdfName.pdf';
+        if (actionValue == 'save') {
+          final savedPath = await FilePicker.platform.saveFile(
+            dialogTitle: 'Save PDF export',
+            fileName: pdfName,
+            type: FileType.custom,
+            allowedExtensions: const ['pdf'],
+            bytes: pdfBytes,
+          );
+          if (savedPath == null) throw const FormatException('PDF save cancelled');
+        } else {
+          final temp = await getTemporaryDirectory();
+          final file = File('${temp.path}/$pdfName');
+          await file.writeAsBytes(pdfBytes, flush: true);
+          final result = await OpenFilex.open(file.path, type: 'application/pdf');
+          if (result.type != ResultType.done) {
+            throw StateError('No compatible PDF app could open this document: ${result.message}');
+          }
+        }
+        await _controller.runJavaScript('window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
       if (value['type'] == 'shareFile' || value['type'] == 'saveFile' || value['type'] == 'openFile') {
