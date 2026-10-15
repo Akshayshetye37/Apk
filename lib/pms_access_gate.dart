@@ -138,7 +138,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         await widget.deleteSecret(_saltKey);
         await widget.deleteSecret(_hashKey);
       } catch (_) {}
-      if (mounted) setState(() => _error = 'Could not securely save the PIN. Try again. ${error}');
+      if (mounted) setState(() => _error = 'Could not securely save the PIN. Try again. $error');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -196,7 +196,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
       }
       _pin.clear();
     } catch (error) {
-      if (mounted) setState(() => _error = 'Could not verify PIN securely. ${error}');
+      if (mounted) setState(() => _error = 'Could not verify PIN securely. $error');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -249,7 +249,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         setState(() => _error = 'Device authentication was cancelled or not accepted.');
       }
     } catch (error) {
-      if (mounted) setState(() => _error = 'Device authentication is unavailable. Use your PIN. ${error}');
+      if (mounted) setState(() => _error = 'Device authentication is unavailable. Use your PIN. $error');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
