@@ -325,7 +325,7 @@ Future<Uint8List> _renderHtmlPdf(String source) async {
             .where((row) => row.isNotEmpty)
             .toList();
         if (rows.isNotEmpty) {
-          final width = rows.map((r) => r.length).reduce(math.max);
+          final width = rows.map((r) => r.length).reduce((a, b) => a > b ? a : b);
           final normalized = rows.map((r) => <String>[...r, ...List<String>.filled(width - r.length, '')]).toList();
           widgets.add(pw.Padding(
             padding: const pw.EdgeInsets.only(bottom: 10),
