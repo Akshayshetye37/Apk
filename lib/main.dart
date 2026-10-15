@@ -192,9 +192,33 @@ class AureliaEncryptedPmsStore {
         (data['bookings'] is! List && data['reservations'] is! List)) {
       throw const FormatException('Backup is missing required guest, room, or booking lists.');
     }
-    for (final key in const ['guests','rooms','bookings','reservations','inventory','expenses','payments']) {
+    for (final key in const [
+      'guests','rooms','bookings','reservations','inventory','expenses','payments',
+      'audit','invoices','inventoryLedger','restaurantSales','paymentSignals',
+    ]) {
       if (data.containsKey(key) && data[key] is! List) {
         throw FormatException('The "$key" section must be a list.');
+      }
+    }
+    // Every record section must contain objects, not strings/numbers, and IDs
+    // must be unique within that section when present.
+    for (final entry in data.entries) {
+      if (entry.value is! List) continue;
+      final seenIds = <String>{};
+      for (final record in entry.value as List) {
+        if (record is! Map<String, dynamic>) {
+          throw FormatException('The "${entry.key}" section contains a non-object record.');
+        }
+        if (record.containsKey('id') && record['id'] != null) {
+          final id = record['id'];
+          if (id is! String && id is! num) {
+            throw FormatException('A record in "${entry.key}" has an invalid ID.');
+          }
+          final normalizedId = id.toString().trim();
+          if (normalizedId.isEmpty || !seenIds.add(normalizedId)) {
+            throw FormatException('The "${entry.key}" section contains an empty or duplicate ID.');
+          }
+        }
       }
     }
     _validateTree(data, 0, [0]);
