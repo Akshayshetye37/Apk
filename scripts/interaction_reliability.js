@@ -108,3 +108,5 @@
     window.aureliaCheckDeviceAuthenticationSupport();
   });
 })();
+
+// Backup safety validation improvements follow in this branch.
