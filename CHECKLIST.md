@@ -98,7 +98,7 @@ When a build fails, copy the first meaningful error from the GitHub Actions log 
 - [ ] Native bridge rejects oversized payloads, invalid MIME types, path traversal filenames, and unsupported message types.
 - [ ] Unauthorized access and incorrect PIN attempts tested against the actual APK; client-side PIN checks are not server authentication.
 - [ ] Permission denial tested on device.
-- [ ] Tampered backups and malformed/oversized imports rejected without corrupting existing records.
+- [x] Node regression tests cover incomplete backups, unsafe property names, full database replacement, and save-failure rollback.\n- [ ] Tampered, malformed, and oversized imports verified against the actual APK without corrupting existing records.
 - [ ] Offline dashboard, bookings, reports, and exports tested on device.
-- [ ] Local storage threat model reviewed; PMS records are not encrypted merely by native secure storage.
+- [ ] Local storage threat model reviewed; PMS records are not encrypted merely by native secure storage. Backup JSON export remains plaintext despite the new warning prompt.
 - [ ] Production data approved only after authentication and at-rest protections are implemented and tested.
