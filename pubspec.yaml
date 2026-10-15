@@ -13,6 +13,10 @@ dependencies:
   webview_flutter_android: 4.3.0
   file_picker: 8.1.7
   flutter_secure_storage: 9.2.4
+  local_auth: ^2.3.0
+  crypto: ^3.0.6
+  cryptography: ^2.7.0
+  sqflite_sqlcipher: ^3.1.0+1
   path_provider: 2.1.5
   qr: 3.0.2
   share_plus: 10.1.4

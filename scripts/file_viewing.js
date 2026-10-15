@@ -4,7 +4,7 @@
   const MAX_BYTES = 15 * 1024 * 1024;
   const mimeByExt = {pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',csv:'text/csv',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'};
   function ext(file) { return String(file.name || '').split('.').pop().toLowerCase(); }
-  function nativeShare(file, mime) {
+  function nativeShare(file, mime, action) {
     return new Promise(function (resolve, reject) {
       if (!window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function') {
         reject(new Error('Native file sharing is available in the installed Android app only.'));
@@ -24,7 +24,7 @@
           d.ok ? resolve() : reject(new Error(d.error || 'Could not export file.'));
         };
         window.addEventListener('aurelia-native-file-result', handler);
-        window.AureliaNative.postMessage(JSON.stringify({type:'shareFile', requestId:requestId, name:file.name || 'aurelia-export.' + ext({name:'file.csv'}), mime:mime || file.type || 'application/octet-stream', data:base64}));
+        window.AureliaNative.postMessage(JSON.stringify({type:action === 'saveFile' ? 'saveFile' : 'shareFile', requestId:requestId, name:file.name || 'aurelia-export.csv', mime:mime || file.type || 'application/octet-stream', data:base64}));
         setTimeout(function () {
           window.removeEventListener('aurelia-native-file-result', handler);
           reject(new Error('No response from Android file handler.'));
@@ -35,20 +35,46 @@
   }
   function showPreview(file) {
     const e = ext(file);
-    if (!['pdf','png','jpg','jpeg'].includes(e)) return false;
+    // PDFs must be handed to Android's external app chooser; never render them in WebView.
+    if (e === 'pdf') {
+      nativeShare(file, 'application/pdf', 'shareFile').catch(function (error) {
+        alert('Could not hand PDF to an external app: ' + error.message);
+      });
+      return true;
+    }
+    if (!['png','jpg','jpeg'].includes(e)) return false;
     const url = URL.createObjectURL(file);
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#101827f5;display:flex;flex-direction:column;padding:12px;box-sizing:border-box;';
     const bar = document.createElement('div');
     bar.style.cssText = 'display:flex;align-items:center;gap:12px;color:white;padding:8px;font:16px sans-serif;';
     const name = document.createElement('span'); name.textContent = file.name; name.style.cssText = 'flex:1;overflow-wrap:anywhere;';
+    const save = document.createElement('button');
+    save.textContent = 'Save / share';
+    save.style.cssText = 'padding:10px 12px;';
+    save.onclick = function () {
+      nativeShare(file, mimeByExt[e] || file.type || 'application/octet-stream', 'saveFile')
+        .catch(function (error) { alert('Could not save file: ' + error.message); });
+    };
+    bar.append(name, save);
+    if (e === 'pdf') {
+      const open = document.createElement('button');
+      open.textContent = 'Open PDF';
+      open.style.cssText = 'padding:10px 12px;';
+      open.onclick = function () {
+        nativeShare(file, 'application/pdf', 'shareFile')
+          .catch(function (error) { alert('Could not open PDF: ' + error.message); });
+      };
+      bar.appendChild(open);
+    }
     const close = document.createElement('button'); close.textContent = 'Close'; close.style.cssText = 'padding:10px 16px;';
     close.onclick = function () { URL.revokeObjectURL(url); overlay.remove(); };
-    bar.append(name, close);
+    bar.append(close);
     let view;
     if (e === 'pdf') {
-      view = document.createElement('iframe'); view.src = url; view.title = file.name;
-      view.style.cssText = 'border:0;background:white;flex:1;width:100%;min-height:0;';
+      view = document.createElement('div');
+      view.style.cssText = 'background:white;flex:1;width:100%;min-height:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;box-sizing:border-box;color:#172f27;font:16px sans-serif;';
+      view.textContent = 'PDF preview depends on Android WebView support. Tap Open PDF to use a PDF app, or Save / share to export it.';
     } else {
       view = document.createElement('img'); view.src = url; view.alt = file.name;
       view.style.cssText = 'object-fit:contain;width:100%;height:100%;min-height:0;';
@@ -60,7 +86,13 @@
     const input = event.target;
     if (!input || input.type !== 'file' || !input.files || !input.files.length) return;
     const file = input.files[0], e = ext(file);
-    if (['pdf','png','jpg','jpeg'].includes(e) && input.hasAttribute('data-preview-file')) showPreview(file);
+    if (input.hasAttribute('data-preview-file')) {
+      if (e === 'pdf') {
+        nativeShare(file, 'application/pdf', 'shareFile').catch(function (error) {
+          alert('Could not hand PDF to an external app: ' + error.message);
+        });
+      } else if (['png','jpg','jpeg'].includes(e)) showPreview(file);
+    }
   }, true);
   // Add an always-available file viewer in the Android wrapper. CSV/XLSX are handed to
   // Android's chooser so the user can select a compatible spreadsheet app.
@@ -110,8 +142,9 @@
     };
     document.body.append(button, picker, importButton, exportButton, backupInput);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installOpenFileControl);
-  else installOpenFileControl();
+  // Do not inject global floating Open file / Import backup / Export backup controls.
+  // They obscured unrelated screens such as Pending Invoice. Screen-specific controls
+  // must invoke the exported functions below when appropriate.
   window.addEventListener('aurelia-native-file-result', function () {});
   window.aureliaNativeFileResult = function (requestId, ok, error) {
     window.dispatchEvent(new CustomEvent('aurelia-native-file-result', {detail:{requestId:requestId, ok:!!ok, error:error || null}}));
@@ -121,7 +154,13 @@
   window.aureliaPreviewFile = showPreview;
   window.aureliaShareExportFile = function (blob, name, mime) {
     const file = new File([blob], name || 'aurelia-export.csv', {type:mime || blob.type || 'application/octet-stream'});
-    nativeShare(file, mime).catch(function (e) { alert('Export failed: ' + e.message); });
+    nativeShare(file, mime, 'shareFile').catch(function (e) { alert('Export failed: ' + e.message); });
+  };
+  window.aureliaSaveExportFile = function (blob, name, mime) {
+    const file = new File([blob], name || 'aurelia-export.csv', {type:mime || blob.type || 'application/octet-stream'});
+    nativeShare(file, mime, 'saveFile').catch(function (e) {
+      if (e.message !== 'Save cancelled') alert('Save failed: ' + e.message);
+    });
   };
   // Intercept generated download links: WebView does not reliably download blob URLs.
   document.addEventListener('click', function (event) {
@@ -129,7 +168,7 @@
     if (!a || !a.href || !a.href.startsWith('blob:')) return;
     event.preventDefault();
     fetch(a.href).then(function (r) { return r.blob(); }).then(function (blob) {
-      window.aureliaShareExportFile(blob, a.download || 'aurelia-export', blob.type);
+      window.aureliaSaveExportFile(blob, a.download || 'aurelia-export.csv', blob.type);
     }).catch(function (e) { alert('Export failed: ' + e.message); });
   }, true);
 })();

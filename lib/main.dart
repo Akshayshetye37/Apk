@@ -2,8 +2,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'core/security/pin_kdf_service.dart';
+import 'core/security/security_interfaces.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:local_auth/local_auth.dart';
+import 'native_migration_store.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -21,7 +25,6 @@ class AureliaSecureVault {
   static const FlutterSecureStorage _storage = FlutterSecureStorage(
     aOptions: AndroidOptions(
       encryptedSharedPreferences: true,
-      resetOnError: true,
     ),
   );
 
@@ -52,7 +55,7 @@ class AureliaPmsApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF17365D)),
         useMaterial3: true,
       ),
-      home: const PmsWebViewPage(),
+      home: const AureliaSecurityGate(child: PmsWebViewPage()),
     );
   }
 }
@@ -68,6 +71,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
   late final WebViewController _controller;
   bool _loading = true;
   int _progress = 0;
+  bool _migrationBusy = false;
 
   @override
   void initState() {
@@ -75,6 +79,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel('AureliaNative', onMessageReceived: (message) { unawaited(_handleNativeMessage(message.message)); })
+      ..addJavaScriptChannel('MigrationChannel', onMessageReceived: (message) { unawaited(_handleMigrationPayload(message.message)); })
       ..setBackgroundColor(const Color(0xFFFFFCF6))
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -86,6 +91,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
           },
           onPageFinished: (_) {
             if (mounted) setState(() => _loading = false);
+            // The bundled HTML exposes a non-destructive migration payload
+            // sender. Repeat loads are safe because the native snapshot is upserted.
+            unawaited(_controller.runJavaScript('window.aureliaSendMigrationPayload?.();').catchError((Object error) {
+              debugPrint('Aurelia migration sender unavailable: $error');
+            }));
           },
           onWebResourceError: (error) {
             debugPrint('Aurelia PMS WebView error: ${error.description}');
@@ -116,18 +126,25 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       unawaited(
         platformController.setOnShowFileSelector((params) async {
           try {
-            final imageOnly = params.acceptTypes.isNotEmpty &&
-                params.acceptTypes.every(
-                  (type) => type.toLowerCase().startsWith('image/'),
-                );
+            final accepted = params.acceptTypes
+                .map((type) => type.trim().toLowerCase())
+                .where((type) => type.isNotEmpty)
+                .toList();
+            const imageExtensions = <String>{
+              '.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.heic', '.heif'
+            };
+            final imageOnly = accepted.isNotEmpty &&
+                accepted.every((type) =>
+                    type.startsWith('image/') || imageExtensions.contains(type));
             final picked = await FilePicker.platform.pickFiles(
               type: imageOnly ? FileType.image : FileType.any,
               allowMultiple: params.mode == FileSelectorMode.openMultiple,
             );
             if (picked == null) return <String>[];
+            // WebView expects file URI strings, not raw filesystem paths.
             return picked.files
                 .where((file) => file.path != null)
-                .map((file) => file.path!)
+                .map((file) => Uri.file(file.path!).toString())
                 .toList();
           } catch (error) {
             debugPrint('Aurelia PMS file selection failed: $error');
@@ -140,6 +157,33 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
     _loadLocalPms();
   }
 
+
+  Future<void> _handleMigrationPayload(String raw) async {
+    if (_migrationBusy) {
+      debugPrint('Aurelia migration request ignored: another migration is active');
+      return;
+    }
+    _migrationBusy = true;
+    try {
+      final result = await AureliaMigrationStore.instance.ingest(raw);
+      // The JS callback intentionally retains localStorage. Deletion is not
+      // enabled until a separately tested reconciliation/restore flow exists.
+      await _controller.runJavaScript(
+        'window.aureliaMigrationResult?.(${jsonEncode(result)});',
+      );
+      debugPrint('Aurelia encrypted snapshot verified: ${jsonEncode(result['counts'])}');
+    } catch (error, stack) {
+      debugPrint('Aurelia migration failed; source browser storage retained: $error');
+      debugPrintStack(stackTrace: stack);
+      try {
+        await _controller.runJavaScript(
+          'window.aureliaMigrationResult?.(${jsonEncode({'verified': false, 'error': 'Native migration failed'})});',
+        );
+      } catch (_) {}
+    } finally {
+      _migrationBusy = false;
+    }
+  }
 
   Future<void> _handleNativeMessage(String raw) async {
     String? requestId;
@@ -170,7 +214,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         await _controller.runJavaScript('window.aureliaNativeQrResult(${jsonEncode(requestId)},${jsonEncode(data)},null);');
         return;
       }
-      if (value['type'] == 'shareFile') {
+      if (value['type'] == 'shareFile' || value['type'] == 'saveFile') {
         final nameValue = value['name'], mimeValue = value['mime'], dataValue = value['data'];
         if (nameValue is! String || mimeValue is! String || dataValue is! String) throw const FormatException('Missing file fields');
         if (dataValue.length > 20 * 1024 * 1024) throw const FormatException('File too large');
@@ -180,10 +224,16 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         final mime = allowed.contains(mimeValue) ? mimeValue : 'application/octet-stream';
         final bytes = base64Decode(dataValue);
         if (bytes.length > 15 * 1024 * 1024) throw const FormatException('File too large');
+        // Use Android's system chooser for both export actions. FilePicker's
+        // saveFile byte-write support is inconsistent on Android and can return
+        // a destination without actually writing the exported bytes.
         final temp = await getTemporaryDirectory();
         final file = File('${temp.path}/$safeName');
         await file.writeAsBytes(bytes, flush: true);
-        await Share.shareXFiles([XFile(file.path, mimeType: mime, name: safeName)], subject: safeName);
+        await Share.shareXFiles(
+          [XFile(file.path, mimeType: mime, name: safeName)],
+          subject: safeName,
+        );
         await _controller.runJavaScript('window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
@@ -242,6 +292,362 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+
+/// PIN provisioning, legacy migration, biometric unlock, and lifecycle locking.
+class AureliaSecurityGate extends StatefulWidget {
+  final Widget child;
+  final SecureStorageProvider? storage;
+  final BiometricAuthProvider? auth;
+  final PinKdfService? pinService;
+
+  const AureliaSecurityGate({
+    super.key,
+    required this.child,
+    this.storage,
+    this.auth,
+    this.pinService,
+  });
+
+  @override
+  State<AureliaSecurityGate> createState() => _AureliaSecurityGateState();
+}
+
+class _AureliaSecurityGateState extends State<AureliaSecurityGate>
+    with WidgetsBindingObserver {
+  static const _secureStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+  );
+
+  late final SecureStorageProvider _storage;
+  late final BiometricAuthProvider _auth;
+  late final PinKdfService _pinService;
+  final _pin = TextEditingController();
+  final _confirm = TextEditingController();
+
+  bool _ready = false;
+  bool _provisioning = false;
+  bool _locked = true;
+  bool _busy = false;
+  bool _showPin = false;
+  int _lockTimeoutMinutes = 0; // 0 = immediate; -1 = never automatically lock.
+  DateTime? _backgroundedAt;
+  int _failed = 0;
+  DateTime? _lockoutUntil;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _storage = widget.storage ?? FlutterSecureStorageProvider(_secureStorage);
+    _auth = widget.auth ?? LocalBiometricAuthProvider(LocalAuthentication());
+    _pinService = widget.pinService ?? PinKdfService(_storage);
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_initialize());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pin.dispose();
+    _confirm.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      final state = await _pinService.checkProvisioningState();
+      final failures = int.tryParse(
+            await _storage.read(PinKdfService.failedKey) ?? '',
+          ) ??
+          0;
+      final untilRaw = await _storage.read(PinKdfService.untilKey);
+      final untilMillis = int.tryParse(untilRaw ?? '');
+      final savedTimeout = int.tryParse(await _storage.read('aurelia_lock_timeout_minutes_v1') ?? '') ?? 0;
+      const allowedTimeouts = <int>{-1, 0, 1, 5, 15};
+      final timeout = allowedTimeouts.contains(savedTimeout) ? savedTimeout : 0;
+      if (!mounted) return;
+      setState(() {
+        _provisioning = state == PinProvisioningState.notProvisioned;
+        _failed = failures.clamp(0, 1000000);
+        _lockTimeoutMinutes = timeout;
+        _lockoutUntil = untilMillis == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(untilMillis);
+        _ready = true;
+        if (state == PinProvisioningState.lockedOut) {
+          _error = 'Too many attempts. Please wait before trying again.';
+        }
+      });
+      if (state == PinProvisioningState.provisioned ||
+          state == PinProvisioningState.requiresMigration) {
+        unawaited(_tryBiometric());
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _ready = true;
+          _error = 'Secure storage or PIN data is invalid. App remains locked.';
+        });
+      }
+    }
+  }
+
+  Future<void> _provision() async {
+    if (_busy) return;
+    if (!RegExp(r'^\d{6,12}$').hasMatch(_pin.text)) {
+      setState(() => _error = 'Choose a PIN of 6–12 digits.');
+      return;
+    }
+    if (_pin.text != _confirm.text) {
+      setState(() => _error = 'PINs do not match.');
+      return;
+    }
+    setState(() { _busy = true; _error = null; });
+    try {
+      await _pinService.provisionPin(_pin.text);
+      if (mounted) {
+        setState(() {
+          _provisioning = false;
+          _locked = false;
+          _pin.clear();
+          _confirm.clear();
+          _failed = 0;
+          _lockoutUntil = null;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not securely save PIN.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _verifyPin() async {
+    if (_busy) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      final result = await _pinService.verifyPin(_pin.text);
+      final failed = int.tryParse(
+            await _storage.read(PinKdfService.failedKey) ?? '',
+          ) ??
+          0;
+      final untilMillis = int.tryParse(
+        await _storage.read(PinKdfService.untilKey) ?? '',
+      );
+      if (!mounted) return;
+      setState(() {
+        _failed = failed.clamp(0, 1000000);
+        _lockoutUntil = untilMillis == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(untilMillis);
+      });
+      switch (result) {
+        case PinVerificationResult.success:
+          setState(() { _locked = false; _pin.clear(); _error = null; });
+          break;
+        case PinVerificationResult.incorrect:
+          setState(() => _error = 'Incorrect PIN. Attempt $_failed of 3.');
+          break;
+        case PinVerificationResult.lockedOut:
+          setState(() => _error = 'Locked out. Try again after the lockout expires.');
+          break;
+        case PinVerificationResult.notProvisioned:
+          setState(() {
+            _provisioning = true;
+            _error = 'PIN setup is required.';
+          });
+          break;
+        case PinVerificationResult.invalidPayload:
+          setState(() => _error = 'PIN data is invalid. App remains locked.');
+          break;
+      }
+      _pin.clear();
+    } catch (_) {
+      if (mounted) setState(() => _error = 'PIN verification failed. App remains locked.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _tryBiometric() async {
+    if (_busy || _provisioning || !_locked || !mounted) return;
+    setState(() { _busy = true; _error = null; });
+    try {
+      if (await _auth.isDeviceSupported() && await _auth.authenticate()) {
+        if (mounted) setState(() { _locked = false; _pin.clear(); });
+      }
+    } catch (_) {
+      // PIN remains available as fallback.
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _saveLockTimeout(int minutes) async {
+    const allowed = <int>{-1, 0, 1, 5, 15};
+    if (!allowed.contains(minutes)) return;
+    try {
+      await _storage.write('aurelia_lock_timeout_minutes_v1', minutes.toString());
+      if (mounted) setState(() => _lockTimeoutMinutes = minutes);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Could not save lock timeout setting.');
+    }
+  }
+
+  void _lockNow() {
+    if (!mounted) return;
+    setState(() => _locked = true);
+    unawaited(_tryBiometric());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Inactive can be a transient system UI interruption. Start the grace
+    // period only when the app actually leaves the foreground.
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      _backgroundedAt ??= DateTime.now();
+      return;
+    }
+    if (state != AppLifecycleState.resumed) return;
+
+    final backgroundedAt = _backgroundedAt;
+    _backgroundedAt = null;
+    if (backgroundedAt != null && _lockTimeoutMinutes != -1) {
+      final elapsed = DateTime.now().difference(backgroundedAt);
+      final shouldLock = _lockTimeoutMinutes == 0 ||
+          elapsed >= Duration(minutes: _lockTimeoutMinutes);
+      if (shouldLock && mounted) setState(() => _locked = true);
+    }
+    if (_locked && !_provisioning) unawaited(_tryBiometric());
+  }
+
+  Widget _lockScreen() {
+    return Scaffold(
+      backgroundColor: const Color(0xFF172F27),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Icon(Icons.lock_outline, color: Color(0xFFB99A60), size: 56),
+                  const SizedBox(height: 16),
+                  Text(
+                    _provisioning ? 'Create your Aurelia PIN' : 'Unlock Aurelia PMS',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: _pin,
+                    keyboardType: TextInputType.number,
+                    obscureText: !_showPin,
+                    maxLength: 12,
+                    enabled: !_busy && !(_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!)),
+                    decoration: InputDecoration(
+                      labelText: _provisioning ? 'New PIN (6–12 digits)' : 'PIN',
+                      counterText: '',
+                      filled: true,
+                      fillColor: Colors.white,
+                      suffixIcon: IconButton(
+                        onPressed: () => setState(() => _showPin = !_showPin),
+                        icon: Icon(_showPin ? Icons.visibility_off : Icons.visibility),
+                      ),
+                    ),
+                  ),
+                  if (_provisioning) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _confirm,
+                      keyboardType: TextInputType.number,
+                      obscureText: true,
+                      maxLength: 12,
+                      enabled: !_busy,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirm PIN',
+                        counterText: '',
+                        filled: true,
+                        fillColor: Colors.white,
+                      ),
+                    ),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(_error!, style: const TextStyle(color: Color(0xFFFFC4B8)), textAlign: TextAlign.center),
+                  ],
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _busy ? null : (_provisioning ? _provision : _verifyPin),
+                    child: Text(_busy ? 'Please wait…' : (_provisioning ? 'Save PIN' : 'Unlock with PIN')),
+                  ),
+                  if (!_provisioning) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: _busy ? null : _tryBiometric,
+                      child: const Text('Use device authentication', style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_ready) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final obscured = _locked || _provisioning;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ExcludeSemantics(
+          excluding: obscured,
+          child: IgnorePointer(ignoring: obscured, child: widget.child),
+        ),
+        if (obscured) _lockScreen(),
+        if (!obscured)
+          Positioned(
+            top: 4,
+            right: 4,
+            child: SafeArea(
+              child: PopupMenuButton<int>(
+                tooltip: 'Security settings',
+                icon: const Icon(Icons.security),
+                onSelected: (value) {
+                  if (value == -99) {
+                    _lockNow();
+                  } else {
+                    unawaited(_saveLockTimeout(value));
+                  }
+                },
+                itemBuilder: (context) => <PopupMenuEntry<int>>[
+                  const PopupMenuItem(value: -99, child: Text('Lock now')),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(value: 0, child: Text('Auto-lock: Immediately${_lockTimeoutMinutes == 0 ? ' ✓' : ''}')),
+                  PopupMenuItem(value: 1, child: Text('Auto-lock: 1 minute${_lockTimeoutMinutes == 1 ? ' ✓' : ''}')),
+                  PopupMenuItem(value: 5, child: Text('Auto-lock: 5 minutes${_lockTimeoutMinutes == 5 ? ' ✓' : ''}')),
+                  PopupMenuItem(value: 15, child: Text('Auto-lock: 15 minutes${_lockTimeoutMinutes == 15 ? ' ✓' : ''}')),
+                  PopupMenuItem(value: -1, child: Text('Auto-lock: Never${_lockTimeoutMinutes == -1 ? ' ✓' : ''}')),
+                ],
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
