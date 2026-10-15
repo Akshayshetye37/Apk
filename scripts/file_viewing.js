@@ -35,7 +35,14 @@
   }
   function showPreview(file) {
     const e = ext(file);
-    if (!['pdf','png','jpg','jpeg'].includes(e)) return false;
+    // PDFs must be handed to Android's external app chooser; never render them in WebView.
+    if (e === 'pdf') {
+      nativeShare(file, 'application/pdf', 'shareFile').catch(function (error) {
+        alert('Could not hand PDF to an external app: ' + error.message);
+      });
+      return true;
+    }
+    if (!['png','jpg','jpeg'].includes(e)) return false;
     const url = URL.createObjectURL(file);
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#101827f5;display:flex;flex-direction:column;padding:12px;box-sizing:border-box;';
@@ -79,7 +86,13 @@
     const input = event.target;
     if (!input || input.type !== 'file' || !input.files || !input.files.length) return;
     const file = input.files[0], e = ext(file);
-    if (['pdf','png','jpg','jpeg'].includes(e) && input.hasAttribute('data-preview-file')) showPreview(file);
+    if (input.hasAttribute('data-preview-file')) {
+      if (e === 'pdf') {
+        nativeShare(file, 'application/pdf', 'shareFile').catch(function (error) {
+          alert('Could not hand PDF to an external app: ' + error.message);
+        });
+      } else if (['png','jpg','jpeg'].includes(e)) showPreview(file);
+    }
   }, true);
   // Add an always-available file viewer in the Android wrapper. CSV/XLSX are handed to
   // Android's chooser so the user can select a compatible spreadsheet app.
@@ -129,8 +142,9 @@
     };
     document.body.append(button, picker, importButton, exportButton, backupInput);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installOpenFileControl);
-  else installOpenFileControl();
+  // Do not inject global floating Open file / Import backup / Export backup controls.
+  // They obscured unrelated screens such as Pending Invoice. Screen-specific controls
+  // must invoke the exported functions below when appropriate.
   window.addEventListener('aurelia-native-file-result', function () {});
   window.aureliaNativeFileResult = function (requestId, ok, error) {
     window.dispatchEvent(new CustomEvent('aurelia-native-file-result', {detail:{requestId:requestId, ok:!!ok, error:error || null}}));
