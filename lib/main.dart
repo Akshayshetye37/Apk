@@ -139,8 +139,14 @@ class AureliaEncryptedPmsStore {
       'ciphertext': base64Encode(box.cipherText),
       'tag': base64Encode(box.mac.bytes),
     });
+    // The primary snapshot is authoritative. A recovery-copy failure must not
+    // report the already-durable primary write as a total failure.
     await _writeEnvelope('aurelia-pms-primary.enc', envelope);
-    await _writeEnvelope('aurelia-pms-recovery.enc', envelope);
+    try {
+      await _writeEnvelope('aurelia-pms-recovery.enc', envelope);
+    } catch (error) {
+      debugPrint('Aurelia encrypted recovery snapshot update failed: $error');
+    }
   }
 
   static const int _backupIterations = 310000;
