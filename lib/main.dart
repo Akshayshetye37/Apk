@@ -588,6 +588,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         await _controller.runJavaScript(
           'window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},true,null);',
         );
+        // Re-bootstrap the local page from the encrypted store. A JavaScript reload
+        // would bypass this secure bootstrap and revert to legacy localStorage.
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        await _loadLocalPms();
+        if (mounted) setState(() { _pmsLoaded = true; _loading = false; });
         return;
       }
       if (value['type'] == 'savePmsData') {
