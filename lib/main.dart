@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:cryptography/cryptography.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -304,14 +305,33 @@ class PmsWebViewPage extends StatefulWidget {
   State<PmsWebViewPage> createState() => _PmsWebViewPageState();
 }
 
-class _PmsWebViewPageState extends State<PmsWebViewPage> {
+class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObserver {
   late final WebViewController _controller;
   bool _loading = true;
   int _progress = 0;
+  bool _gateLoading = true;
+  bool _pinConfigured = false;
+  bool _unlocked = false;
+  bool _pmsLoaded = false;
+  bool _isAuthenticating = false;
+  bool _deviceAuthAvailable = false;
+  String? _gateError;
+  int _failedAttempts = 0;
+  DateTime? _lockoutUntil;
+  Timer? _lockoutTimer;
+  final TextEditingController _pinController = TextEditingController();
+  final TextEditingController _confirmPinController = TextEditingController();
+  final LocalAuthentication _localAuth = LocalAuthentication();
+  static const String _pinSaltKey = 'aurelia_pms_pin_salt_v1';
+  static const String _pinHashKey = 'aurelia_pms_pin_hash_v1';
+  static const String _pinAttemptsKey = 'aurelia_pms_pin_attempts_v1';
+  static const String _pinLockUntilKey = 'aurelia_pms_pin_lock_until_v1';
+  static final Pbkdf2 _pinKdf = Pbkdf2(macAlgorithm: Hmac.sha256(), iterations: 310000, bits: 256);
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel('AureliaNative', onMessageReceived: (message) { unawaited(_handleNativeMessage(message.message)); })
@@ -377,7 +397,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       );
     }
 
-    _loadLocalPms();
+    unawaited(_initializeAccessGate());
   }
 
 
