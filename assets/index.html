@@ -1806,12 +1806,10 @@ function pagesSettingsNew(){
       <button type="button" class="btn primary" onclick="saveTermsSettings()">Save Terms & Conditions</button>
     </div>
   </section>
-<section class="card" style="margin-top:16px"><div class="section-title"><h2>Backup & device security</h2></div>
-<p class="muted">PIN and recovery are stored in this browser on this device. Keep a separate backup of PMS records.</p>
-<div class="form-grid"><div class="field"><label>Local PIN (4–8 digits)</label><input id="aureliaPinInput" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="Enter a new PIN"></div>
-<div class="field"><label>Backup destination</label><select id="aureliaBackupDestination" onchange="aureliaSetBackupDestination(this.value)"><option value="local" ${DB.settings.backupDestination!=="drive"?"selected":""}>This device / browser</option><option value="drive" ${DB.settings.backupDestination==="drive"?"selected":""}>Google Drive (requires OAuth setup)</option></select></div></div>
-<div class="actions" style="margin-top:10px;flex-wrap:wrap"><button type="button" class="btn primary" onclick="aureliaSetPin()">Set / reset PIN</button><button type="button" class="btn" onclick="aureliaForgotPin()">Forgot PIN / recovery</button><button type="button" class="btn" onclick="aureliaShowRecoveryCode()">Show recovery code</button><button type="button" class="btn" onclick="aureliaEnrollBiometric()">Enable device biometric</button><button type="button" class="btn" onclick="aureliaVerifyBiometric()">Test device biometric</button><button type="button" class="btn" onclick="aureliaDownloadBackup()">Download JSON backup</button></div>
-<div id="aureliaSecurityNote" class="muted" role="status" style="margin-top:10px">Biometrics require HTTPS or localhost and browser/device support. HTML-only PIN storage is not server-grade authentication.</div><div id="aureliaDriveNote" class="muted" role="status" style="margin-top:6px">Local recovery snapshots are saved when app data is saved. Google Drive requires OAuth configuration.</div></section>
+<section class="card" style="margin-top:16px"><div class="section-title"><h2>Device biometrics</h2><span class="muted">Android system authentication</span></div>
+<p class="muted">Control whether the app offers fingerprint, face, or device-screen-lock authentication on the native unlock screen. Your PIN remains available as a fallback. This setting does not disable app protection.</p>
+<label class="check" style="padding:12px 0"><input id="aureliaBiometricEnabled" type="checkbox" ${DB.settings.biometricUnlock===true?"checked":""} onchange="aureliaSetBiometricEnabled(this.checked)"><span><b>Enable biometric / device authentication</b><small class="muted" style="display:block">Turn off to hide the biometric unlock button. Device support is checked by Android.</small></span></label>
+<div id="aureliaBiometricNote" class="muted" role="status">Biometric unlock is ${DB.settings.biometricUnlock===true?"enabled":"disabled"}.</div></section>
 <section class="card" style="margin-top:16px"><div class="section-title"><h2>Import / Export</h2></div><div class="actions"><button class="btn primary" onclick="showPage('importExport')">Open Center</button><button class="btn" onclick="exportJSON()">Full JSON backup</button></div></section>`;
 }
 pages.settings=pagesSettingsNew;
@@ -2619,6 +2617,29 @@ function setUPIQR(ev){
  reader.readAsDataURL(file);
 }
 window.setUPIQR=setUPIQR;
+async function setLogo(event){
+ const file=event?.target?.files?.[0];if(!file)return;
+ try{
+  const data=await aureliaImageFileToDataUrl(file);
+  DB.settings.logo=data;save();refreshBrand();
+  const preview=document.getElementById('settingsLogo');if(preview){preview.src=data;preview.style.display='block';}
+  const note=document.getElementById('logoUploadNote');if(note)note.textContent='Logo saved on this device.';
+  toast('Hotel logo saved');
+ }catch(err){if(event?.target)event.target.value='';toast(err?.message||'Could not save hotel logo');}
+}
+async function setUPIQR(event){
+ const file=event?.target?.files?.[0];if(!file)return;
+ const note=document.getElementById('upiQrUploadNote'),preview=document.getElementById('upiQrPreview');
+ if(note)note.textContent='Compressing payment QR…';
+ try{
+  const data=await aureliaImageFileToDataUrl(file);
+  if(!/^data:image\/(?:jpeg|png|webp);base64,/i.test(data))throw new Error('Unsupported image format. Please use JPG, PNG, or WebP.');
+  DB.settings.upiQr=data;save();
+  if(preview){preview.src=data;preview.style.display='block';}
+  if(note)note.textContent='Payment QR saved on this device and ready for invoices.';
+  toast('Payment QR saved');
+ }catch(err){if(event?.target)event.target.value='';if(note)note.textContent=err?.message||'Could not save payment QR.';toast(err?.message||'Could not save payment QR');}
+}
 function aureliaRemoveUPIQR(){
  if(!confirm("Remove the saved UPI payment QR?"))return;
  DB.settings.upiQr="";save();
@@ -2832,6 +2853,24 @@ async function runImageOCR(file,statusEl){
 /* AURELIA reliability additions: export, backup, security controls, and browser navigation. */
 let aureliaDriveAccessToken=null;
 let aureliaDriveUploadTimer=null;
+let aureliaBiometricRequest=0;
+function aureliaSetBiometricEnabled(enabled){
+ const box=document.getElementById('aureliaBiometricEnabled'),note=document.getElementById('aureliaBiometricNote');
+ if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){
+  if(note)note.textContent='Biometric control is available only in the installed Android app.';
+  if(box)box.checked=DB.settings.biometricUnlock===true;return;
+ }
+ if(box)box.disabled=true;
+ const requestId='bio_'+Date.now()+'_'+(++aureliaBiometricRequest);
+ window.aureliaNativeBiometricSettingResult=function(id,ok,error){
+  if(String(id)!==requestId)return;
+  if(box)box.disabled=false;
+  if(ok){DB.settings.biometricUnlock=!!enabled;save();if(note)note.textContent='Biometric unlock '+(enabled?'enabled':'disabled')+'.';}
+  else{if(box)box.checked=DB.settings.biometricUnlock===true;if(note)note.textContent=error||'Could not update biometric preference.';}
+ };
+ try{window.AureliaNative.postMessage(JSON.stringify({type:'setBiometricEnabled',requestId,enabled:!!enabled}));}
+ catch(e){if(box){box.disabled=false;box.checked=DB.settings.biometricUnlock===true;}if(note)note.textContent='Could not contact Android biometric settings.';}
+}
 function aureliaDriveStatus(message){
  const n=document.getElementById('aureliaDriveNote');if(n)n.textContent=message;
 }
