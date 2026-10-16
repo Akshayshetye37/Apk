@@ -2650,13 +2650,20 @@ function setUPIQR(ev){
 window.setUPIQR=setUPIQR;
 async function setLogo(event){
  const file=event?.target?.files?.[0];if(!file)return;
+ const input=event.target, note=document.getElementById('logoUploadNote');
+ if(!/^image\\//i.test(file.type)){input.value='';if(note)note.textContent='Choose a valid image file.';toast('Choose an image file');return;}
  try{
+  if(note)note.textContent='Optimizing hotel logo…';
   const data=await aureliaImageFileToDataUrl(file);
-  DB.settings.logo=data;save();refreshBrand();
-  const preview=document.getElementById('settingsLogo');if(preview){preview.src=data;preview.style.display='block';}
-  const note=document.getElementById('logoUploadNote');if(note)note.textContent='Logo saved on this device.';
+  DB.settings.logo=data;
+  save();
+  await window.aureliaWaitForSecureSave?.();
+  refreshBrand();
+  const preview=document.getElementById('settingsLogo');
+  if(preview){preview.onerror=()=>{preview.style.display='none';if(note)note.textContent='Logo saved, but preview rendering failed. Reopen Settings to retry.';};preview.src=data;preview.style.display='block';}
+  if(note)note.textContent='Hotel logo saved securely on this device.';
   toast('Hotel logo saved');
- }catch(err){if(event?.target)event.target.value='';toast(err?.message||'Could not save hotel logo');}
+ }catch(err){input.value='';if(note)note.textContent='Logo could not be saved. Try a smaller PNG or JPG.';toast(err?.message||'Could not save hotel logo');}
 }
 async function setUPIQR(event){
  const file=event?.target?.files?.[0];if(!file)return;
@@ -2665,9 +2672,12 @@ async function setUPIQR(event){
  try{
   const data=await aureliaImageFileToDataUrl(file);
   if(!/^data:image\/(?:jpeg|png|webp);base64,/i.test(data))throw new Error('Unsupported image format. Please use JPG, PNG, or WebP.');
-  DB.settings.upiQr=data;save();
-  if(preview){preview.src=data;preview.style.display='block';}
-  if(note)note.textContent='Payment QR saved on this device and ready for invoices.';
+  DB.settings.upiQr=data;
+  save();
+  await window.aureliaWaitForSecureSave?.();
+  if(preview){preview.onerror=()=>{preview.style.display='none';if(note)note.textContent='QR saved, but the preview could not be rendered. Reopen Settings to retry.';};preview.src=data;preview.style.display='block';}
+  document.querySelectorAll('.qr-box img').forEach(el=>{el.src=data;el.style.display='block';});
+  if(note)note.textContent='Payment QR saved securely on this device and ready for invoices.';
   toast('Payment QR saved');
  }catch(err){if(event?.target)event.target.value='';if(note)note.textContent=err?.message||'Could not save payment QR.';toast(err?.message||'Could not save payment QR');}
 }
