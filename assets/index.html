@@ -2653,7 +2653,7 @@ window.setUPIQR=setUPIQR;
 async function setLogo(event){
  const file=event?.target?.files?.[0];if(!file)return;
  const input=event.target, note=document.getElementById('logoUploadNote');
- if(!/^image\\//i.test(file.type)){input.value='';if(note)note.textContent='Choose a valid image file.';toast('Choose an image file');return;}
+ if(!/^image\//i.test(file.type)){input.value='';if(note)note.textContent='Choose a valid image file.';toast('Choose an image file');return;}
  try{
   if(note)note.textContent='Optimizing hotel logo…';
   const data=await aureliaImageFileToDataUrl(file);
