@@ -138,13 +138,13 @@ if "PdfEnginePlugin.register(flutterEngine)" not in source:
     # Only replace a generated, empty MainActivity; fail closed on custom methods.
     lines = source.splitlines()
     class_index = next((i for i, line in enumerate(lines)
-                        if re.search(r"\\bclass\\s+MainActivity\\b", line)
+                        if re.search(r"\bclass\s+MainActivity\b", line)
                         and "FlutterActivity" in line), None)
     if class_index is None:
         raise SystemExit("Could not find a MainActivity extending FlutterActivity. Found declarations: " +
                          repr([line for line in lines if "MainActivity" in line or "FlutterActivity" in line]))
     declaration = lines[class_index].strip()
-    if not re.match(r"^class\\s+MainActivity\\s*:\\s*FlutterActivity\\b", declaration):
+    if not re.match(r"^class\s+MainActivity\s*:\s*FlutterActivity\b", declaration):
         raise SystemExit("Unexpected MainActivity declaration: " + repr(declaration))
     # Permit an empty class body (including a separate closing-brace line).
     remainder = lines[class_index + 1:]
@@ -155,7 +155,7 @@ if "PdfEnginePlugin.register(flutterEngine)" not in source:
             remainder.pop(0)
         else:
             raise SystemExit("MainActivity contains custom code; refusing automatic patch.")
-    elif declaration.endswith("{}") or re.fullmatch(r"class\\s+MainActivity\\s*:\\s*FlutterActivity\\s*(?:\\(\\s*\\))?\\s*", declaration):
+    elif declaration.endswith("{}") or re.fullmatch(r"class\s+MainActivity\s*:\s*FlutterActivity\s*(?:\(\s*\))?\s*", declaration):
         pass
     else:
         raise SystemExit("MainActivity contains custom code; refusing automatic patch: " + repr(declaration))
@@ -169,11 +169,11 @@ if "PdfEnginePlugin.register(flutterEngine)" not in source:
         "    }",
         "}",
     ]
-    source = "\\n".join(lines)
+    source = "\n".join(lines)
     if "import io.flutter.embedding.engine.FlutterEngine" not in source:
         source = source.replace(
             "import io.flutter.embedding.android.FlutterActivity",
-            "import io.flutter.embedding.android.FlutterActivity\\nimport io.flutter.embedding.engine.FlutterEngine",
+            "import io.flutter.embedding.android.FlutterActivity\nimport io.flutter.embedding.engine.FlutterEngine",
         )
-    main.write_text(source.rstrip() + "\\n", encoding="utf-8")
+    main.write_text(source.rstrip() + "\n", encoding="utf-8")
 print("Installed serialized PdfRenderer method channel and registered it with FlutterEngine.")
