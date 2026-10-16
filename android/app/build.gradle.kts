@@ -4,6 +4,13 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+
+dependencies {
+    // Bundle the Latin and Devanagari recognition models for offline OCR.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:text-recognition-devanagari:16.0.1")
+}
+
 android {
     namespace = "com.example.aurelia_pms"
     compileSdk = flutter.compileSdkVersion
