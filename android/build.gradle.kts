@@ -18,11 +18,12 @@ subprojects {
 
 // google_mlkit_text_recognition 0.15.0 references the Devanagari options in its
 // Android source, but its own module does not inherit app-level dependencies.
-// Add the bundled model to that plugin module's compile classpath as well.
+// Add the bundled model when the plugin's Android library configuration exists.
+// Avoid afterEvaluate: evaluationDependsOn(":app") above can evaluate projects first.
 subprojects {
-    afterEvaluate {
-        if (project.name == "google_mlkit_text_recognition") {
-            project.dependencies.add(
+    if (name == "google_mlkit_text_recognition") {
+        pluginManager.withPlugin("com.android.library") {
+            dependencies.add(
                 "implementation",
                 "com.google.mlkit:text-recognition-devanagari:16.0.1"
             )
