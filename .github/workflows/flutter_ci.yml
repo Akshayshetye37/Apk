@@ -6,8 +6,9 @@ on:
   pull_request:
     branches: ["main"]
 
+# CI validates untrusted pull-request code but never needs repository write access.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: aurelia-flutter-ci-${{ github.event.pull_request.head.ref || github.ref_name }}
@@ -20,9 +21,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-          persist-credentials: true
+          # For pull requests, checkout the merge ref from the base repository.
+          # This avoids running fork-controlled workflow code with a write token.
+          persist-credentials: false
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -32,36 +33,14 @@ jobs:
 
       - name: Enforce reproducible dependency lockfile
         shell: bash
-        env:
-          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
-          BASE_REPOSITORY: ${{ github.repository }}
-          EVENT_NAME: ${{ github.event_name }}
-          BRANCH_NAME: ${{ github.event.pull_request.head.ref || github.ref_name }}
         run: |
           set -euo pipefail
-          if [[ -s pubspec.lock ]] && flutter pub get --enforce-lockfile; then
-            echo "Committed dependency lockfile is consistent."
-          else
-            if [[ "$EVENT_NAME" == "pull_request" && "$HEAD_REPOSITORY" != "$BASE_REPOSITORY" ]]; then
-              echo "::error::Fork PR lockfile is missing or stale. Regenerate pubspec.lock and include it in the PR."
-              exit 1
-            fi
-            if [[ "$BRANCH_NAME" == "main" ]]; then
-              echo "::error::pubspec.lock is missing or stale on main. Update it in a reviewed commit."
-              exit 1
-            fi
-            echo "Refreshing the lockfile on this trusted remediation branch."
-            flutter pub get
-            test -s pubspec.lock
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -f pubspec.lock
-            if ! git diff --cached --quiet; then
-              git commit -m "chore: refresh Flutter dependency lockfile"
-              git push origin "HEAD:${BRANCH_NAME}"
-            fi
-            flutter pub get --enforce-lockfile
+          if [[ ! -s pubspec.lock ]]; then
+            echo "::error::pubspec.lock is missing. Generate it locally and commit it with the dependency changes."
+            exit 1
           fi
+          flutter pub get --enforce-lockfile
+          echo "Committed dependency lockfile is consistent."
 
       - name: Analyze Flutter source
         run: flutter analyze --fatal-infos
