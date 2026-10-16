@@ -23,7 +23,6 @@ import 'package:qr/qr.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
 import 'package:share_plus/share_plus.dart';
-import 'package:local_auth/local_auth.dart';
 
 
 /// Keystore-backed storage for native secrets such as future API tokens or
@@ -642,54 +641,64 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         return;
       }
       if (value['type'] == 'recognizeIdImage') {
-        final encoded=value['imageBase64'];
-        if(requestId==null||encoded is! String||encoded.isEmpty||encoded.length>12*1024*1024)throw const FormatException('ID image is missing or too large.');
-        final raw=base64Decode(encoded);
-        if(raw.isEmpty||raw.length>8*1024*1024)throw const FormatException('ID image exceeds 8 MiB.');
-        final decoded=img.decodeImage(raw);
-        if(decoded==null)throw const FormatException('Could not decode ID image.');
-        final resized=decoded.width>2400?img.copyResize(decoded,width:2400):decoded;
-        final enhanced=img.adjustColor(img.grayscale(resized),contrast:1.3,brightness:0.03);
-        final dir=await getTemporaryDirectory();
-        final file=File('${dir.path}/aurelia_ocr_${DateTime.now().microsecondsSinceEpoch}.jpg');
-        await file.writeAsBytes(img.encodeJpg(enhanced,quality:94),flush:true);
-        List<({double top,double left,String text})> spatialLines(RecognizedText result){
-          final lines=<({double top,double left,String text})>[];
-          for(final block in result.blocks){for(final line in block.lines){lines.add((top:line.boundingBox.top,left:line.boundingBox.left,text:line.text.trim()));}}
-          lines.sort((a,b){final delta=a.top-b.top;if(delta.abs()>12)return delta.compareTo(0);return a.left.compareTo(b.left);});return lines;
+        final encoded = value['imageBase64'];
+        if (requestId == null || encoded is! String || encoded.isEmpty || encoded.length > 12 * 1024 * 1024) {
+          throw const FormatException('ID image is missing or exceeds the size limit.');
         }
-        String latin='',devanagari='';
-        try{
-          final latinRecognizer=TextRecognizer(script:TextRecognitionScript.latin);
-          try{final result=await latinRecognizer.processImage(InputImage.fromFilePath(file.path));final lines=spatialLines(result);latin=lines.isEmpty?result.text.trim():lines.map((l)=>l.text).where((s)=>s.isNotEmpty).join('\n');}finally{await latinRecognizer.close();}
-          devanagari = await const MethodChannel('aurelia/native_ocr').invokeMethod<String>('recognizeDevanagari', {'path': file.path}) ?? '';
-          final merged=[latin,devanagari].where((s)=>s.trim().isNotEmpty).toSet().join('\n');
-          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},${jsonEncode(merged)},null);');
-        }finally{try{await file.delete();}catch(_){}}
-        return;
-      }
-      if (value['type'] == 'setPinEntryEnabled') {
-        final enabled = value['enabled'];
-        if (requestId == null || enabled is! bool) {
-          throw const FormatException('PIN-entry preference must be true or false.');
-        }
-        if (!enabled) {
-          final biometricPreference = await AureliaSecureVault.readSecret('aurelia_pms_biometric_enabled_v1');
-          var deviceAuthAvailable = false;
-          try { deviceAuthAvailable = await LocalAuthentication().isDeviceSupported(); } catch (_) {}
-          if (biometricPreference != 'true' || !deviceAuthAvailable) {
-            throw StateError('Enable supported Android device authentication before disabling PIN entry.');
+        final raw = base64Decode(encoded);
+        if (raw.isEmpty || raw.length > 8 * 1024 * 1024) throw const FormatException('ID image exceeds the 8 MiB limit.');
+        final decoded = img.decodeImage(raw);
+        if (decoded == null) throw const FormatException('Could not decode this ID image.');
+        // Improve low-contrast scans before OCR. Keep dimensions bounded to avoid
+        // excessive memory use on older phones; never overwrite the original image.
+        final resized = decoded.width > 2400
+            ? img.copyResize(decoded, width: 2400)
+            : decoded;
+        final gray = img.grayscale(resized);
+        final enhanced = img.adjustColor(gray, contrast: 1.35, brightness: 0.04);
+        final temp = await getTemporaryDirectory();
+        final ocrFile = File('${temp.path}/aurelia_ocr_${DateTime.now().microsecondsSinceEpoch}.jpg');
+        await ocrFile.writeAsBytes(img.encodeJpg(enhanced, quality: 94), flush: true);
+        final inputImage = InputImage.fromFilePath(ocrFile.path);
+        final recognizedLines = <String>[];
+        final recognizers = <TextRecognizer>[
+          TextRecognizer(script: TextRecognitionScript.latin),
+          TextRecognizer(script: TextRecognitionScript.devanagari),
+        ];
+        try {
+          for (final recognizer in recognizers) {
+            final result = await recognizer.processImage(inputImage);
+            // ML Kit returns line geometry; sort by visual position to keep fields
+            // in reading order on multi-column Indian ID layouts.
+            final lines = result.blocks.expand((block) => block.lines).toList()
+              ..sort((a, b) {
+                final vertical = a.boundingBox.top.compareTo(b.boundingBox.top);
+                if (vertical.abs() > 8) return vertical;
+                return a.boundingBox.left.compareTo(b.boundingBox.left);
+              });
+            for (final line in lines) {
+              final value = line.text.trim();
+              if (value.isEmpty) continue;
+              final key = value.toUpperCase().replaceAll(RegExp(r'\s+'), '');
+              final duplicate = recognizedLines.any((existing) =>
+                  existing.toUpperCase().replaceAll(RegExp(r'\s+'), '') == key);
+              if (!duplicate) recognizedLines.add(value);
+            }
           }
+          final text = recognizedLines.join('\n').trim();
+          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},${jsonEncode(text)},null);');
+        } finally {
+          for (final recognizer in recognizers) {
+            await recognizer.close();
+          }
+          try { await ocrFile.delete(); } catch (_) {}
         }
-        await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', enabled ? 'true' : 'false');
-        await _controller.runJavaScript('window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
       if (value['type'] == 'setBiometricEnabled') {
         final enabled = value['enabled'];
         if (requestId == null || enabled is! bool) throw const FormatException('Biometric preference must be true or false.');
         await AureliaSecureVault.writeSecret('aurelia_pms_biometric_enabled_v1', enabled ? 'true' : 'false');
-        if (!enabled) await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', 'true');
         await _controller.runJavaScript('window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
@@ -864,7 +873,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       debugPrint('Aurelia native bridge rejected request: $error');
       if (requestId != null) {
         try {
-          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
+          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
         } catch (_) {}
       }
     }

@@ -1043,13 +1043,16 @@ function parseIdText(text){
  const aadhaar=normalized.match(/\b([2-9]\d{3}(?:\s?\d{4}){2})\b/);
  const dl=normalized.match(/\b([A-Z]{2}\s*[-/]?\s*\d{2}\s*[-/]?\s*\d{4}\s*[-/]?\s*\d{7})\b/i);
  const voter=normalized.match(/\b([A-Z]{3}\d{7})\b/i);
- const passport=lines.find(s=>/^P<[A-Z0-9<]{35,}$/.test(s.replace(/\s/g,'')));
+ const compactLines=lines.map(s=>s.replace(/\s/g,''));
+ const passportIndex=compactLines.findIndex(s=>/^P<[A-Z0-9<]{30,}$/.test(s));
+ const passport=passportIndex>=0?compactLines[passportIndex]:'';
+ const passportNameLine=compactLines.find(s=>s.length>=15&&/^[A-Z<]+<<[A-Z<]+$/.test(s)&&!s.startsWith('P<'))||'';
  let idType='',idNumber='';
  if(pan){idType='PAN Card';idNumber=pan[1].toUpperCase();}
  else if(aadhaar){idType='Aadhaar Card';idNumber=aadhaar[1].replace(/\s+/g,' ');}
  else if(dl){idType='Driving Licence';idNumber=dl[1].replace(/\s+/g,' ').toUpperCase();}
  else if(voter){idType='Voter ID';idNumber=voter[1].toUpperCase();}
- else if(passport)idType='Passport';
+ else if(passport||passportNameLine)idType='Passport';
  const dobMatch=normalized.match(/(?:DOB|DATE OF BIRTH|D\.?O\.?B\.?|BIRTH|जन्म(?:\s*तिथि)?)\s*[:：-]?\s*(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}[/-]\d{2}[/-]\d{2})/i);
  const phoneMatch=normalized.match(/\b([6-9]\d{9})\b/);
  const gender=/\bFEMALE\b/i.test(normalized)?'Female':/\bMALE\b/i.test(normalized)?'Male':'';
@@ -1058,7 +1061,7 @@ function parseIdText(text){
  const valid=s=>{const n=clean(s),w=n.split(/\s+/).filter(Boolean);return n.length>=3&&n.length<=70&&!header.test(n)&&w.length>=2&&w.length<=6&&w.every(x=>/^[\p{L}\p{M}][\p{L}\p{M}'.-]*$/u.test(x));};
  const relation=/\b(?:FATHER|MOTHER|HUSBAND|SPOUSE|WIFE)'?S?\s+NAME\b|(?:पिता|माता|पति|पत्नी)\s*(?:का|की)?\s*नाम/u;
  let name='';
- if(passport){const mrz=passport.replace(/\s/g,'');const p=mrz.substring(5).split('<<');if(p.length>=2){const surname=p[0].replace(/</g,' ').trim(),given=p[1].replace(/</g,' ').trim();if(surname&&given)name=clean(given+' '+surname);}}
+ if(passportNameLine){const p=passportNameLine.split('<<');if(p.length>=2){const surname=p[0].replace(/</g,' ').trim(),given=p.slice(1).join(' ').replace(/</g,' ').trim();if(surname&&given)name=clean(given+' '+surname);}}
  if(!name){for(let i=0;i<lines.length;i++){if(relation.test(lines[i])||(i>0&&relation.test(lines[i-1])))continue;const m=lines[i].match(/^(?:FULL\s+)?(?:NAME|NAME OF HOLDER|HOLDER NAME|नाम|पूरा नाम)\s*[:：.-]?\s*(.+)$/iu);if(m&&valid(m[1])){name=clean(m[1]);break;}if(/^(?:FULL\s+)?(?:NAME|नाम|पूरा नाम)\s*[:：.-]?$/iu.test(lines[i])&&lines[i+1]&&valid(lines[i+1])){name=clean(lines[i+1]);break;}}}
  if(!name){for(let i=0;i<lines.length;i++){if(/\b(?:DOB|DATE OF BIRTH|YEAR OF BIRTH|BIRTH)\b|जन्म/i.test(lines[i])){for(let b=1;b<=2&&i-b>=0;b++)if(!relation.test(lines[i-b])&&valid(lines[i-b])){name=clean(lines[i-b]);break;}if(name)break;}}}
  if(!name)name=lines.map(clean).filter(valid).find(s=>!header.test(s))||'';
