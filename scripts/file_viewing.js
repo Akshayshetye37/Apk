@@ -172,7 +172,11 @@
         html += '<section class="card" id="aureliaDriveFolderIdCard" style="margin-top:16px">' +
           '<div class="section-title"><h2>Backup and Google Drive</h2><span class="status reserved">Drive not connected</span></div>' +
           '<p class="muted">Save a Drive folder ID below. Real cloud uploads require Google OAuth setup. Until connected, automatic backups are encrypted on this device.</p>' +
-          '<div class="field"><label for="aureliaDriveFolderId">Google Drive folder ID</label>' +
+          '<div class="field"><label for="aureliaDriveEmail">Google account email</label>' +
+          '<input id="aureliaDriveEmail" type="email" maxlength="254" autocomplete="email" value="' +
+          String((typeof DB !== 'undefined' && DB.settings && DB.settings.googleDriveEmail) || '').replace(/[&<>"]/g, '') +
+          '" placeholder="name@gmail.com"></div>' +
+          '<div class="field"><label for="aureliaDriveFolderId">Google Drive folder ID (optional)</label>' +
           '<input id="aureliaDriveFolderId" type="text" maxlength="200" autocomplete="off" value="' + escaped + '" placeholder="Paste Drive folder ID"></div>' +
           '<div class="actions" style="margin-top:10px"><button class="btn" type="button" onclick="aureliaSaveDriveFolderId()">Save folder ID</button>' +
           '<button class="btn" type="button" onclick="aureliaClearDriveFolderId()">Clear</button></div>' +
@@ -233,16 +237,24 @@
     const input = document.getElementById('aureliaDriveFolderId');
     if (!input || typeof DB === 'undefined' || !DB.settings) return;
     const id = input.value.trim();
+    const emailInput = document.getElementById('aureliaDriveEmail');
+    const email = emailInput ? emailInput.value.trim() : '';
+    if (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+      const status = document.getElementById('aureliaDriveFolderIdStatus');
+      if (status) status.textContent = 'Enter a valid Google account email address.';
+      return;
+    }
     if (id.length > 200 || /[\\/\s]/.test(id)) {
       const status = document.getElementById('aureliaDriveFolderIdStatus');
       if (status) status.textContent = 'Enter only the folder ID from the Drive URL, without spaces or slashes.';
       return;
     }
     DB.settings.googleDriveFolderId = id;
+    DB.settings.googleDriveEmail = email;
     if (typeof window.save === 'function') save();
     const status = document.getElementById('aureliaDriveFolderIdStatus');
-    if (status) status.textContent = id ? 'Folder ID saved on this device. Cloud upload is not enabled.' : 'Folder ID cleared.';
-    if (typeof window.toast === 'function') toast('Drive folder ID saved locally. Cloud backup is not connected.');
+    if (status) status.textContent = 'Google account and folder settings saved on this device. Google sign-in/upload still requires OAuth app configuration.';
+    if (typeof window.toast === 'function') toast('Drive destination saved locally; Google Drive is not yet connected.');
   };
   window.aureliaClearDriveFolderId = function () {
     const input = document.getElementById('aureliaDriveFolderId');
