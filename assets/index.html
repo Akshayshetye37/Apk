@@ -481,7 +481,7 @@ function setAllFeatures(on){
  requestAnimationFrame(()=>window.scrollTo(0,scrollY));toast(on?'All features enabled':'All features disabled');
 }
 function getExportRecords(scope){
- if(scope==='guest')return DB.guests.map(g=>({id:g.id,label:g.name}));
+ if(scope==='guest')return [...(DB.guests||[])].filter(g=>g&&g.id!=null).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))).map(g=>({id:String(g.id),label:`${g.name||'Unnamed guest'} · ${g.phone||'No phone'} · ${String(g.id).slice(-6)}`}));
  if(scope==='booking')return DB.bookings.map(b=>({id:b.id,label:`${b.sr} · ${guest(b)?.name||''}`}));
  if(scope==='room')return DB.rooms.map(r=>({id:r.id,label:`Room ${r.number}`}));
  if(scope==='folio')return DB.bookings.filter(b=>b.status==='active').map(b=>({id:b.id,label:`${b.sr} · Room ${room(b)?.number||''}`}));
@@ -1754,6 +1754,13 @@ function pagesSettingsNew(){
   const masterKeys=Object.keys(NEW_FEATURE_TREE);
   return `<div class="hero"><div><h1>Settings</h1><p>Hotel identity, master features and detailed function kill-switches.</p></div><div class="actions"><span class="muted">Feature controls</span></div></div>
   <div class="grid two">
+    <section class="card" id="aureliaDriveSettingsCard"><div class="section-title"><h2>Google Drive backup</h2><span class="muted">Not connected</span></div>
+      <p class="muted">Google Drive backup is not active yet. Your records are not being synced to Google Drive. Continue using Offline Device Backup (Export / Import) to make a copy before changing phones or clearing app data.</p>
+      <div class="field full"><label>Connection status</label><input value="Not configured" readonly></div>
+      <div class="field full"><label>Backup method</label><input value="Offline device export / import" readonly></div>
+      <button class="btn" type="button" disabled aria-disabled="true">Google Drive connection — coming later</button>
+      <p class="muted">When implemented, this section will support account connection and encrypted backup transfer. Do not assume cloud copies exist until the status explicitly confirms a successful backup.</p>
+    </section>
     <section class="card"><div class="section-title"><h2>Hotel identity</h2></div>
       <div class="logo-preview"><img id="settingsLogo" src="${DB.settings.logo||""}" onerror="this.style.display='none'"><div><button class="btn" onclick="document.getElementById('logoFile').click()">Upload logo</button><input id="logoFile" type="file" accept="image/*" hidden onchange="setLogo(event)"></div></div>
       <div class="form-grid" style="margin-top:12px">${field("Hotel name","hotelName",DB.settings.hotelName)}${field("Phone","phone",DB.settings.phone)}${field("Address","address",DB.settings.address,true)}${field("GST","gst",DB.settings.gst)}${field("UPI","upi",DB.settings.upi)}${field("Currency","currency",DB.settings.currency)}</div>
