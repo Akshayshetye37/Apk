@@ -194,19 +194,26 @@
     }
   } catch (error) { console.warn('Could not add Drive target field:', error); }
   window.aureliaSetAppProtection = function (enabled) {
+    const status = document.getElementById('aureliaProtectionStatus');
+    if (enabled === false) {
+      // Disabling the native access gate would expose stored guest/payment data.
+      // Keep the app locked; users can still use the device's normal app controls.
+      if (status) status.textContent = 'App protection cannot be disabled in this secure build.';
+      if (typeof window.toast === 'function') window.toast('App protection cannot be disabled in this secure build.');
+      return;
+    }
     if (typeof DB !== 'undefined' && DB.settings) {
-      DB.settings.appProtectionEnabled = !!enabled;
+      DB.settings.appProtectionEnabled = true;
       if (typeof window.save === 'function') window.save();
     }
-    const status = document.getElementById('aureliaProtectionStatus');
     if (!window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function') {
-      if (status) status.textContent = 'This setting is applied only in the installed Android app.';
+      if (status) status.textContent = 'This setting is available only in the installed Android app.';
       return;
     }
     window.AureliaNative.postMessage(JSON.stringify({
-      type:'setAppProtection', requestId:'protection_' + Date.now(), enabled:!!enabled
+      type:'setAppProtection', requestId:'protection_' + Date.now(), enabled:true
     }));
-    if (status) status.textContent = enabled ? 'Protection enabled. PIN setup may be required on next unlock.' : 'Protection disabled. The app will open without an unlock prompt.';
+    if (status) status.textContent = 'App protection remains enabled. PIN setup may be required on next unlock.';
   };
   window.aureliaNativeProtectionResult = function (requestId, ok, error) {
     const status = document.getElementById('aureliaProtectionStatus');
