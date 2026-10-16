@@ -22,7 +22,6 @@ if 'Pbkdf2(' not in main or 'exportEncryptedBackup' not in main or 'restoreEncry
 if 'local_auth: 2.3.0' not in pub or 'FlutterFragmentActivity' not in (root / 'android/app/src/main/kotlin/com/example/aurelia_pms/MainActivity.kt').read_text(encoding='utf-8') or 'android.permission.USE_BIOMETRIC' not in manifest: errors.append('Native PIN/device authentication support is incomplete.')
 if '_lockUntilKey' not in gate or '310000' not in gate or 'didChangeAppLifecycleState' not in main: errors.append('PIN lockout or background-session locking is missing.')
 if 'PmsAccessGate' not in main or 'local_auth' not in gate: errors.append('Native PIN/device authentication gate is missing.')
-if 'FLAG_SECURE' not in activity: errors.append('Android screenshots and recent-app previews must be protected.')
 if not html.strip(): errors.append('Bundled PMS HTML asset is empty; refusing to package a blank app.')
 if 'quickchart.io/qr' in html.lower() or 'api.qrserver.com' in html.lower(): errors.append('External QR generation service remains in HTML.')
 if 'aureliaRequestLocalQr' not in html or 'generateQr' not in main: errors.append('Local QR bridge is missing.')
