@@ -144,6 +144,8 @@ if "PdfEnginePlugin.register(flutterEngine)" not in source:
         raise SystemExit("Could not find a MainActivity extending FlutterActivity. Found declarations: " +
                          repr([line for line in lines if "MainActivity" in line or "FlutterActivity" in line]))
     declaration = lines[class_index].strip()
+    base_match = re.search(r"Flutter(?:Fragment)?Activity", declaration)
+    activity_base = base_match.group(0) if base_match else "FlutterActivity"
     if not re.match(r"^class\s+MainActivity\s*:\s*Flutter(?:Fragment)?Activity\b", declaration):
         raise SystemExit("Unexpected MainActivity declaration: " + repr(declaration))
     # Permit an empty class body (including a separate closing-brace line).
@@ -162,7 +164,7 @@ if "PdfEnginePlugin.register(flutterEngine)" not in source:
     if any(line.strip() for line in remainder):
         raise SystemExit("MainActivity contains custom code; refusing automatic patch.")
     lines = lines[:class_index] + [
-        "class MainActivity : FlutterActivity() {",
+        f"class MainActivity : {activity_base}() {{" ,
         "    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {",
         "        super.configureFlutterEngine(flutterEngine)",
         "        PdfEnginePlugin.register(flutterEngine)",
@@ -171,9 +173,9 @@ if "PdfEnginePlugin.register(flutterEngine)" not in source:
     ]
     source = "\n".join(lines)
     if "import io.flutter.embedding.engine.FlutterEngine" not in source:
-        package_line = re.search(r"(?m)^package\\s+[^\\n]+", source)
+        package_line = re.search(r"(?m)^package\s+[^\n]+", source)
         if package_line:
-            source = source[:package_line.end()] + "\\n\\nimport io.flutter.embedding.engine.FlutterEngine" + source[package_line.end():]
+            source = source[:package_line.end()] + "\n\nimport io.flutter.embedding.engine.FlutterEngine" + source[package_line.end():]
         else:
             raise SystemExit("Could not safely add FlutterEngine import.")
     main.write_text(source.rstrip() + "\n", encoding="utf-8")
