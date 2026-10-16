@@ -29,6 +29,7 @@ class _ProductionPdfViewerRouteState extends State<ProductionPdfViewerRoute> {
   String? _error;
   Uint8List? _bytes;
   double _zoom = 1;
+  final TransformationController _transformController = TransformationController();
   Timer? _debounce;
   bool _closing = false;
 
@@ -81,10 +82,7 @@ class _ProductionPdfViewerRouteState extends State<ProductionPdfViewerRoute> {
   }
 
   void _zoomChanged(ScaleEndDetails details) {
-    final next = _zoom.clamp(1.0, 2.5);
-    if ((next - 1).abs() < 0.08) {
-      _zoom = 1;
-    }
+    _zoom = _transformController.value.getMaxScaleOnAxis().clamp(1.0, 2.5);
     _render(_page, _zoom, debounce: true);
   }
 
@@ -93,6 +91,7 @@ class _ProductionPdfViewerRouteState extends State<ProductionPdfViewerRoute> {
     _closing = true;
     _request++;
     _debounce?.cancel();
+    _transformController.dispose();
     unawaited(_channel.invokeMethod<void>('closePdf').catchError((_) {}));
     super.dispose();
   }
@@ -120,10 +119,8 @@ class _ProductionPdfViewerRouteState extends State<ProductionPdfViewerRoute> {
           Positioned.fill(child: _bytes == null
             ? const SizedBox.shrink()
             : Center(child: InteractiveViewer(
+                transformationController: _transformController,
                 minScale: 1, maxScale: 3, panEnabled: true, scaleEnabled: true,
-                onInteractionUpdate: (details) {
-                  _zoom = (_zoom * details.scale).clamp(1.0, 2.5);
-                },
                 onInteractionEnd: _zoomChanged,
                 child: Image.memory(_bytes!, fit: BoxFit.contain, gaplessPlayback: true),
               ))),
