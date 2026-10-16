@@ -670,6 +670,13 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         }
         return;
       }
+      if (value['type'] == 'setBiometricEnabled') {
+        final enabled = value['enabled'];
+        if (requestId == null || enabled is! bool) throw const FormatException('Biometric preference must be true or false.');
+        await AureliaSecureVault.writeSecret('aurelia_pms_biometric_enabled_v1', enabled ? 'true' : 'false');
+        await _controller.runJavaScript('window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},true,null);');
+        return;
+      }
       if (value['type'] == 'setAppProtection') {
         final enabled = value['enabled'];
         if (enabled is! bool) throw const FormatException('Protection setting must be true or false.');
