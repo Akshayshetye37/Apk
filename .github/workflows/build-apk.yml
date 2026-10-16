@@ -40,6 +40,8 @@ jobs:
         run: flutter create . --platforms=android
       - name: Apply Android security hardening
         run: python scripts/harden_android.py "$GITHUB_WORKSPACE"
+      - name: Install native PDF rendering engine
+        run: python3 scripts/install_pdf_engine.py "$GITHUB_WORKSPACE"
       - name: Inject reliability patches and check JavaScript syntax
         run: |
           set -euo pipefail
@@ -202,6 +204,8 @@ jobs:
 
       - name: Harden Android network, backup, and release configuration
         run: python3 "$GITHUB_WORKSPACE/scripts/harden_android.py" "$PROJECT_DIR"
+      - name: Install native PDF rendering engine
+        run: python3 "$GITHUB_WORKSPACE/scripts/install_pdf_engine.py" "$PROJECT_DIR"
 
       - name: Run static security checks
         run: python3 scripts/security_static_check.py
