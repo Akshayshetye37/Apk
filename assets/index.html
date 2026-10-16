@@ -992,11 +992,8 @@ async function runImageOCR(file,statusEl){
       return null;
   }
   if(!window.Tesseract){
-      await new Promise((resolve,reject)=>{
-        const sc=document.createElement('script');
-        sc.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-        sc.onload=resolve; sc.onerror=reject; document.head.appendChild(sc);
-      });
+      if(statusEl)statusEl.textContent='OCR engine is unavailable in this browser preview. The image can still be saved; use the installed Android app for on-device OCR.';
+      return null;
     }
     const logger=m=>{if(statusEl&&m.status)statusEl.textContent=`OCR: ${m.status}${m.progress!=null?' · '+Math.round(m.progress*100)+'%':''}`;};
     const first=await Tesseract.recognize(file,'eng',{logger});
