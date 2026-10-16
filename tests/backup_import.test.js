@@ -166,3 +166,19 @@ test('room billing canonicalizes prices and rejects non-menu items', () => {
   assert.equal(commitCount, 1);
   assert.match(app.messages.at(-1), /Only active restaurant menu items/);
 });
+
+test('Android plaintext restore reboots through secure native storage instead of WebView reload', async () => {
+  const app = createHarness({
+    native: true,
+    db: { guests: [{ id: 'old' }], rooms: [], bookings: [] }
+  });
+  await app.importJson(JSON.stringify({
+    app: 'AURELIA PMS',
+    formatVersion: 1,
+    data: { guests: [{ id: 'restored' }], rooms: [], bookings: [] }
+  }));
+  assert.equal(app.postedMessages.length, 1);
+  assert.equal(app.postedMessages[0].type, 'reloadSecurePms');
+  assert.equal(app.reloads, 0);
+  assert.equal(app.saves, 1);
+});
