@@ -191,12 +191,12 @@ for activity_file in activity_files:
             package_match = re.search(r"(?m)^package .*?$", activity_source)
             if not package_match:
                 raise SystemExit(f"ERROR: cannot safely locate Kotlin package declaration in {activity_file}")
-            activity_source = activity_source[:package_match.end()] + "\\n\\nimport android.view.WindowManager" + activity_source[package_match.end():]
-        class_match = re.search(r"(?m)^(\\s*)class\\s+MainActivity\\s*:\\s*[^\\n{]+\\{", activity_source)
+            activity_source = activity_source[:package_match.end()] + "\n\nimport android.view.WindowManager" + activity_source[package_match.end():]
+        class_match = re.search(r"(?m)^(\s*)class\s+MainActivity\s*:\s*[^\n{]+\{", activity_source)
         if not class_match:
             raise SystemExit(f"ERROR: cannot safely locate MainActivity class in {activity_file}")
         insert_at = class_match.end()
-        secure_method = "\\n    override fun onCreate(savedInstanceState: android.os.Bundle?) {\\n        window.setFlags(\\n            WindowManager.LayoutParams.FLAG_SECURE,\\n            WindowManager.LayoutParams.FLAG_SECURE\\n        )\\n        super.onCreate(savedInstanceState)\\n    }\\n"
+        secure_method = "\n    override fun onCreate(savedInstanceState: android.os.Bundle?) {\n        super.onCreate(savedInstanceState)\n        window.setFlags(\n            WindowManager.LayoutParams.FLAG_SECURE,\n            WindowManager.LayoutParams.FLAG_SECURE\n        )\n    }\n"
         activity_source = activity_source[:insert_at] + secure_method + activity_source[insert_at:]
         activity_file.write_text(activity_source, encoding="utf-8")
 
