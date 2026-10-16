@@ -49,6 +49,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
   bool _busy = false;
   bool _deviceAuthAvailable = false;
   bool _biometricEnabled = false;
+  bool _pinEntryEnabled = true;
   int _failedAttempts = 0;
   DateTime? _lockUntil;
   String? _error;
@@ -64,6 +65,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
     try {
       final protection = await widget.readSecret('aurelia_pms_auth_enabled_v1');
       final biometricPreference = await widget.readSecret('aurelia_pms_biometric_enabled_v1');
+      final pinEntryPreference = await widget.readSecret('aurelia_pms_pin_entry_enabled_v1');
       if (protection == 'false') {
         if (!mounted) return;
         setState(() { _loading = false; _configured = false; });
@@ -88,6 +90,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         _lockUntil = lock == null ? null : DateTime.tryParse(lock);
         _deviceAuthAvailable = deviceAuth;
         _biometricEnabled = biometricPreference == 'true';
+        _pinEntryEnabled = pinEntryPreference != 'false' || biometricPreference != 'true';
         _loading = false;
       });
       _startLockoutTicker();
@@ -320,6 +323,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                   ),
                   if (!_loading && _error == null) ...[
                     const SizedBox(height: 16),
+                    if (!_configured || _pinEntryEnabled) ...[
                     TextField(
                       controller: _pin,
                       keyboardType: TextInputType.number,
@@ -362,6 +366,11 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                                   : (_configured ? 'Unlock' : 'Save PIN and continue')),
                         ),
                       ),
+                    ),
+                    ],
+                    if (_configured && !_pinEntryEnabled) const Padding(
+                      padding: EdgeInsets.only(top: 12),
+                      child: Text('PIN entry is disabled. Use Android device authentication to unlock.'),
                     ),
                     if (_configured && _deviceAuthAvailable && _biometricEnabled) ...[
                       const SizedBox(height: 8),

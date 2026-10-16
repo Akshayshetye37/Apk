@@ -651,7 +651,7 @@ function exportImageDocument(scope,id,format){
  wrapped.forEach(line=>{if(y>height-pad){return}ctx.fillText(line,pad,y);y+=lineH});
  const finishExport=()=>canvas.toBlob(blob=>{if(blob){const url=URL.createObjectURL(blob);try{const preview=window.open(url,'_blank');if(!preview)toast('Image created. If preview was blocked, check your downloads.')}catch(_){}downloadBlob(blob,`aurelia-${scope}-${Date.now()}.${format}`);toast(`${format.toUpperCase()} image exported; preview opened when pop-ups are allowed`);setTimeout(()=>URL.revokeObjectURL(url),60000)}else{toast('Could not render image. Try PDF/print or allow sufficient browser memory.')}},format==='jpg'?'image/jpeg':'image/png',0.95);if(!photoCards.length){finishExport();}else{(async()=>{let photoY=y+20;for(const card of photoCards){await new Promise(resolve=>{const image=new Image();image.onload=()=>{ctx.font='bold 24px Arial';ctx.fillText(card.label,pad,photoY);photoY+=32;const scale=Math.min((width-pad*2)/image.width,220/image.height,1);ctx.drawImage(image,pad,photoY,image.width*scale,image.height*scale);photoY+=image.height*scale+24;resolve();};image.onerror=()=>{ctx.font='22px Arial';ctx.fillText(card.label+' (could not load)',pad,photoY);photoY+=45;resolve();};image.src=card.src;});}})().then(finishExport);}
 }
-function quickGuestExport(id){
+function quickGuestExport(id){dedupeExistingGuestsInPlace();
  const g=DB.guests.find(x=>x.id===id);
  if(!g){toast('Guest record not found');return}
  exportPrintDocument('guest',id,'pdf');
@@ -735,12 +735,13 @@ function kpi(l,v,s){return `<div class="card kpi"><div class="label">${l}</div><
 function roomCard(r){let b=DB.bookings.find(x=>x.roomId===r.id&&x.status==='active');let g=b&&guest(b);return `<div class="room"><div class="row" style="justify-content:space-between"><span class="num">${esc(r.number)}</span><span class="status ${esc(r.status)}">${esc(r.status)}</span></div><div class="muted">${esc(r.type)} · ${money(r.rate)}</div>${g?`<div style="margin-top:8px"><b>${esc(g.name)}</b><div class="muted">${fmt(b.checkOut)}</div></div>`:''}<div class="actions" style="margin-top:11px;flex-wrap:wrap"><button class="btn small" onclick="showPage('folio');setTimeout(()=>openFolio('${b?.id||''}'),50)">Folio</button><button class="btn small" onclick="openRoomEdit('${r.id}')">Manage</button><button class="btn small danger" onclick="removeRoom('${r.id}')">Remove</button></div></div>`}
 
 function pagesBookings(){
+ dedupeExistingGuestsInPlace();
  DB.bookings.forEach(recalcBooking);
  return `<div class="hero"><div><h1>Bookings / Active stays (${DB.bookings.length})</h1><p>${DB.bookings.filter(b=>b.status==='active').length} active · ${DB.bookings.filter(b=>b.status==='checked_out').length} checked out · ${DB.bookings.filter(b=>b.status==='cancelled').length} cancelled. Every stay has a permanent SR number.</p></div><div class="actions"><button class="btn primary" onclick="openBooking()">＋ New booking</button></div></div>
  <div class="grid three" style="margin-bottom:14px">${kpi('Total bookings',DB.bookings.length,'All statuses')}${kpi('Active stays',DB.bookings.filter(b=>b.status==='active').length,'Currently active')}${kpi('Outstanding',money(DB.bookings.filter(b=>b.status==='active').reduce((n,b)=>n+due(b),0)),'Active folios')}</div>
  <div class="list">${DB.bookings.map(b=>{let g=guest(b),r=room(b);return `<div class="item">
  <div class="item-head"><div><h3>${b.sr}</h3><b>${g?.name||'Unknown guest'}</b><div class="muted">Room ${r?.number||'-'} · ${b.guests||1} guest(s)</div></div><span class="status ${b.status==='active'?'occupied':'available'}">${b.status}</span></div>
- <div class="row" style="margin:12px 0"><span>${fmt(b.checkIn)} → ${fmt(b.checkOut)}</span></div>
+ <div class="row" style="margin:12px 0"><span>${fmt(b.checkIn)} → ${fmt(b.checkOut)}</span></div>${g?.idPhoto?`<div class="row" style="margin:8px 0"><img class="photo" src="${g.idPhoto}" alt="Guest ID photo" style="max-width:110px;max-height:84px;object-fit:contain"></div>`:""}
  <div class="row"><span>Total <b>${money(total(b))}</b></span><span>Paid <b>${money(b.paid)}</b></span><span class="${due(b)?'due':'ok'}">Due <b>${money(due(b))}</b></span></div>
  <div class="actions" style="margin-top:12px"><button class="btn small" onclick="callGuest('${g?.phone||''}')">☎ Call</button><button class="btn small" onclick="msgGuest('${g?.phone||''}')">WhatsApp</button><button class="btn small" onclick="shareInvoice('${b.id}')">Invoice</button><button class="btn small" onclick="showPage('folio');setTimeout(()=>openFolio('${b.id}'),50)">Folio</button><button class="btn small" onclick="openBooking('${b.id}')">Edit</button><button class="btn small" onclick="checkout('${b.id}')">Checkout</button>${b.status==='active'?`<button type="button" class="btn small" onclick="sendBookingTerms('${b.id}')">Terms & Conditions</button>`:""}</div>
  </div>`}).join('')||'<div class="card empty">No bookings</div>'}</div>`;
@@ -785,6 +786,7 @@ function pagesReservations(){
 }
 
 function pagesGuests(){
+ dedupeExistingGuestsInPlace();
  return `<div class="hero"><div><h1>Guests / Occupants / Vehicles</h1><p>Every person has identity information and every vehicle can be recorded.</p></div><button class="btn primary" onclick="openGuest()">＋ Add guest</button></div>
  <div class="list">${DB.guests.map(g=>`<div class="item"><div class="item-head"><div><h3>${g.name}</h3><div class="muted">${g.phone||'No phone'} · ${g.email||'No email'}</div></div><span class="status occupied">Primary guest</span></div>
  <div class="row" style="margin:10px 0"><span>ID: <b>${g.idType||'Not recorded'}</b> ${g.idNumber||''}</span><span>Occupants: <b>${g.occupants?.length||0}</b></span><span>Vehicles: <b>${g.vehicles?.length||0}</b></span></div>
@@ -1035,17 +1037,33 @@ async function runImageOCR(file,statusEl){
 }
 function parseIdText(text){
  const raw=String(text||'').replace(/\r/g,'\n');if(!raw.trim())return{};
- const normalized=raw.replace(/[ \t]+/g,' ').trim(),lines=raw.split(/\n+/).map(s=>s.replace(/[ \t]+/g,' ').trim()).filter(Boolean);
- const pan=normalized.match(/\b([A-Z]{5}\d{4}[A-Z])\b/i),aadhaar=normalized.match(/\b([2-9]\d{3}\s?\d{4}\s?\d{4})\b/),dl=normalized.match(/\b([A-Z]{2}[-\s]?\d{2}[-\s]?\d{4}[-\s]?\d{7})\b/i),voter=normalized.match(/\b([A-Z]{3}\d{7})\b/i),passport=lines.find(s=>/^P<[A-Z0-9<]{35,}$/.test(s.replace(/\s/g,'')));
- let idType='',idNumber='';if(pan){idType='PAN Card';idNumber=pan[1].toUpperCase();}else if(aadhaar){idType='Aadhaar Card';idNumber=aadhaar[1].replace(/\s+/g,' ');}else if(dl){idType='Driving Licence';idNumber=dl[1].replace(/\s+/g,' ').toUpperCase();}else if(voter){idType='Voter ID';idNumber=voter[1].toUpperCase();}else if(passport)idType='Passport';
- const dobMatch=normalized.match(/(?:DOB|DATE OF BIRTH|D\.?O\.?B\.?|BIRTH|जन्म)\s*[:：-]?\s*(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}[/-]\d{2}[/-]\d{2})/i),phoneMatch=normalized.match(/\b([6-9]\d{9})\b/),gender=/\bFEMALE\b/i.test(normalized)?'Female':/\bMALE\b/i.test(normalized)?'Male':'';
- const noise=/\b(GOVERNMENT|UNIQUE|IDENTIFICATION|AUTHORITY|UIDAI|AADHAAR|AADHAR|MERA|PEHCHAN|INCOME|TAX|DEPARTMENT|PERMANENT|ACCOUNT|NUMBER|CARD|ELECTION|COMMISSION|ELECTOR|PHOTO|IDENTITY|DRIVING|LICENCE|LICENSE|UNION|REPUBLIC|PASSPORT|ADDRESS|FATHER|MOTHER|HUSBAND|WIFE|SIGNATURE|ISSUE|VALID|TILL|DATE|BIRTH|MALE|FEMALE|TRANSGENDER|MAHARASHTRA|STATE|TRANSPORT|AUTHORISATION|ENROLMENT|ENROLLMENT)\b/i;
- const clean=s=>String(s||'').replace(/^(?:MR|MRS|MS|SHRI|SMT|KUMARI|DR)\.?\s+/i,'').replace(/[^A-Za-z .'-]/g,' ').replace(/\s+/g,' ').trim(),valid=s=>{const n=clean(s),w=n.split(/\s+/).filter(Boolean);return n.length>=4&&n.length<=55&&!noise.test(n)&&w.length>=2&&w.length<=5&&w.every(x=>/^[A-Za-z][A-Za-z'.-]*$/.test(x));};
- let name='';if(passport){const p=passport.replace(/\s/g,'').substring(5).split('<<');if(p.length>=2){const surname=p[0].replace(/</g,' ').trim(),given=p[1].replace(/</g,' ').trim();if(surname&&given)name=clean(given+' '+surname);}}
- if(!name)for(let i=0;i<lines.length;i++){if(/\b(?:FATHER|MOTHER|HUSBAND|SPOUSE|WIFE)'?S?\s+NAME\b/i.test(lines[i]))continue;const m=lines[i].match(/^(?:FULL\s+)?(?:NAME|NAME OF HOLDER|HOLDER NAME)\s*[:：.-]?\s*(.+)$/i);if(m&&valid(m[1])){name=clean(m[1]);break;}if(/^(?:FULL\s+)?NAME\s*[:：.-]?$/i.test(lines[i])&&lines[i+1]&&valid(lines[i+1])){name=clean(lines[i+1]);break;}}
- if(!name)for(let i=1;i<lines.length;i++){if(/\b(?:DOB|DATE OF BIRTH|YEAR OF BIRTH|BIRTH)\b|जन्म/i.test(lines[i])){for(let b=1;b<=2&&i-b>=0;b++)if(valid(lines[i-b])){name=clean(lines[i-b]);break;}if(name)break;}}
- if(!name)name=lines.map(clean).filter(valid).find(s=>!/^GOVERNMENT|^REPUBLIC|^UNIQUE IDENTIFICATION|^ELECTION COMMISSION|^INCOME TAX|^INDIA\b|^AADHAAR|^AADHAR|^DRIVING LICENCE|^PERMANENT ACCOUNT/i.test(s))||'';
- return {idType,idNumber,name:name.toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()),dob:dobMatch?.[1]||'',gender,phone:phoneMatch?.[1]||''};
+ const lines=raw.split(/\n+/).map(s=>s.replace(/[ \t]+/g,' ').trim()).filter(Boolean);
+ const normalized=raw.replace(/[ \t]+/g,' ').replace(/\n+/g,' ').trim();
+ const pan=normalized.match(/\b([A-Z]{5}\d{4}[A-Z])\b/i);
+ const aadhaar=normalized.match(/\b([2-9]\d{3}(?:\s?\d{4}){2})\b/);
+ const dl=normalized.match(/\b([A-Z]{2}\s*[-/]?\s*\d{2}\s*[-/]?\s*\d{4}\s*[-/]?\s*\d{7})\b/i);
+ const voter=normalized.match(/\b([A-Z]{3}\d{7})\b/i);
+ const passport=lines.find(s=>/^P<[A-Z0-9<]{35,}$/.test(s.replace(/\s/g,'')));
+ let idType='',idNumber='';
+ if(pan){idType='PAN Card';idNumber=pan[1].toUpperCase();}
+ else if(aadhaar){idType='Aadhaar Card';idNumber=aadhaar[1].replace(/\s+/g,' ');}
+ else if(dl){idType='Driving Licence';idNumber=dl[1].replace(/\s+/g,' ').toUpperCase();}
+ else if(voter){idType='Voter ID';idNumber=voter[1].toUpperCase();}
+ else if(passport)idType='Passport';
+ const dobMatch=normalized.match(/(?:DOB|DATE OF BIRTH|D\.?O\.?B\.?|BIRTH|जन्म(?:\s*तिथि)?)\s*[:：-]?\s*(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}[/-]\d{2}[/-]\d{2})/i);
+ const phoneMatch=normalized.match(/\b([6-9]\d{9})\b/);
+ const gender=/\bFEMALE\b/i.test(normalized)?'Female':/\bMALE\b/i.test(normalized)?'Male':'';
+ const header=/\b(GOVERNMENT|UNIQUE|IDENTIFICATION|AUTHORITY|UIDAI|AADHAAR|AADHAR|MERA|PEHCHAN|INCOME|TAX|DEPARTMENT|PERMANENT|ACCOUNT|NUMBER|CARD|ELECTION|COMMISSION|ELECTOR|PHOTO|IDENTITY|DRIVING|LICENCE|LICENSE|UNION|REPUBLIC|PASSPORT|ADDRESS|FATHER|MOTHER|HUSBAND|WIFE|SIGNATURE|ISSUE|VALID|TILL|DATE|BIRTH|MALE|FEMALE|TRANSGENDER|MAHARASHTRA|STATE|TRANSPORT|AUTHORISATION|ENROLMENT|ENROLLMENT)\b|^(?:भारत सरकार|भारतीय विशिष्ट पहचान प्राधिकरण|आयकर विभाग|निर्वाचन आयोग|भारत निर्वाचन आयोग|आधार|पहचान पत्र|पासपोर्ट)$/iu;
+ const clean=s=>String(s||'').replace(/^(?:MR|MRS|MS|SHRI|SMT|KUMARI|DR)\.?\s+/i,'').replace(/[^\p{L}\p{M} .'-]/gu,' ').replace(/\s+/g,' ').trim();
+ const valid=s=>{const n=clean(s),w=n.split(/\s+/).filter(Boolean);return n.length>=3&&n.length<=70&&!header.test(n)&&w.length>=2&&w.length<=6&&w.every(x=>/^[\p{L}\p{M}][\p{L}\p{M}'.-]*$/u.test(x));};
+ const relation=/\b(?:FATHER|MOTHER|HUSBAND|SPOUSE|WIFE)'?S?\s+NAME\b|(?:पिता|माता|पति|पत्नी)\s*(?:का|की)?\s*नाम/u;
+ let name='';
+ if(passport){const mrz=passport.replace(/\s/g,'');const p=mrz.substring(5).split('<<');if(p.length>=2){const surname=p[0].replace(/</g,' ').trim(),given=p[1].replace(/</g,' ').trim();if(surname&&given)name=clean(given+' '+surname);}}
+ if(!name){for(let i=0;i<lines.length;i++){if(relation.test(lines[i])||(i>0&&relation.test(lines[i-1])))continue;const m=lines[i].match(/^(?:FULL\s+)?(?:NAME|NAME OF HOLDER|HOLDER NAME|नाम|पूरा नाम)\s*[:：.-]?\s*(.+)$/iu);if(m&&valid(m[1])){name=clean(m[1]);break;}if(/^(?:FULL\s+)?(?:NAME|नाम|पूरा नाम)\s*[:：.-]?$/iu.test(lines[i])&&lines[i+1]&&valid(lines[i+1])){name=clean(lines[i+1]);break;}}}
+ if(!name){for(let i=0;i<lines.length;i++){if(/\b(?:DOB|DATE OF BIRTH|YEAR OF BIRTH|BIRTH)\b|जन्म/i.test(lines[i])){for(let b=1;b<=2&&i-b>=0;b++)if(!relation.test(lines[i-b])&&valid(lines[i-b])){name=clean(lines[i-b]);break;}if(name)break;}}}
+ if(!name)name=lines.map(clean).filter(valid).find(s=>!header.test(s))||'';
+ const formatted=/^[\x00-\x7F]*$/.test(name)?name.toLowerCase().replace(/\b[a-z]/g,c=>c.toUpperCase()):name;
+ return {idType,idNumber,name:formatted,dob:dobMatch?.[1]||'',gender,phone:phoneMatch?.[1]||''};
 }
 let pendingBookingIdPhoto='',pendingBookingPhotoPromise=Promise.resolve(),bookingPhotoGeneration=0;
 async function runBookingIdOCR(e){const file=e?.target?.files?.[0],status=document.getElementById('bkOcrStatus');if(file){const generation=++bookingPhotoGeneration,previousPhoto=pendingBookingIdPhoto;pendingBookingPhotoPromise=(async()=>{try{const photo=await aureliaImageFileToDataUrl(file);if(generation!==bookingPhotoGeneration)return;pendingBookingIdPhoto=photo;const prev=document.getElementById('bkIdPreview');if(prev){prev.src=pendingBookingIdPhoto;prev.style.display='block';}if(status)status.textContent='ID photo compressed and ready to save.';}catch(err){if(generation===bookingPhotoGeneration){pendingBookingIdPhoto=previousPhoto;if(status)status.textContent=err.message||'Could not read ID photo.';e.target.value='';}}})();await pendingBookingPhotoPromise;}const text=await runImageOCR(file,status),parsed=parseIdText(text||'');const type=document.getElementById('bkIdType'),num=document.getElementById('bkIdNumber');if(parsed.idType&&type)type.value=parsed.idType;if(parsed.idNumber&&num)num.value=parsed.idNumber;const nameField=document.getElementById('bkGuest');if(parsed.name&&nameField&&!nameField.value.trim())nameField.value=parsed.name;const dobField=document.getElementById('bkDob');if(parsed.dob&&dobField&&!dobField.value.trim())dobField.value=parsed.dob;if(text&&!parsed.idNumber&&status)status.textContent='OCR complete. Verify the image and enter the ID number manually if needed.';}
@@ -1100,7 +1118,7 @@ async function previewGuestPhoto(e){const f=e?.target?.files?.[0];if(!f)return;c
 function updateGuestOccupantCount(){const c=document.querySelectorAll('#guestOccList [data-occ]').length;const el=document.getElementById('guestOccCount');if(el)el.textContent=c}
 function addGuestOccupant(){const c=document.getElementById('guestOccList');c.insertAdjacentHTML('beforeend',occupantHTML({},c.querySelectorAll('[data-occ]').length));updateGuestOccupantCount()}
 function addGuestVehicle(){const c=document.getElementById('guestVehList');c.insertAdjacentHTML('beforeend',vehicleHTML({},c.querySelectorAll('[data-veh]').length))}
-async async async async async async function saveGuest(id){
+async function saveGuest(id){
  await Promise.all([pendingGuestPhotoPromise,...[...document.querySelectorAll('#guestOccList [data-occ]')].map(x=>x.__photoPromise||Promise.resolve())]);
  const name=document.getElementById('gName')?.value?.trim()||'',phone=document.getElementById('gPhone')?.value?.trim()||'',original=id?DB.guests.find(x=>String(x.id)===String(id)):null;
  if(id&&!original){toast('Guest record not found. Refresh and try again.');return;}
@@ -1320,7 +1338,7 @@ function printInvoice(id){
  const w=window.open('','_blank'); if(!w){toast('Allow popups to print the invoice');return}
  w.document.open();w.document.write(html);w.document.close(); setTimeout(()=>w.print(),300);
 }
-function exportJSON(){downloadBlob(new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}),`${DB.settings.hotelName||'hotel'}-backup.json`)}
+function exportJSON(){dedupeExistingGuestsInPlace();downloadBlob(new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}),`${DB.settings.hotelName||'hotel'}-backup.json`)}
 function exportCSV(){
  const rows=[['SR','Guest','Room','Status','Check In','Check Out','Total','Paid','Due']];
  DB.bookings.forEach(b=>rows.push([b.sr,guest(b)?.name||'',room(b)?.number||'',b.status,b.checkIn,b.checkOut,total(b),b.paid,due(b)]));
@@ -1751,12 +1769,12 @@ function pagesSettingsNew(){
   const masterKeys=Object.keys(NEW_FEATURE_TREE);
   return `<div class="hero"><div><h1>Settings</h1><p>Hotel identity, master features and detailed function kill-switches.</p></div><div class="actions"><span class="muted">Feature controls</span></div></div>
   <div class="grid two">
-    <section class="card" id="aureliaDriveSettingsCard"><div class="section-title"><h2>Google Drive backup</h2><span class="muted">Not connected</span></div>
-      <p class="muted">Google Drive backup is not active yet. Your records are not being synced to Google Drive. Continue using Offline Device Backup (Export / Import) to make a copy before changing phones or clearing app data.</p>
-      <div class="field full"><label>Connection status</label><input value="Not configured" readonly></div>
-      <div class="field full"><label>Backup method</label><input value="Offline device export / import" readonly></div>
-      <button class="btn" type="button" onclick="aureliaConnectDrive()">Connect Google Drive</button><button class="btn" type="button" onclick="aureliaUploadDriveBackup()">Back up to Google Drive</button>
-      <p class="muted">When implemented, this section will support account connection and encrypted backup transfer. Do not assume cloud copies exist until the status explicitly confirms a successful backup.</p>
+    <section class="card" id="aureliaDriveSettingsCard"><div class="section-title"><h2>Encrypted cloud backup</h2><span class="muted">Manual secure transfer</span></div>
+      <p class="muted">Create a passphrase-encrypted backup, then choose Google Drive in Android's share sheet. This is an explicit file transfer, not background sync. Keep the passphrase separately; it cannot be recovered by the app.</p>
+      <div class="field full"><label for="aureliaDrivePassphrase">Backup passphrase (12+ characters)</label><input id="aureliaDrivePassphrase" type="password" minlength="12" autocomplete="new-password" placeholder="Use a strong, unique passphrase"></div>
+      <div class="actions"><button class="btn primary" type="button" onclick="aureliaUploadDriveBackup()">Save encrypted backup · choose Google Drive</button><label class="btn" for="aureliaDriveRestoreFile">Restore encrypted backup</label><input id="aureliaDriveRestoreFile" type="file" accept=".aurelia,.json,application/json" hidden onchange="aureliaRestoreDriveBackup(event)"></div>
+      <div id="aureliaDriveNote" class="muted" role="status" style="margin-top:10px">No cloud backup has been confirmed in this session.</div>
+      <p class="muted">After sharing, verify the file is visible in Google Drive before relying on it. Restore validates the encrypted envelope and database structure before replacing local records.</p>
     </section>
     <section class="card"><div class="section-title"><h2>Hotel identity</h2></div>
       <div class="logo-preview"><img id="settingsLogo" src="${DB.settings.logo||""}" onerror="this.style.display='none'"><div><button class="btn" onclick="document.getElementById('logoFile').click()">Upload logo</button><input id="logoFile" type="file" accept="image/*" hidden onchange="setLogo(event)"></div></div>
@@ -1800,6 +1818,10 @@ function pagesSettingsNew(){
 <p class="muted">Control whether the app offers fingerprint, face, or device-screen-lock authentication on the native unlock screen. Your PIN remains available as a fallback. This setting does not disable app protection.</p>
 <label class="check" style="padding:12px 0"><input id="aureliaBiometricEnabled" type="checkbox" ${DB.settings.biometricUnlock===true?"checked":""} onchange="aureliaSetBiometricEnabled(this.checked)"><span><b>Enable biometric / device authentication</b><small class="muted" style="display:block">Turn off to hide the biometric unlock button. Device support is checked by Android.</small></span></label>
 <div id="aureliaBiometricNote" class="muted" role="status">Biometric unlock is ${DB.settings.biometricUnlock===true?"enabled":"disabled"}.</div></section>
+<section class="card" style="margin-top:16px"><div class="section-title"><h2>PIN entry</h2><span class="muted">Unlock policy</span></div>
+<p class="muted">PIN entry is enabled by default. You may hide PIN entry only when Android device authentication is enabled and supported; this does not disable app protection. Keep a device screen lock configured to avoid losing access.</p>
+<label class="check" style="padding:12px 0"><input id="aureliaPinEntryEnabled" type="checkbox" ${DB.settings.pinEntryEnabled!==false?"checked":""} ${DB.settings.biometricUnlock===true?"":"disabled"} onchange="aureliaSetPinEntryEnabled(this.checked)"><span><b>Enable PIN entry at unlock</b><small class="muted" style="display:block">Turn off only if device authentication is enabled. First-run PIN setup is always required.</small></span></label>
+<div id="aureliaPinEntryNote" class="muted" role="status">PIN entry is ${DB.settings.pinEntryEnabled===false?"disabled":"enabled"}.</div></section>
 <section class="card" style="margin-top:16px"><div class="section-title"><h2>Import / Export</h2></div><div class="actions"><button class="btn primary" onclick="showPage('importExport')">Open Center</button><button class="btn" onclick="exportJSON()">Full JSON backup</button></div></section>`;
 }
 pages.settings=pagesSettingsNew;
@@ -2855,11 +2877,22 @@ function aureliaSetBiometricEnabled(enabled){
  window.aureliaNativeBiometricSettingResult=function(id,ok,error){
   if(String(id)!==requestId)return;
   if(box)box.disabled=false;
-  if(ok){DB.settings.biometricUnlock=!!enabled;save();if(note)note.textContent='Biometric unlock '+(enabled?'enabled':'disabled')+'.';}
+  if(ok){DB.settings.biometricUnlock=!!enabled;if(!enabled)DB.settings.pinEntryEnabled=true;save();const pinBox=document.getElementById('aureliaPinEntryEnabled');if(pinBox){pinBox.checked=DB.settings.pinEntryEnabled!==false;pinBox.disabled=!enabled;}const pinNote=document.getElementById('aureliaPinEntryNote');if(pinNote)pinNote.textContent='PIN entry is '+(DB.settings.pinEntryEnabled===false?'disabled':'enabled')+'.';if(note)note.textContent='Biometric unlock '+(enabled?'enabled':'disabled')+'.';}
   else{if(box)box.checked=DB.settings.biometricUnlock===true;if(note)note.textContent=error||'Could not update biometric preference.';}
  };
  try{window.AureliaNative.postMessage(JSON.stringify({type:'setBiometricEnabled',requestId,enabled:!!enabled}));}
  catch(e){if(box){box.disabled=false;box.checked=DB.settings.biometricUnlock===true;}if(note)note.textContent='Could not contact Android biometric settings.';}
+}
+let aureliaPinEntryRequest=0;
+function aureliaSetPinEntryEnabled(enabled){
+ const box=document.getElementById('aureliaPinEntryEnabled'),note=document.getElementById('aureliaPinEntryNote');
+ if(!enabled&&DB.settings.biometricUnlock!==true){if(box)box.checked=true;if(note)note.textContent='Enable biometric / device authentication first.';return;}
+ if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){if(box)box.checked=DB.settings.pinEntryEnabled!==false;if(note)note.textContent='PIN entry policy is available only in the installed Android app.';return;}
+ if(box)box.disabled=true;
+ const requestId='pinentry_'+Date.now()+'_'+(++aureliaPinEntryRequest);
+ window.aureliaNativePinEntrySettingResult=function(id,ok,error){if(String(id)!==requestId)return;if(box){box.disabled=false;box.checked=ok?!!enabled:DB.settings.pinEntryEnabled!==false;box.disabled=DB.settings.biometricUnlock!==true;}if(ok){DB.settings.pinEntryEnabled=!!enabled;save();if(note)note.textContent='PIN entry '+(enabled?'enabled':'disabled')+'.';}else if(note)note.textContent=error||'Could not update PIN entry policy.';};
+ try{window.AureliaNative.postMessage(JSON.stringify({type:'setPinEntryEnabled',requestId,enabled:!!enabled}));}
+ catch(error){if(box){box.disabled=false;box.checked=DB.settings.pinEntryEnabled!==false;}if(note)note.textContent='Could not contact Android authentication settings.';}
 }
 function aureliaDriveStatus(message){
  const n=document.getElementById('aureliaDriveNote');if(n)n.textContent=message;
@@ -2869,14 +2902,31 @@ function aureliaSaveGoogleClientId(){
  const id=String(input?.value||'').trim();
  DB.settings.googleClientId=id;save();return id;
 }
-function aureliaConnectDrive(){
- const message='Google Drive is not connected: secure Google OAuth and verified encrypted upload/restore are not configured in this build. No cloud backup was started. Use encrypted backup export meanwhile.';
- aureliaDriveStatus(message);toast('Google Drive is not configured');
-}
+function aureliaConnectDrive(){aureliaDriveStatus('Choose “Save encrypted backup” to open Android’s share sheet, then select Google Drive. This app does not run background cloud sync.');}
 async function aureliaUploadDriveBackup(){
- const message='No Google Drive upload was performed. Secure OAuth and verified encrypted restore are not configured. Use the passphrase-encrypted backup export.';
- aureliaDriveStatus(message);toast('Google Drive backup is not yet available');
+ const passphrase=String(document.getElementById('aureliaDrivePassphrase')?.value||'');
+ if(passphrase.length<12){aureliaDriveStatus('Choose a backup passphrase of at least 12 characters.');toast('Backup passphrase is too short');return;}
+ if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){aureliaDriveStatus('Encrypted backup sharing is available only in the installed Android app.');return;}
+ const requestId='backup_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+ window.aureliaNativeBackupExportResult=function(id,ok,error){if(String(id)!==requestId)return;const note=document.getElementById('aureliaDriveNote');if(ok){if(note)note.textContent='Android share sheet closed. Confirm the encrypted file is present in Google Drive before relying on this backup.';toast('Encrypted backup shared; verify its destination');}else{if(note)note.textContent='Encrypted backup export failed: '+(error||'unknown error');toast('Backup export failed');}};
+ try{aureliaDriveStatus('Encrypting PMS data before opening Android share sheet…');window.AureliaNative.postMessage(JSON.stringify({type:'exportEncryptedBackup',requestId,data:JSON.stringify(DB),passphrase}));}
+ catch(error){aureliaDriveStatus('Could not start encrypted backup: '+(error?.message||'unknown error'));}
 }
+async function aureliaRestoreDriveBackup(event){
+ const file=event?.target?.files?.[0];if(!file)return;
+ const passphrase=String(document.getElementById('aureliaDrivePassphrase')?.value||'');
+ if(passphrase.length<12){aureliaDriveStatus('Enter the backup passphrase (12+ characters) before restoring.');event.target.value='';return;}
+ if(file.size>30*1024*1024){aureliaDriveStatus('Backup file is too large (maximum 30 MiB).');event.target.value='';return;}
+ try{
+  const text=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('Could not read the selected backup file.'));reader.readAsText(file);});
+  const envelope=JSON.parse(text);
+  if(!envelope||envelope.app!=='AURELIA PMS ENCRYPTED BACKUP'||envelope.formatVersion!==1)throw new Error('This is not a supported Aurelia encrypted backup.');
+  const requestId='restore_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  aureliaDriveStatus('Validating and restoring encrypted backup…');
+  window.AureliaNative.postMessage(JSON.stringify({type:'restoreEncryptedBackup',requestId,envelope,passphrase}));
+ }catch(error){aureliaDriveStatus('Restore failed: '+(error?.message||'unknown error'));event.target.value='';}
+}
+window.aureliaNativeBackupRestoreResult=function(id,ok,error){if(ok){toast('Encrypted backup restored. Review the imported records before continuing.');}else{aureliaDriveStatus('Restore failed: '+(error||'unknown error'));toast('Encrypted backup restore failed');}};
 function aureliaQueueDriveBackup(){ /* No-op until secure cloud transport exists. */ }
 function aureliaSetBackupDestination(value){
  DB.settings.backupDestination='local';save();
@@ -2890,7 +2940,7 @@ function aureliaSetBackupDestination(value){
     toast('Local backup downloaded');
   }catch(e){toast('Backup could not be created: '+(e.message||'unknown error'))}
 }
-function aureliaExportCSV(kind){
+function aureliaExportCSV(kind){dedupeExistingGuestsInPlace();
   const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
   let filename='aurelia-report.csv',rows=[];
   if(kind==='inventory'){
@@ -3406,7 +3456,7 @@ function dedupeExistingGuestsInPlace(){
   if(!prior){byKey.set(key,g);kept.push(g);continue;}
   const canonicalId=prior.id||g.id;Object.assign(prior,g,{id:canonicalId,name:g.name||prior.name,phone:g.phone||prior.phone,idNumber:g.idNumber||prior.idNumber,idPhoto:g.idPhoto||prior.idPhoto,occupants:g.occupants?.length?g.occupants:(prior.occupants||[]),vehicles:g.vehicles?.length?g.vehicles:(prior.vehicles||[])});aliases.set(String(g.id),String(canonicalId));
  }
- if(aliases.size)for(const rows of [DB.bookings||[],DB.reservations||[]])for(const row of rows){const id=aliases.get(String(row.guestId||''));if(id)row.guestId=id;}
+ if(aliases.size)for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){const id=aliases.get(String(row.guestId||''));if(id){row.guestId=id;const canonical=DB.guests.find(g=>String(g.id)===id);if('guestName'in row&&canonical)row.guestName=canonical.name||row.guestName;if('name'in row&&canonical)row.name=canonical.name||row.name;}}
  DB.guests=kept;return kept;
 }
 window.upsertGuestAndCascade=function(incoming,existingId){
