@@ -664,7 +664,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           try{final result=await latinRecognizer.processImage(InputImage.fromFilePath(file.path));final lines=spatialLines(result);latin=lines.isEmpty?result.text.trim():lines.map((l)=>l.text).where((s)=>s.isNotEmpty).join('\n');}finally{await latinRecognizer.close();}
           devanagari = await const MethodChannel('aurelia/native_ocr').invokeMethod<String>('recognizeDevanagari', {'path': file.path}) ?? '';
           final merged=[latin,devanagari].where((s)=>s.trim().isNotEmpty).toSet().join('\n');
-          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(' + jsonEncode(requestId) + ',' + jsonEncode(merged) + ',null);');
+          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},${jsonEncode(merged)},null);');
         }finally{try{await file.delete();}catch(_){}}
         return;
       }
@@ -682,7 +682,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           }
         }
         await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', enabled ? 'true' : 'false');
-        await _controller.runJavaScript('window.aureliaNativePinEntrySettingResult?.(' + jsonEncode(requestId) + ',true,null);');
+        await _controller.runJavaScript('window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
       if (value['type'] == 'setBiometricEnabled') {
