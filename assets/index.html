@@ -2617,7 +2617,7 @@ function setUPIQR(ev){
  reader.readAsDataURL(file);
 }
 window.setUPIQR=setUPIQR;
-async function setLogo(event){
+async async function setLogo(event){
  const file=event?.target?.files?.[0];if(!file)return;
  try{
   const data=await aureliaImageFileToDataUrl(file);
@@ -2627,7 +2627,7 @@ async function setLogo(event){
   toast('Hotel logo saved');
  }catch(err){if(event?.target)event.target.value='';toast(err?.message||'Could not save hotel logo');}
 }
-async function setUPIQR(event){
+async async function setUPIQR(event){
  const file=event?.target?.files?.[0];if(!file)return;
  const note=document.getElementById('upiQrUploadNote'),preview=document.getElementById('upiQrPreview');
  if(note)note.textContent='Compressing payment QR…';
