@@ -649,10 +649,10 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         if(decoded==null)throw const FormatException('Could not decode this ID image.');
         final resized=decoded.width>2400?img.copyResize(decoded,width:2400):decoded;
         final enhanced=img.adjustColor(img.grayscale(resized),contrast:1.3,brightness:0.03);
-        final temp=await getTemporaryDirectory();
-        final file=File('\${temp.path}/aurelia_ocr_\${DateTime.now().microsecondsSinceEpoch}.jpg');
+        final dir=await getTemporaryDirectory();
+        final file=File('\${dir.path}/aurelia_ocr_\${DateTime.now().microsecondsSinceEpoch}.jpg');
         await file.writeAsBytes(img.encodeJpg(enhanced,quality:94),flush:true);
-        List<({double top,double left,String text})> orderedLines(RecognizedText result){
+        List<({double top,double left,String text})> ordered(RecognizedText result){
           final lines=<({double top,double left,String text})>[];
           for(final block in result.blocks){for(final line in block.lines){lines.add((top:line.boundingBox.top,left:line.boundingBox.left,text:line.text.trim()));}}
           lines.sort((a,b){final dy=a.top-b.top;if(dy.abs()>12)return dy.compareTo(0);return a.left.compareTo(b.left);});
@@ -661,11 +661,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         String latin='',devanagari='';
         try{
           final latinRecognizer=TextRecognizer(script:TextRecognitionScript.latin);
-          try{final result=await latinRecognizer.processImage(InputImage.fromFilePath(file.path));final lines=orderedLines(result);latin=lines.isEmpty?result.text.trim():lines.map((l)=>l.text).where((s)=>s.isNotEmpty).join('\n');}finally{await latinRecognizer.close();}
+          try{final result=await latinRecognizer.processImage(InputImage.fromFilePath(file.path));final lines=ordered(result);latin=lines.isEmpty?result.text.trim():lines.map((l)=>l.text).where((x)=>x.isNotEmpty).join('\n');}finally{await latinRecognizer.close();}
           final devanagariRecognizer=TextRecognizer(script:TextRecognitionScript.devanagari);
-          try{final result=await devanagariRecognizer.processImage(InputImage.fromFilePath(file.path));devanagari=orderedLines(result).map((l)=>l.text).where((s)=>s.isNotEmpty).join('\n');}finally{await devanagariRecognizer.close();}
-          final combined=[latin,devanagari].where((s)=>s.trim().isNotEmpty).toSet().join('\n');
-          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(\${jsonEncode(requestId)},\${jsonEncode(combined)},null);');
+          try{final result=await devanagariRecognizer.processImage(InputImage.fromFilePath(file.path));devanagari=ordered(result).map((l)=>l.text).where((x)=>x.isNotEmpty).join('\n');}finally{await devanagariRecognizer.close();}
+          final text=[latin,devanagari].where((x)=>x.trim().isNotEmpty).toSet().join('\n');
+          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(\${jsonEncode(requestId)},\${jsonEncode(text)},null);');
         }finally{try{await file.delete();}catch(_){}}
         return;
       }
