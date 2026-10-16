@@ -407,6 +407,20 @@
             (enabled ? 'checked' : '') + ' onchange="aureliaSetAppProtection(this.checked)"> Require PIN / device authentication</label>' +
             '<div id="aureliaProtectionStatus" class="muted" role="status"></div></section>';
         }
+        if (!html.includes('aureliaDriveSettingsCard')) {
+          // Reserved settings area for a future user-configured Google Drive integration.
+          // Keep controls visibly unavailable until OAuth, encrypted upload/download,
+          // conflict handling, and restore verification are implemented and tested.
+          html += '<section class="card" id="aureliaDriveSettingsCard" style="margin-top:16px">' +
+            '<div class="section-title"><h2>Google Drive backup</h2><span class="muted">Not connected</span></div>' +
+            '<p class="muted">Google Drive setup will be added here. Your PMS continues to work offline, and local encrypted backups remain available.</p>' +
+            '<div class="field full"><label>Connection</label><input type="text" value="Not configured" readonly aria-label="Google Drive connection status"></div>' +
+            '<div class="field full"><label>Backup protection</label><input type="text" value="Encrypted backup files only — planned" readonly aria-label="Planned Google Drive backup protection"></div>' +
+            '<div class="field full"><label>Sync behavior</label><input type="text" value="Manual backup and restore — planned" readonly aria-label="Planned Google Drive sync behavior"></div>' +
+            '<button class="btn" type="button" disabled aria-disabled="true" title="Available after Google Drive integration is implemented">Connect Google Drive (coming later)</button>' +
+            '<p class="muted" style="margin-top:10px">Before enabling: configure Google OAuth, upload only passphrase-encrypted archives, validate downloaded archives before restore, and handle interrupted transfers and duplicate/conflicting backups safely.</p>' +
+            '</section>';
+        }
         return html;
       };
     }
