@@ -2362,52 +2362,7 @@ async function sendBookingTerms(id){
 /* Removed automatic demo booking seed: new installations start without fabricated guest or stay records. */
 </script>
 
-<script id="aurelia-google-drive-settings-ui">
-(function(){
-  const originalSettings = window.pagesSettings;
-  if (typeof originalSettings !== 'function') return;
-  window.pagesSettings = function(){
-    const page = originalSettings();
-    if (page.includes('aureliaGoogleDriveSettingsCard')) return page;
-    const card = `
-      <section class="card" id="aureliaGoogleDriveSettingsCard" style="margin-top:16px">
-        <div class="section-title"><h2>Google Drive Backup</h2><span class="status reserved">Not connected</span></div>
-        <p class="muted">Connect the hotel's shared Google account to store encrypted, device-specific backup versions. Each device keeps its own local PMS records and backup history; this does not synchronize or merge live records.</p>
-        <div class="subcard">
-          <div style="font-weight:800;font-size:17px;margin-bottom:6px">Cloud backup account</div>
-          <div class="muted" style="margin-bottom:12px">Sign in securely with Google when connection support is enabled. The app should request only the Drive access needed for its backup files.</div>
-          <div class="actions">
-            <button type="button" class="btn primary" onclick="aureliaConnectGoogleDrive()">Connect Google Drive</button>
-            <button type="button" class="btn" onclick="aureliaShowDriveBackupStatus()">Backup status</button>
-            <button type="button" class="btn" onclick="aureliaBackupNow()">Back up now</button>
-          </div>
-          <div id="aureliaDriveBackupStatus" role="status" class="muted" style="margin-top:12px">Status: Google Drive is not connected. Local PMS changes remain on this device.</div>
-        </div>
-        <div class="grid three" style="margin-top:12px">
-          <div class="feature-row"><b>Pending changes</b><div class="muted" id="aureliaDrivePendingCount">Not available yet</div></div>
-          <div class="feature-row"><b>Last successful backup</b><div class="muted" id="aureliaDriveLastSuccess">Never confirmed</div></div>
-          <div class="feature-row"><b>Last error</b><div class="muted" id="aureliaDriveLastError">None recorded</div></div>
-        </div>
-        <p class="muted" style="font-size:12px;margin-top:12px">Connection, encrypted snapshots, resumable uploads, durable change tracking and restore must be wired into the native Android backup service before these controls can perform real Drive operations. This panel does not claim a backup has occurred.</p>
-      </section>`;
-    return page + card;
-  };
-  window.aureliaConnectGoogleDrive = function(){
-    const el = document.getElementById('aureliaDriveBackupStatus');
-    if(el) el.textContent = 'Google sign-in is not active yet. The native Android OAuth and Drive backup service must be integrated before an account can be connected.';
-    if(typeof toast === 'function') toast('Google Drive connection is not enabled yet.');
-  };
-  window.aureliaShowDriveBackupStatus = function(){
-    const el = document.getElementById('aureliaDriveBackupStatus');
-    if(el) el.textContent = 'Not connected — no Drive backup has been confirmed. Local data remains on this device.';
-  };
-  window.aureliaBackupNow = function(){
-    const el = document.getElementById('aureliaDriveBackupStatus');
-    if(el) el.textContent = 'Back up now is unavailable until Google Drive authorization and the encrypted native backup service are implemented.';
-    if(typeof toast === 'function') toast('Drive backup service is not enabled yet.');
-  };
-})();
-</script>
+
 
 
 <script>
