@@ -17,7 +17,7 @@ The build workflow configures:
 - R8 code shrinking/optimization for the Android release build.
 - Dart AOT obfuscation with split debug symbols.
 - APK signature verification after the release build.
-- Keystore-backed encrypted storage through `flutter_secure_storage` for native secrets. This does not automatically encrypt HTML WebView `localStorage` or the PMS records stored there.
+- PMS records are persisted as AES-256-GCM encrypted app-private snapshots; the key is protected through Android-backed secure storage. This is encrypted JSON snapshot storage, not two independent SQLite databases. The migration and recovery paths remain subject to physical-device testing.
 - Minimal native file selection support for the HTML app's upload controls.
 
 Android application sandboxing, SELinux enforcement, ART managed execution, and Google Play Protect are Android platform features; the app does not replace or reimplement them. Play Protect is managed by Google Play services / the Android device, not toggled by an APK build setting.
@@ -48,12 +48,12 @@ Fresh installs start with no sample guests, bookings, reservations, expenses, or
 
 - Invoice payment QR codes are generated locally in the Android app. The invoice QR payload is not sent to an external QR-generation service.
 - **Android data at rest:** this branch replaces authoritative WebView `localStorage` writes with AES-256-GCM encrypted snapshots in app-private storage. The encryption key is held in Android-backed secure storage. Existing localStorage records are migrated on first use and removed only after encrypted persistence acknowledges success. This migration and recovery flow still needs physical-device testing before release.
-- **Screen capture:** Android `FLAG_SECURE` is enabled to block screenshots and recent-app previews of PMS records.
+- **Screen capture:** screenshots and screen recording are allowed by requirement. `FLAG_SECURE` is not enabled, so visible guest/payment information may appear in captures and recent-app previews.
 - **App lock:** first launch requires creation of a 6–12 digit PIN. PIN verification uses salted PBKDF2-HMAC-SHA256, a five-attempt limit followed by a five-minute lockout, and a lock on app backgrounding. Android device authentication is offered where supported. This is a local device access gate, not server-side authentication.
 - **Android backup export:** backups are encrypted with a user-provided passphrase using PBKDF2-HMAC-SHA256 and AES-256-GCM. The passphrase is not stored by the app and is required to restore on another device. Keep it safe; losing it makes that backup unrecoverable. Browser-preview exports remain plaintext and display a warning.
 - **Backup import:** validates application/version, required guest/room/booking lists, section types, unsafe property names, nesting depth, item count, and size. Encrypted backup restoration validates before replacing data and retains an encrypted recovery snapshot. Legacy plaintext JSON imports remain supported with a warning.
 - HTML-generated CSV/PDF/blob exports are handed to a narrowly scoped native share handler. It validates request type, size, MIME type, and filename; physical-device export and print testing is still required.
 - **Google Drive:** cloud upload is intentionally disabled in this Android build because the existing path uploaded plaintext JSON and lacked verified encrypted recovery. A complete OAuth-backed, encrypted, versioned upload/restore service is still not implemented. Settings controls should not be treated as evidence of a successful remote backup.
 - **Remote JavaScript libraries:** the Android content-security policy blocks remote script execution while the JavaScript bridge is exposed. OCR and the dynamically loaded jsPDF engine are disabled on Android until their libraries are bundled and verified locally. Do not remove this restriction merely to make those features work.
-- Direct Flutter dependencies are pinned. `pubspec.lock` is generated in CI for review but still needs to be committed to make dependency resolution reproducible.
+- Direct Flutter dependencies are pinned, and `pubspec.lock` is committed and enforced by CI with `flutter pub get --enforce-lockfile`.
 - CI tests and static checks are guardrails, not a penetration test. Do not use real guest/payment data until the security hold is cleared after device testing and independent review.
