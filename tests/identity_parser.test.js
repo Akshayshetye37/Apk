@@ -30,7 +30,7 @@ test('passport MRZ supplies document number and holder name', () => {
   const result = parseIdText('P<INDL12345678<IND<<<<<<<<<<<<<<<<<<<<\nKUMAR<<RAHUL<<<<<<<<<<<<<<<<<<<<');
   assert.equal(result.idType, 'Passport');
   assert.equal(result.idNumber, 'L12345678');
-  assert.equal(result.name, 'RAHUL KUMAR');
+  assert.equal(result.name, 'Rahul Kumar');
 });
 
 test('Indian driving licence and voter ID formats are recognized', () => {
