@@ -2815,48 +2815,37 @@ function commitRestaurant(mode){
 }
 
 
-/* OCR preprocessing: upscale and enhance contrast before Tesseract; keep manual review available. */
+/* Offline OCR: use the native on-device ML Kit bridge in the installed Android app.
+   Browser previews intentionally do not load remote OCR scripts or contact a CDN. */
 async function runImageOCR(file,statusEl){
- if(!file){if(statusEl)statusEl.textContent="Select a government ID image first.";return null}
- if(!/^image\//i.test(file.type)){if(statusEl)statusEl.textContent="Please select an image file (JPG or PNG).";return null}
- if(file.size>12*1024*1024){if(statusEl)statusEl.textContent="Image is too large. Use an image under 12 MB.";return null}
- if(ocrBusy){if(statusEl)statusEl.textContent="OCR is already running. Please wait for it to finish.";return null}
+ if(!file){if(statusEl)statusEl.textContent='Select a government ID image first.';return null}
+ if(!/^image\//i.test(file.type)){if(statusEl)statusEl.textContent='Please select an image file (JPG or PNG).';return null}
+ if(file.size>8*1024*1024){if(statusEl)statusEl.textContent='Image is too large. Use an image under 8 MB.';return null}
+ if(ocrBusy){if(statusEl)statusEl.textContent='OCR is already running. Please wait for it to finish.';return null}
+ if(!(window.AureliaNative&&typeof window.AureliaNative.postMessage==='function'&&window.__AURELIA_SECURE_DB_READY)){
+  if(statusEl)statusEl.textContent='Offline OCR requires the installed Aurelia Android app. In this browser preview, enter ID details manually; no online OCR library will be loaded.';
+  return null;
+ }
  ocrBusy=true;
  try{
-  if(statusEl)statusEl.textContent="Loading OCR engine… first use may need internet access.";
-  if(window.__AURELIA_SECURE_DB_READY&&!window.Tesseract)throw new Error('OCR is disabled in the secure Android build until its engine is bundled locally.');
-  if(!window.Tesseract){
-   if(!window.aureliaTesseractLoad)window.aureliaTesseractLoad=(async()=>{
-    let last;
-    for(const src of ["https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js","https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"]){
-     try{await new Promise((resolve,reject)=>{const sc=document.createElement("script");sc.src=src;sc.async=true;sc.onload=resolve;sc.onerror=()=>{sc.remove();reject(new Error("OCR library failed to load"))};document.head.appendChild(sc)});if(window.Tesseract)return;throw new Error("OCR library did not initialize")}catch(e){last=e}
-    }
-    throw last||new Error("OCR engine unavailable");
-   })();
-   await window.aureliaTesseractLoad;
-  }
-  if(!window.Tesseract)throw new Error("OCR engine did not initialize");
-  const img=await new Promise((resolve,reject)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);resolve(im)};im.onerror=()=>{URL.revokeObjectURL(u);reject(new Error("Invalid image"))};im.src=u});
-  const w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;if(!w||!h)throw new Error("Empty image");
-  const scale=Math.min(3,2400/Math.max(w,h)),canvas=document.createElement("canvas");
-  canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(h*scale));
-  const ctx=canvas.getContext("2d",{willReadFrequently:true});if(!ctx)throw new Error("Canvas unavailable");
-  ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
-  const frame=ctx.getImageData(0,0,canvas.width,canvas.height),d=frame.data;
-  for(let i=0;i<d.length;i+=4){const y=.299*d[i]+.587*d[i+1]+.114*d[i+2],v=Math.max(0,Math.min(255,(y-128)*1.45+128));d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}
-  ctx.putImageData(frame,0,0);
-  const logger=m=>{if(statusEl&&m.status)statusEl.textContent="OCR: "+m.status+(m.progress!=null?" · "+Math.round(m.progress*100)+"%":"")};
-  const first=await Tesseract.recognize(canvas,"eng",{logger,tessedit_pageseg_mode:6});let text=String(first?.data?.text||"").trim(),parsed={};
-  try{parsed=parseIdText(text)}catch(e){}
-  if(!parsed.idNumber||!parsed.name||parsed.name.length<4){
-   if(statusEl)statusEl.textContent="Trying an alternate text layout…";
-   try{const second=await Tesseract.recognize(canvas,"eng",{logger,tessedit_pageseg_mode:11});const t=String(second?.data?.text||"").trim();if(t.length>text.length)text=text+"\n"+t}catch(e){}
-  }
-  text=text.replace(/\r/g,"\n").replace(/[ \t]+/g," ").replace(/\n{2,}/g,"\n").trim();
-  if(statusEl)statusEl.textContent=text?"OCR finished. Review every extracted field against the ID before saving.":"No readable text found. Try a sharp, straight-on, well-lit photo without glare.";
-  return text||null;
- }catch(err){console.warn("[AURELIA OCR]",err);if(statusEl)statusEl.textContent="OCR failed to load or read the image. Check internet access on first use, try a clear JPG/PNG photo, or enter details manually.";return null}
- finally{ocrBusy=false}
+  if(statusEl)statusEl.textContent='Reading ID locally on this device…';
+  const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(new Error('Could not read selected image'));reader.onload=()=>resolve(String(reader.result||''));reader.readAsDataURL(file)});
+  const imageBase64=dataUrl.includes(',')?dataUrl.slice(dataUrl.indexOf(',')+1):'';
+  if(!imageBase64)throw new Error('Selected image could not be encoded.');
+  const requestId='ocr_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  window.__aureliaOcrPending=window.__aureliaOcrPending||{};
+  const textResult=await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>{delete window.__aureliaOcrPending[requestId];reject(new Error('On-device OCR timed out. Please try again.'))},30000);
+   window.__aureliaOcrPending[requestId]={resolve:value=>{clearTimeout(timer);delete window.__aureliaOcrPending[requestId];resolve(value)},reject:error=>{clearTimeout(timer);delete window.__aureliaOcrPending[requestId];reject(error)}};
+   window.AureliaNative.postMessage(JSON.stringify({type:'recognizeIdImage',requestId,imageBase64}));
+  });
+  if(statusEl)statusEl.textContent=textResult?'On-device OCR finished. Review every extracted field against the ID before saving.':'No readable text found. Try a sharp, straight-on, well-lit photo without glare.';
+  return textResult||null;
+ }catch(err){
+  console.warn('[AURELIA OCR]',err);
+  if(statusEl)statusEl.textContent='On-device OCR could not read this image. Try a clearer JPG/PNG photo or enter the ID details manually.';
+  return null;
+ }finally{ocrBusy=false}
 }
 
 /* AURELIA reliability additions: export, backup, security controls, and browser navigation. */
