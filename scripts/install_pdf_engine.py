@@ -134,23 +134,30 @@ object PdfEnginePlugin {
 '''.replace("__PACKAGE__", package_name)
 (plugin_dir / "PdfEnginePlugin.kt").write_text(plugin, encoding="utf-8")
 if "PdfEnginePlugin.register(flutterEngine)" not in source:
-    source = source.rstrip()
-    if re.search(r"(?m)^class\s+MainActivity\s*:\s*FlutterActivity\s*(?:\(\s*\))?\s*(?:\{\s*\})?\s*$", source):
-        source = re.sub(
-            r"(?m)^class\s+MainActivity\s*:\s*FlutterActivity\s*(?:\(\s*\))?\s*(?:\{\s*\})?\s*$",
-            "class MainActivity : FlutterActivity() {\n"
-            "    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {\n"
-            "        super.configureFlutterEngine(flutterEngine)\n"
-            "        PdfEnginePlugin.register(flutterEngine)\n"
-            "    }\n}",
-            source,
-        )
-        source = source.replace("import io.flutter.embedding.android.FlutterActivity",
-                                "import io.flutter.embedding.android.FlutterActivity")
-        if "import io.flutter.embedding.engine.FlutterEngine" not in source:
-            source = source.replace("import io.flutter.embedding.android.FlutterActivity",
-                                    "import io.flutter.embedding.android.FlutterActivity\nimport io.flutter.embedding.engine.FlutterEngine")
-    else:
+    # Flutter's generated Kotlin template varies between empty class, class body,
+    # and whitespace formatting. Match the declaration line only; never rely on
+    # a whole-file regex or silently overwrite custom MainActivity code.
+    lines = source.splitlines()
+    class_index = next((i for i, line in enumerate(lines)
+                        if re.match(r"^\\s*class\\s+MainActivity\\s*:\\s*FlutterActivity\\b", line)), None)
+    if class_index is None:
         raise SystemExit("Unexpected MainActivity template; refusing unsafe automatic patch.")
-    main.write_text(source + "\n", encoding="utf-8")
+    declaration = lines[class_index].strip()
+    if not re.fullmatch(r"class\\s+MainActivity\\s*:\\s*FlutterActivity\\s*(?:\\(\\s*\\))?\\s*\\{?\\s*\\}?", declaration):
+        raise SystemExit("MainActivity contains custom code; refusing unsafe automatic patch.")
+    lines[class_index:class_index + 1] = [
+        "class MainActivity : FlutterActivity() {",
+        "    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {",
+        "        super.configureFlutterEngine(flutterEngine)",
+        "        PdfEnginePlugin.register(flutterEngine)",
+        "    }",
+        "}",
+    ]
+    source = "\\n".join(lines)
+    if "import io.flutter.embedding.engine.FlutterEngine" not in source:
+        source = source.replace(
+            "import io.flutter.embedding.android.FlutterActivity",
+            "import io.flutter.embedding.android.FlutterActivity\\nimport io.flutter.embedding.engine.FlutterEngine",
+        )
+    main.write_text(source.rstrip() + "\\n", encoding="utf-8")
 print("Installed serialized PdfRenderer method channel and registered it with FlutterEngine.")
