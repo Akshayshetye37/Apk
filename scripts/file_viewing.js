@@ -415,6 +415,75 @@
     }
   } catch (_) {}
 
+  // On-device OCR for primary guest/occupant ID image fields. Text is offered for
+  // review/editing; OCR is never silently written into identity fields as ground truth.
+  const pendingOcrTargets = Object.create(null);
+  window.aureliaNativeOcrResult = function (requestId, text, error) {
+    const target = pendingOcrTargets[requestId];
+    delete pendingOcrTargets[requestId];
+    if (!target || !target.isConnected) return;
+    let output = target.parentElement.querySelector('textarea[data-aurelia-ocr-result]');
+    if (!output) {
+      output = document.createElement('textarea');
+      output.setAttribute('data-aurelia-ocr-result', '');
+      output.rows = 4;
+      output.style.cssText = 'display:block;width:100%;margin-top:8px;box-sizing:border-box;';
+      output.placeholder = 'Review extracted ID text and correct any mistakes';
+      target.parentElement.appendChild(output);
+    }
+    if (error) output.value = 'OCR failed: ' + String(error);
+    else output.value = String(text || '');
+    output.setAttribute('aria-label', 'Extracted ID text — review before use');
+    if (typeof window.toast === 'function') toast(error ? 'ID text extraction failed.' : 'ID text extracted. Review it carefully before using.');
+  };
+  document.addEventListener('change', function (event) {
+    const input = event.target;
+    if (!input || input.type !== 'file' || !input.files || !input.files[0]) return;
+    if (!/^image\\//i.test(input.files[0].type)) return;
+    const context = (input.id + ' ' + input.name + ' ' + (input.closest('.field')?.innerText || '') +
+      ' ' + (input.labels ? Array.from(input.labels).map(label => label.innerText).join(' ') : '')).toLowerCase();
+    if (!/(id|identity|guest|occupant|passport|license|licence|aadhaar|aadhar|document)/i.test(context)) return;
+    const field = input.closest('.field') || input.parentElement;
+    if (!field || field.querySelector('[data-aurelia-ocr-button]')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn';
+    button.setAttribute('data-aurelia-ocr-button', '');
+    button.textContent = 'Extract ID text (OCR)';
+    button.style.marginTop = '8px';
+    button.onclick = function () {
+      if (!window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function') {
+        if (typeof window.toast === 'function') toast('On-device OCR is available in the installed Android app.');
+        return;
+      }
+      const file = input.files && input.files[0];
+      if (!file || file.size > 8 * 1024 * 1024) {
+        if (typeof window.toast === 'function') toast('Choose an ID image no larger than 8 MiB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onerror = function () { if (typeof window.toast === 'function') toast('Could not read ID image.'); };
+      reader.onload = function () {
+        const dataUrl = String(reader.result || '');
+        const comma = dataUrl.indexOf(',');
+        if (comma < 0) return;
+        const requestId = 'ocr_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        pendingOcrTargets[requestId] = field;
+        button.disabled = true; button.textContent = 'Extracting…';
+        const original = window.aureliaNativeOcrResult;
+        window.aureliaNativeOcrResult = function (id, text, error) {
+          if (id === requestId) { button.disabled = false; button.textContent = 'Extract ID text (OCR)'; }
+          original(id, text, error);
+        };
+        window.AureliaNative.postMessage(JSON.stringify({
+          type:'recognizeIdImage', requestId:requestId, imageBase64:dataUrl.slice(comma + 1)
+        }));
+      };
+      reader.readAsDataURL(file);
+    };
+    field.appendChild(button);
+  }, true);
+
   window.aureliaNativeFileResult = function (requestId, ok, error) {
     window.dispatchEvent(new CustomEvent('aurelia-native-file-result', {detail:{requestId:requestId, ok:!!ok, error:error || null}}));
   };
