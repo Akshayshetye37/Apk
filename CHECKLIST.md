@@ -64,6 +64,7 @@
 - [ ] All major features are tested on a real device.
 - [ ] Saved data survives app restarts; data retention after reinstall is documented and tested separately.
 - [ ] Local storage, backup/export, and sensitive PMS data handling are reviewed.
+- [x] Screenshot protection is intentionally disabled; users accept that visible PMS data can be captured.
 
 ## 7. If an error occurs
 
