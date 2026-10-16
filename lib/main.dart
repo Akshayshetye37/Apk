@@ -625,6 +625,14 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         if (mounted) setState(() { _pmsLoaded = true; _loading = false; });
         return;
       }
+      if (value['type'] == 'setAppProtection') {
+        final enabled = value['enabled'];
+        if (enabled is! bool) throw const FormatException('Protection setting must be true or false.');
+        await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', enabled ? 'true' : 'false');
+        await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},true,null);');
+        if (!enabled && mounted) setState(() => _unlocked = true);
+        return;
+      }
       if (value['type'] == 'createLocalBackup') {
         await AureliaEncryptedPmsStore.createLocalSnapshot();
         await _controller.runJavaScript('window.aureliaNativeLocalBackupResult?.(${jsonEncode(requestId)},true,null);');
