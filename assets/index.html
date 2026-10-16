@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' blob:; frame-src blob: data:; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Aurelia 5★ Hotel PMS — Functional Sea Breeze</title>
 <style>
@@ -288,13 +289,73 @@ const seed={
  seq:{booking:1000,reservation:0,invoice:1,expense:1}
 };
 // Storage adapter: sandboxed previews may deny localStorage access entirely.
-const aureliaStorage=(()=>{let memory={};let store=null;try{store=window.localStorage;const probe='__aurelia_storage_probe__';store.setItem(probe,'1');store.removeItem(probe);}catch(_){store=null;}return {getItem(k){try{return store?store.getItem(k):(memory[k]??null)}catch(_){return memory[k]??null}},setItem(k,v){try{if(store){store.setItem(k,String(v));return}}catch(_){}memory[k]=String(v)},removeItem(k){try{if(store){store.removeItem(k);return}}catch(_){}delete memory[k]}}})();
+const aureliaStorage=(()=>{
+ let memory={};let store=null;
+ const nativeSecure=!!(window.AureliaNative&&window.__AURELIA_SECURE_DB_READY);
+ try{store=window.localStorage;if(store)store.getItem('__aurelia_storage_probe__');}catch(_){store=null;}
+ function clearLegacy(){
+  try{if(store){['aurelia_pms_v3','aurelia_pms_v3_autobackup','aurelia_pms_v3_autobackup_time'].forEach(k=>store.removeItem(k));}}catch(_){}
+ }
+ window.__aureliaPendingDbSaves=window.__aureliaPendingDbSaves||{};
+ window.aureliaNativePmsSaveResult=function(requestId,ok,error){
+  const pending=window.__aureliaPendingDbSaves[requestId];
+  if(pending)delete window.__aureliaPendingDbSaves[requestId];
+  if(ok){
+   window.__AURELIA_SECURE_DB_EXISTS=true;
+   if(pending){try{window.__AURELIA_SECURE_DB_BOOTSTRAP=JSON.parse(pending.snapshot);}catch(_){}}
+   window.__AURELIA_MIGRATE_LEGACY=false;
+   clearLegacy();
+  }else{
+   console.error('[AURELIA] Encrypted database save failed:',error||'Unknown error');
+   try{if(typeof window.toast==='function')window.toast('SECURE SAVE FAILED. Keep the app open and export/recover your data before restarting. '+String(error||''));}catch(_){}
+  }
+  if(pending&&typeof pending.resolve==='function')pending.resolve({ok:!!ok,error:error||null});
+ };
+ window.aureliaWaitForSecureSave=async function(){
+  const pending=window.__aureliaLastSecureSavePromise;
+  if(!pending)return;
+  const result=await pending;
+  if(!result.ok)throw new Error('Encrypted save failed: '+String(result.error||'unknown error'));
+ };
+ if(nativeSecure&&window.__AURELIA_SECURE_DB_EXISTS)clearLegacy();
+ return {
+  getItem(k){
+   if(nativeSecure){
+    if(k==='aurelia_pms_v3'&&window.__AURELIA_SECURE_DB_EXISTS&&window.__AURELIA_SECURE_DB_BOOTSTRAP)return JSON.stringify(window.__AURELIA_SECURE_DB_BOOTSTRAP);
+    if(!window.__AURELIA_SECURE_DB_EXISTS&&store){try{return store.getItem(k)}catch(_){}}
+    return memory[k]??null;
+   }
+   try{return store?store.getItem(k):(memory[k]??null)}catch(_){return memory[k]??null}
+  },
+  setItem(k,v){
+   const value=String(v);
+   if(nativeSecure){
+    memory[k]=value;
+    if(k==='aurelia_pms_v3'){
+     const requestId='db_'+Date.now()+'_'+Math.random().toString(36).slice(2,10);
+     let resolveSave;const savePromise=new Promise(resolve=>{resolveSave=resolve});window.__aureliaLastSecureSavePromise=savePromise;window.__aureliaPendingDbSaves[requestId]={snapshot:value,resolve:resolveSave,promise:savePromise};
+     try{window.AureliaNative.postMessage(JSON.stringify({type:'savePmsData',requestId:requestId,data:value}));}
+     catch(error){window.aureliaNativePmsSaveResult(requestId,false,String(error));}
+    }
+    return;
+   }
+   try{if(store){store.setItem(k,value);return}}catch(_){}
+   memory[k]=value;
+  },
+  removeItem(k){
+   delete memory[k];
+   if(nativeSecure)return;
+   try{if(store){store.removeItem(k);return}}catch(_){}
+  }
+ };
+})();
 function loadAureliaDB(){
  const primary=aureliaStorage.getItem('aurelia_pms_v3');
- if(primary){try{const parsed=JSON.parse(primary);if(parsed&&typeof parsed==='object')return parsed;}catch(e){console.warn('Primary PMS data could not be parsed; trying recovery snapshot.',e);}}
+ if(window.__AURELIA_SECURE_DB_READY&&window.__AURELIA_SECURE_DB_EXISTS&&window.__AURELIA_SECURE_DB_BOOTSTRAP&&typeof window.__AURELIA_SECURE_DB_BOOTSTRAP==='object')return JSON.parse(JSON.stringify(window.__AURELIA_SECURE_DB_BOOTSTRAP));
+ if(primary){try{const parsed=JSON.parse(primary);if(parsed&&typeof parsed==='object'){if(window.__AURELIA_SECURE_DB_READY&&!window.__AURELIA_SECURE_DB_EXISTS)window.__AURELIA_MIGRATE_LEGACY=true;return parsed;}}catch(e){console.warn('Primary PMS data could not be parsed; trying recovery snapshot.',e);}}
  try{
    const backup=aureliaStorage.getItem('aurelia_pms_v3_autobackup');
-   if(backup){const parsed=JSON.parse(backup);if(parsed&&typeof parsed==='object'){console.warn('Loaded PMS recovery snapshot. Review recent changes and save to restore the main copy.');return parsed;}}
+   if(backup){const parsed=JSON.parse(backup);if(parsed&&typeof parsed==='object'){if(window.__AURELIA_SECURE_DB_READY&&!window.__AURELIA_SECURE_DB_EXISTS)window.__AURELIA_MIGRATE_LEGACY=true;console.warn('Loaded PMS recovery snapshot. Review recent changes and save to restore the main copy.');return parsed;}}
  }catch(e){console.warn('PMS recovery snapshot could not be loaded.',e);}
  return seed;
 }
@@ -317,8 +378,9 @@ function save(){
      aureliaStorage.setItem('aurelia_pms_v3_autobackup_time',new Date().toISOString());
    }
  }catch(e){ /* storage quota/privacy mode: primary save remains authoritative */ }
- try{if(typeof aureliaQueueDriveBackup==='function')aureliaQueueDriveBackup()}catch(_){}
+ try{if(!window.__AURELIA_MIGRATE_LEGACY&&typeof aureliaQueueDriveBackup==='function')aureliaQueueDriveBackup()}catch(_){}
 }
+if(window.__AURELIA_MIGRATE_LEGACY)save();
 function money(n){return `${DB.settings.currency||'₹'}${Number(n||0).toLocaleString('en-IN')}`}
 function guest(b){return DB.guests.find(g=>g.id===b.guestId)}
 function room(b){return DB.rooms.find(r=>r.id===b.roomId)}
@@ -419,10 +481,18 @@ function setAllFeatures(on){
  requestAnimationFrame(()=>window.scrollTo(0,scrollY));toast(on?'All features enabled':'All features disabled');
 }
 function getExportRecords(scope){
- if(scope==='guest')return DB.guests.map(g=>({id:g.id,label:g.name}));
- if(scope==='booking')return DB.bookings.map(b=>({id:b.id,label:`${b.sr} · ${guest(b)?.name||''}`}));
+ if(scope==='guest')return [...(DB.guests||[])].filter(g=>g&&g.id!=null).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))).map(g=>({id:String(g.id),label:`${g.name||'Unnamed guest'} · ${g.phone||'No phone'} · ${String(g.id).slice(-6)}`}));
+ if(scope==='booking'){
+  const unique=new Map();
+  for(const b of (DB.bookings||[])){if(!b||b.id==null)continue;const key=String(b.sr||b.id);const prior=unique.get(key);if(!prior||String(b.updatedAt||b.createdAt||'')>=String(prior.updatedAt||prior.createdAt||''))unique.set(key,b);}
+  return [...unique.values()].map(b=>({id:String(b.id),label:`${b.sr||b.id} · ${guest(b)?.name||'Guest'}`})).sort((x,y)=>x.label.localeCompare(y.label));
+ }
  if(scope==='room')return DB.rooms.map(r=>({id:r.id,label:`Room ${r.number}`}));
- if(scope==='folio')return DB.bookings.filter(b=>b.status==='active').map(b=>({id:b.id,label:`${b.sr} · Room ${room(b)?.number||''}`}));
+ if(scope==='folio'){
+  const unique=new Map();
+  for(const b of (DB.bookings||[])){if(!b||b.id==null||b.status!=='active')continue;const key=String(b.id);if(!unique.has(key))unique.set(key,b);}
+  return [...unique.values()].map(b=>({id:String(b.id),label:`${b.sr||b.id} · Room ${room(b)?.number||''}`}));
+ }
  return [{id:'all',label:'Entire PMS data'}];
 }
 function refreshExportRecords(){
@@ -432,7 +502,7 @@ function refreshExportRecords(){
 function exportCenter(){
  const scope=document.getElementById('exportScope').value,format=document.getElementById('exportFormat').value,id=document.getElementById('exportRecord').value;
  if((scope!=='all')&&!id){toast('Select a record first');return}
- if(format==='json'){let data=scope==='all'?DB:scope==='guest'?guestExportPayload(id):scope==='booking'||scope==='folio'?bookingExportPayload(id):scope==='room'?DB.rooms.find(x=>x.id===id):DB;downloadBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),`aurelia-${scope}.json`);return}
+ if(format==='json'){let data=scope==='all'?DB:scope==='guest'?guestExportPayload(id):scope==='booking'?(()=>{const booking=(DB.bookings||[]).find(x=>String(x.id)===String(id));if(!booking)return null;const primaryGuest=guest(booking)||{};const occupants=Array.isArray(primaryGuest.occupants)?primaryGuest.occupants:[];return {exportFormat:'aurelia_booking_bundle_v1',exportedAt:new Date().toISOString(),booking:{...booking},room:room(booking)||null,primaryGuest:{...primaryGuest},primaryGuestIdPhoto:primaryGuest.idPhoto||'',occupants:occupants.map((o,i)=>({...o,occupantNumber:i+1,idPhoto:o.idPhoto||''})),vehicles:Array.isArray(primaryGuest.vehicles)?primaryGuest.vehicles.map(v=>({...v})):[]}})():scope==='room'?DB.rooms.find(x=>x.id===id):DB.bookings.find(x=>x.id===id);downloadBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),`aurelia-${scope}.json`);return}
  if(['csv','xlsx'].includes(format)){exportStructuredSpreadsheet(scope,id);return}
  if(['pdf','handwriting'].includes(format)){exportPrintDocument(scope,id,format);return}
  if(['jpg','png'].includes(format)){exportImageDocument(scope,id,format);return}
@@ -445,22 +515,32 @@ function selectedExportData(scope,id){
  if(scope==='room')return DB.rooms.find(x=>x.id===id);
  return DB;
 }
-function bookingExportPayload(id){const b=DB.bookings.find(x=>x.id===id);if(!b)return null;const g=guest(b)||{};return {booking:b,guest:g,room:room(b)||null,charges:b.charges||[],payments:b.payments||[],total:total(b),paid:Number(b.paid||0),due:due(b),generatedAt:new Date().toISOString()};}
 function guestExportPayload(id){
- const g=DB.guests.find(x=>x.id===id);if(!g)return null;
- const bookings=DB.bookings.filter(b=>b.guestId===id).map(b=>({booking:b,room:room(b),charges:b.charges||[],payments:b.payments||[],total:total(b),paid:Number(b.paid||0),due:due(b)}));
- const reservations=DB.reservations.filter(r=>r.guestId===id).map(r=>({...r,room:room({roomId:r.roomId})}));
- return {guest:g,bookings,reservations,inventoryPurchases:DB.inventoryLedger.filter(t=>t.guestId===id),generatedAt:new Date().toISOString()};
+ const g=DB.guests.find(x=>String(x.id)===String(id));if(!g)return null;
+ // Export only one row per immutable booking ID / booking reference. Editing a booking
+ // must not make the guest export show the same stay twice.
+ const uniqueBookings=new Map();
+ for(const b of (DB.bookings||[])){
+  if(!b||String(b.guestId)!==String(id))continue;
+  const key=String(b.sr||b.id||[b.roomId,b.checkIn,b.checkOut].join('|'));
+  const prev=uniqueBookings.get(key);
+  if(!prev||String(b.updatedAt||'')>=String(prev.updatedAt||''))uniqueBookings.set(key,b);
+ }
+ const bookings=[...uniqueBookings.values()].map(b=>({booking:b,room:room(b),charges:b.charges||[],payments:b.payments||[],total:total(b),paid:Number(b.paid||0),due:due(b)}));
+ const uniqueReservations=new Map();
+ for(const r of (DB.reservations||[])){if(!r||String(r.guestId)!==String(id))continue;const key=String(r.id||r.sr||[r.roomId,r.checkIn,r.checkOut].join('|'));if(!uniqueReservations.has(key))uniqueReservations.set(key,r);}
+ const reservations=[...uniqueReservations.values()].map(r=>({...r,room:room({roomId:r.roomId})}));
+ return {guest:g,bookings,reservations,inventoryPurchases:DB.inventoryLedger.filter(t=>String(t.guestId)===String(id)),generatedAt:new Date().toISOString()};
 }
 function exportStructuredSpreadsheet(scope,id){
  const data=scope==='guest'?guestExportPayload(id):selectedExportData(scope,id),rows=[];
  if(scope==='guest'){
   const g=data?.guest;rows.push(['GUEST PROFILE'],['Guest ID',g?.id||''],['Name',g?.name||''],['Phone / WhatsApp',g?.phone||''],['Email',g?.email||''],['ID Type',g?.idType||''],['ID Number',g?.idNumber||''],['Total Guests',1+(g?.occupants?.length||0)],['Vehicles',(g?.vehicles||[]).length],[],['OCCUPANTS'],['Name','DOB','Relation','ID Type','ID Number','Phone']);
-  (g?.occupants||[]).forEach(o=>rows.push([o.name,o.dob,o.relation,o.idType,o.idNumber,o.phone]));
+  (g?.occupants||[]).forEach((o,i)=>rows.push(['Occupant '+(i+1),o.name,o.dob,o.relation,o.idType,o.idNumber,o.phone,o.idPhoto?'ID photo included in JSON/PDF export':'No ID photo']));
   rows.push([],['VEHICLES'],['Registration','Type']);(g?.vehicles||[]).forEach(v=>rows.push([v.reg,v.type]));
   rows.push([],['BOOKINGS'],['SR','Room','Check In','Check Out','Status','Total','Paid','Due']);
   (data?.bookings||[]).forEach(x=>rows.push([x.booking.sr,x.room?.number||'',x.booking.checkIn,x.booking.checkOut,x.booking.status,x.total,x.paid,x.due]));
- }else if(scope==='booking'||scope==='folio'){const b=Array.isArray(data)?data:[data];rows.push(['BOOKING SUMMARY'],['SR','Guest','Room','Status','Check In','Check Out','Total','Paid','Due']);b.forEach(x=>rows.push([x.sr,guest(x)?.name||'',room(x)?.number||'',x.status,x.checkIn,x.checkOut,total(x),x.paid,due(x)]));const x=b[0],g=x&&guest(x);if(g){rows.push([],['PRIMARY GUEST'],['Name',g.name||''],['Phone',g.phone||''],['ID Type',g.idType||''],['ID Number',g.idNumber||''],['ID Photo Included in JSON/PDF',g.idPhoto?'Yes':'No'],[],['OCCUPANTS'],['Name','DOB','Relation','Phone','ID Type','ID Number','ID Photo Included in JSON/PDF']);(g.occupants||[]).forEach(o=>rows.push([o.name||'',o.dob||'',o.relation||'',o.phone||'',o.idType||'',o.idNumber||'',o.idPhoto?'Yes':'No']));}}
+ }else if(scope==='booking'||scope==='folio'){const b=Array.isArray(data)?data:[data];rows.push(['SR','Guest','Room','Status','Check In','Check Out','Total','Paid','Due']);b.forEach(x=>rows.push([x.sr,guest(x)?.name||'',room(x)?.number||'',x.status,x.checkIn,x.checkOut,total(x),x.paid,due(x)]))}
  else if(scope==='room'){const r=Array.isArray(data)?data:[data];rows.push(['Room','Type','Rate','Status']);r.forEach(x=>rows.push([x.number,x.type,x.rate,x.status]))}
  else {rows.push(['Section','JSON']);rows.push(['AURELIA PMS',JSON.stringify(data)])}
  const table=`<table><tbody>${rows.map((row,ri)=>`<tr>${row.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
@@ -501,8 +581,8 @@ function exportPrintDocument(scope,id,format){
     <div><b>Room rate</b><br>${money(r.rate||b.rate||0)}</div><div><b>Stay total</b><br>${money(total(b))}</div>
     <div><b>Paid</b><br>${money(b.paid||0)}</div><div><b>Outstanding</b><br>${money(due(b))}</div>
    </div>`);
-   body+=section('Primary guest identity',`${g.idPhoto?`<div style="margin-bottom:12px"><b>Primary guest ID photo</b><br><img src="${esc(g.idPhoto)}" alt="Primary guest identity document" style="max-width:100%;max-height:260px;object-fit:contain;border:1px solid #d8e5e5;border-radius:8px"></div>`:'<p>No primary guest ID photo saved.</p>'}<div class="grid"><div><b>Name</b><br>${esc(g.name||'')}</div><div><b>Phone</b><br>${esc(g.phone||'')}</div><div><b>ID type</b><br>${esc(g.idType||b.idType||'')}</div><div><b>ID number</b><br>${esc(g.idNumber||b.idNumber||'')}</div></div>`);
-   body+=section('Occupants & identity photos',(g.occupants||[]).map((o,i)=>`<div style="display:flex;gap:14px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #e5ecec;break-inside:avoid"><div style="flex:0 0 150px">${o.idPhoto?`<img src="${esc(o.idPhoto)}" alt="Occupant ${i+1} identity document" style="width:145px;max-height:190px;object-fit:contain;border:1px solid #d8e5e5;border-radius:8px">`:'<div style="width:145px;padding:35px 8px;border:1px dashed #c8d5d5;text-align:center">No ID photo</div>'}</div><div><b>Occupant ${i+1}: ${esc(o.name||'')}</b><p>DOB: ${esc(o.dob||'')} · Relation: ${esc(o.relation||'')}</p><p>Phone: ${esc(o.phone||'')}</p><p>ID type: ${esc(o.idType||'')} · ID number: ${esc(o.idNumber||'')}</p></div></div>`).join('')||'<p>No occupants recorded.</p>');
+   body+=section('Primary guest identity',`${g.idPhoto?`<div style="margin-bottom:12px"><b>Primary guest ID photo</b><br><img src="${esc(g.idPhoto)}" alt="Primary guest ID" style="max-width:100%;max-height:260px;object-fit:contain;border:1px solid #d8e5e5;border-radius:8px"></div>`:''}<div class="grid"><div><b>Name</b><br>${esc(g.name||'')}</div><div><b>Phone</b><br>${esc(g.phone||'')}</div><div><b>ID type</b><br>${esc(g.idType||b.idType||'')}</div><div><b>ID number</b><br>${esc(g.idNumber||b.idNumber||'')}</div></div>`);
+   body+=section('Occupant details and ID photos',`<div>${(g.occupants||[]).map((o,i)=>`<div style="page-break-inside:avoid;border:1px solid #d8e5e5;border-radius:8px;padding:10px;margin:8px 0"><b>Occupant ${i+1}: ${esc(o.name||'')}</b><div>Name: ${esc(o.name||'')} · DOB: ${esc(o.dob||'')} · Relation: ${esc(o.relation||'')}</div><div>ID type: ${esc(o.idType||'')} · ID number: ${esc(o.idNumber||'')} · Phone: ${esc(o.phone||'')}</div>${o.idPhoto?`<img src="${esc(o.idPhoto)}" alt="Occupant ${i+1} ID photo" style="display:block;max-width:100%;max-height:280px;object-fit:contain;margin-top:8px">`:'<div>No ID photo attached</div>'}</div>`).join('')||'<p>No additional occupants recorded.</p>'}</div>`);
    body+=section('Folio charges',table(['Date','Description','Qty','Rate','Amount'],(b.charges||[]).map(c=>[fmt(c.at||c.date),c.name||c.item||c.description||'Charge',c.qty||1,money(c.rate||c.unitPrice||c.amount||0),money(c.amount||((c.qty||1)*(c.rate||c.unitPrice||0)))])));
    body+=section('Payments',table(['Date','Method','Amount','Reference','Status'],(b.payments||[]).map(x=>[fmt(x.at||x.date),x.method||'',money(x.amount||0),x.reference||'',x.status||'verified'])));
    body+=section('Balance',`<div class="balance"><span>Total ${money(total(b))}</span><span>Paid ${money(b.paid||0)}</span><strong>Due ${money(due(b))}</strong></div>`);
@@ -558,7 +638,7 @@ function exportImageDocument(scope,id,format){
    add('VEHICLES');(g.vehicles||[]).forEach((v,i)=>add(`${i+1}. ${v.reg||''} · ${v.type||''}`));add('');
    add('BOOKINGS');(data.bookings||[]).forEach(x=>add(`${x.booking.sr} · Room ${x.room?.number||''} · ${x.booking.status} · Total ${money(x.total)} · Paid ${money(x.paid)} · Due ${money(x.due)}`));
  }else if(scope==='booking'||scope==='folio'){
-   const b=data||{},g=guest(b)||{},r=room(b)||{};add(DB.settings.hotelName||'AURELIA 5★ HOTEL');add(title.toUpperCase());add(`SR: ${b.sr||''}`);add(`Guest: ${g.name||''}`);add(`Phone: ${g.phone||''}`);add(`ID: ${g.idType||b.idType||''} ${g.idNumber||b.idNumber||''}`);add(`Primary ID photo: ${g.idPhoto?'saved; use PDF for embedded photo':'not saved'}`);add(`Room: ${r.number||''} · ${r.type||''}`);add(`Check-in: ${fmt(b.checkIn)}`);add(`Check-out: ${fmt(b.checkOut)}`);add(`Guests: ${b.guests??1}`);add(`Room rate: ${money(r.rate||b.rate||0)}`);add(`Total: ${money(total(b))}`);add(`Paid: ${money(b.paid||0)}`);add(`Outstanding: ${money(due(b))}`);add('');add('OCCUPANTS');(g.occupants||[]).forEach((o,i)=>add(`${i+1}. ${o.name||''} · DOB ${o.dob||''} · ${o.relation||''} · Phone ${o.phone||''} · ${o.idType||''} ${o.idNumber||''} · ID photo ${o.idPhoto?'saved; use PDF for embedded photo':'not saved'}`));add('');add('FOLIO CHARGES');(b.charges||[]).forEach((c,i)=>add(`${i+1}. ${c.name||c.item||c.description||'Charge'} · Qty ${c.qty||1} · ${money(c.amount||((c.qty||1)*(c.rate||c.unitPrice||0)))}`));add('');add('PAYMENTS');(b.payments||[]).forEach((x,i)=>add(`${i+1}. ${x.method||''} · ${money(x.amount||0)} · ${x.status||'verified'}`));
+   const b=data||{},g=guest(b)||{},r=room(b)||{};add(DB.settings.hotelName||'AURELIA 5★ HOTEL');add(title.toUpperCase());add(`SR: ${b.sr||''}`);add(`Guest: ${g.name||''}`);add(`Phone: ${g.phone||''}`);add(`ID: ${g.idType||b.idType||''} ${g.idNumber||b.idNumber||''}`);add(`Room: ${r.number||''} · ${r.type||''}`);add(`Check-in: ${fmt(b.checkIn)}`);add(`Check-out: ${fmt(b.checkOut)}`);add(`Guests: ${b.guests??1}`);add(`Room rate: ${money(r.rate||b.rate||0)}`);add(`Total: ${money(total(b))}`);add(`Paid: ${money(b.paid||0)}`);add(`Outstanding: ${money(due(b))}`);add('');add('FOLIO CHARGES');(b.charges||[]).forEach((c,i)=>add(`${i+1}. ${c.name||c.item||c.description||'Charge'} · Qty ${c.qty||1} · ${money(c.amount||((c.qty||1)*(c.rate||c.unitPrice||0)))}`));add('');add('PAYMENTS');(b.payments||[]).forEach((x,i)=>add(`${i+1}. ${x.method||''} · ${money(x.amount||0)} · ${x.status||'verified'}`));
  }else if(scope==='room'){
    const r=data||{};add(DB.settings.hotelName||'AURELIA 5★ HOTEL');add('ROOM DETAIL');add(`Room: ${r.number||''}`);add(`Type: ${r.type||''}`);add(`Rate: ${money(r.rate||0)}`);add(`Status: ${r.status||''}`);add('');add('BOOKING HISTORY');DB.bookings.filter(b=>b.roomId===r.id).forEach(b=>add(`${b.sr} · ${guest(b)?.name||''} · ${fmt(b.checkIn)} → ${fmt(b.checkOut)} · ${b.status} · Due ${money(due(b))}`));
  }else{
@@ -871,7 +951,6 @@ function syncBookingGuestCount(){
 }
 function openBooking(id){
  const b=id?DB.bookings.find(x=>x.id===id):null; const g=b&&guest(b), r=b&&room(b);
- pendingBookingIdPhoto=g?.idPhoto||'';
  let occ=(g?.occupants||[]).map((o,i)=>occupantHTML(o,i)).join('');
  let veh=(g?.vehicles||[]).map((v,i)=>vehicleHTML(v,i)).join('');
  const checkIn=b?.checkIn||aureliaDateTimeISO(new Date()), checkOut=b?.checkOut||aureliaDateTimeISO(new Date(Date.now()+86400000));
@@ -885,8 +964,8 @@ function openBooking(id){
      <input id="bkIdCamera" type="file" accept="image/*" capture="environment" hidden onchange="runBookingIdOCR(event)">
      <input id="bkIdGallery" type="file" accept="image/*" hidden onchange="runBookingIdOCR(event)">
    </div>
-   <div id="bkOcrStatus" class="muted" style="margin-top:8px">${g?.idPhoto?'Saved ID photo loaded. Select a new image to replace it.':'No ID image selected.'}</div>
-   <img id="bkIdPreview" class="photo" style="${g?.idPhoto?'display:block;':'display:none;'}margin-top:10px;max-height:180px" src="${esc(g?.idPhoto||'')}" alt="Government ID preview">
+   <div id="bkOcrStatus" class="muted" style="margin-top:8px">No ID image selected.</div>
+   <img id="bkIdPreview" class="photo" style="display:none;margin-top:10px;max-height:180px" alt="Government ID preview">
    <div class="muted" style="margin-top:8px">OCR results are suggestions and must be verified before saving.</div>
  </div>
  <div class="field full"><label>Room — rate auto-fetch</label><select id="bkRoom" onchange="updateBookingRoomRate()">${roomOptionHTML(b)}</select><small id="bkRateHint" class="muted">Select a room to calculate its rate automatically.</small></div>
@@ -899,7 +978,17 @@ function openBooking(id){
  `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveBookingForm('${id||''}')">Save booking</button>`);
  setTimeout(()=>{document.getElementById('bkIn')?.addEventListener('change',updateBookingRoomRate);document.getElementById('bkOut')?.addEventListener('change',updateBookingRoomRate);updateBookingRoomRate();syncBookingGuestCount()},0);
 }
-function occupantHTML(o={},i){return `<div class="occupant" data-occ data-occupant-id="${esc(o.id||'')}" data-id-photo="${esc(o.idPhoto||'')}"><div class="subhead"><b>Occupant ${i+1}</b><button class="btn small danger" onclick="this.closest('[data-occ]').remove();syncBookingGuestCount()">Remove</button></div><div class="form-grid" style="margin-top:9px">${field('Name','occName',o.name||'')}${field('DOB','occDob',o.dob||'')}${field('Relation','occRelation',o.relation||'')}${selectIdTypeField('occIdType',o.idType||'')}${field('ID number','occIdNumber',o.idNumber||'')}${field('Phone','occPhone',o.phone||'')}<div class="field full"><label>Government ID image — camera or gallery</label><input type="file" accept="image/*" capture="environment" data-occ-camera onchange="captureOccupantIdPhoto(event)" hidden><input type="file" accept="image/*" data-occ-photo onchange="captureOccupantIdPhoto(event)" hidden><div class="actions"><button type="button" class="btn small" onclick="this.parentElement.parentElement.querySelector('[data-occ-camera]').click()">Capture ID</button><button type="button" class="btn small" onclick="this.parentElement.parentElement.querySelector('[data-occ-photo]').click()">Upload from Gallery</button></div><img data-occ-id-preview class="photo" alt="Occupant ID preview" src="${esc(o.idPhoto||'')}" style="${o.idPhoto?'display:block;':'display:none;'}margin-top:8px;max-height:180px"><div class="muted" data-occ-photo-status style="margin-top:6px">${o.idPhoto?'Saved ID photo loaded.':'No ID photo selected.'}</div></div></div></div>`}
+function aureliaOccupantImageChanged(event,input){
+ const file=event&&event.target&&event.target.files&&event.target.files[0], row=input&&input.closest('[data-occ]');
+ if(!file||!row)return;
+ const status=row.querySelector('[data-occ-image-status]'), preview=row.querySelector('[data-occ-preview]');
+ if(!/^image\//i.test(file.type)||file.size>8*1024*1024){input.value='';if(status)status.textContent='Choose an image under 8 MiB.';return;}
+ const reader=new FileReader();
+ reader.onerror=function(){if(status)status.textContent='Could not read image. Please select it again.';};
+ reader.onload=function(){const data=String(reader.result||'');if(data.indexOf('data:image/')!==0){if(status)status.textContent='Unsupported image format.';return;}row.dataset.aureliaOccupantPhoto=data;if(preview){preview.src=data;preview.style.display='block';}if(status)status.textContent='ID image selected and ready to save with this occupant.';};
+ reader.readAsDataURL(file);
+}
+function occupantHTML(o={},i){return `<div class="occupant" data-occ data-aurelia-occupant-photo="${o.idPhoto?esc(o.idPhoto):''}" data-aurelia-occupant-id="${esc(o.id||'')}"><div class="subhead"><b>Occupant ${i+1}</b><button class="btn small danger" onclick="this.closest('[data-occ]').remove();syncBookingGuestCount()">Remove</button></div><div class="form-grid" style="margin-top:9px">${field('Name','occName',o.name||'')}${field('DOB','occDob',o.dob||'')}${field('Relation','occRelation',o.relation||'')}${selectIdTypeField('occIdType',o.idType||'')}${field('ID number','occIdNumber',o.idNumber||'')}${field('Phone','occPhone',o.phone||'')}<div class="field full"><label>Government ID image — camera or gallery</label><input type="file" accept="image/*" capture="environment" data-occ-camera onchange="aureliaOccupantImageChanged(event,this)" hidden><input type="file" accept="image/*" data-occ-photo onchange="aureliaOccupantImageChanged(event,this)" hidden><div class="actions"><button type="button" class="btn small" onclick="this.parentElement.parentElement.querySelector('[data-occ-camera]').click()">Capture ID</button><button type="button" class="btn small" onclick="this.parentElement.parentElement.querySelector('[data-occ-photo]').click()">Upload from Gallery</button><button type="button" class="btn small" onclick="runGenericOcr(null,this)">OCR</button></div><img data-occ-preview alt="Occupant ID preview" class="photo" style="${o.idPhoto?'':'display:none;'}max-height:150px;margin-top:8px" ${o.idPhoto?`src="${esc(o.idPhoto)}"`:''}><div class="muted" data-occ-image-status>${o.idPhoto?'Saved occupant ID image loaded.':'Choose camera capture or gallery image. Image is retained with this occupant when saved.'}</div></div></div></div>`}
 function vehicleHTML(v={},i){return `<div class="vehicle" data-veh><div class="subhead"><b>Vehicle ${i+1}</b><button class="btn small danger" onclick="this.closest('[data-veh]').remove()">Remove</button></div><div class="form-grid" style="margin-top:9px">${field('Registration number','vehReg',v.reg||'')}${field('Type','vehType',v.type||'Car')}<div class="field full"><label>Vehicle photo / OCR</label><input type="file" accept="image/*" capture="environment" data-veh-photo><button type="button" class="btn small" onclick="demoOCR(this)">Scan / OCR</button></div></div></div>`}
 function addOccupantField(){const c=document.getElementById('occList');c.insertAdjacentHTML('beforeend',occupantHTML({},c.querySelectorAll('[data-occ]').length));syncBookingGuestCount()}
 function addVehicleField(){const c=document.getElementById('vehList');c.insertAdjacentHTML('beforeend',vehicleHTML({},c.querySelectorAll('[data-veh]').length))}
@@ -920,14 +1009,30 @@ async function aureliaPreprocessIdImage(file){
   };img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Could not load image'))};img.src=url;
  });
 }
+window.__aureliaOcrPending=window.__aureliaOcrPending||{};
+window.aureliaNativeOcrResult=function(requestId,text,error){const p=window.__aureliaOcrPending[String(requestId)];if(!p)return;if(error)p.reject(new Error(String(error)));else p.resolve(String(text||''));};
 async function runImageOCR(file,statusEl){
  if(!file){if(statusEl)statusEl.textContent='Select a government ID image first.';return null;}
  if(!/^image\//.test(file.type)){if(statusEl)statusEl.textContent='Please select an image file.';return null;}
- if(file.size>8*1024*1024){if(statusEl)statusEl.textContent='For on-device OCR, choose an image under 8 MB. The saved photo is compressed separately.';return null;}
+ if(file.size>8*1024*1024){if(statusEl)statusEl.textContent='Image is too large. Please use an image under 8 MB.';return null;}
  if(ocrBusy){if(statusEl)statusEl.textContent='OCR is already running. Please wait.';return null;}
- if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){if(statusEl)statusEl.textContent='Photo capture works offline. On-device OCR is available in the installed Android app; enter details manually in browser preview.';return null;}
- ocrBusy=true;if(statusEl)statusEl.textContent='Reading ID on this device…';
- try{const base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>{const v=String(reader.result||''),comma=v.indexOf(',');if(comma<0)reject(new Error('Could not encode image'));else resolve(v.slice(comma+1));};reader.onerror=()=>reject(new Error('Could not read image'));reader.readAsDataURL(file);});const requestId='ocr'+Date.now()+'_'+(++pendingOcrSequence);return await new Promise(resolve=>{pendingOcrRequests.set(requestId,{resolve,status:statusEl});try{window.AureliaNative.postMessage(JSON.stringify({type:'recognizeIdImage',requestId,imageBase64:base64}));}catch(err){pendingOcrRequests.delete(requestId);if(statusEl)statusEl.textContent='On-device OCR unavailable. You can still save the photo and enter details manually.';resolve(null);}setTimeout(()=>{const p=pendingOcrRequests.get(requestId);if(p){pendingOcrRequests.delete(requestId);if(statusEl)statusEl.textContent='OCR timed out. The photo is still saved; enter details manually.';resolve(null);}},25000);});}catch(err){if(statusEl)statusEl.textContent='On-device OCR unavailable. You can still save the photo and enter details manually.';return null;}finally{ocrBusy=false;}
+ ocrBusy=true;
+ try{
+  if(!(window.AureliaNative&&typeof window.AureliaNative.postMessage==='function'&&window.__AURELIA_SECURE_DB_READY)){if(statusEl)statusEl.textContent='Offline OCR is available in the installed Android app. This browser preview has no bundled OCR engine.';return null;}
+  if(statusEl)statusEl.textContent='Reading ID locally on this device…';
+  const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(new Error('Could not read selected image'));reader.onload=()=>resolve(String(reader.result||''));reader.readAsDataURL(file);});
+  const imageBase64=dataUrl.includes(',')?dataUrl.slice(dataUrl.indexOf(',')+1):'';
+  if(!imageBase64)throw new Error('Selected image could not be encoded.');
+  const requestId='ocr_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  const textResult=await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>{delete window.__aureliaOcrPending[requestId];reject(new Error('On-device OCR timed out. Please try again.'));},30000);
+   window.__aureliaOcrPending[requestId]={resolve:value=>{clearTimeout(timer);delete window.__aureliaOcrPending[requestId];resolve(value);},reject:error=>{clearTimeout(timer);delete window.__aureliaOcrPending[requestId];reject(error);}};
+   window.AureliaNative.postMessage(JSON.stringify({type:'recognizeIdImage',requestId,imageBase64}));
+  });
+  const text=String(textResult||'').replace(/\\r/g,'\\n').replace(/[ \\t]+/g,' ').replace(/\\n{2,}/g,'\\n').trim();
+  if(statusEl)statusEl.textContent=text?'OCR complete. Verify extracted details before saving.':'OCR completed but no readable text was detected.';
+  return text;
+ }catch(err){if(statusEl)statusEl.textContent='On-device OCR failed: '+(err&&err.message?err.message:'unknown error');return null;}finally{ocrBusy=false;}
 }
 function parseIdText(text){
  const raw=String(text||'').replace(/\r/g,'\n'); if(!raw.trim())return {};
@@ -955,22 +1060,46 @@ function parseIdText(text){
  return {idType,idNumber,name:name.replace(/\s{2,}/g,' '),dob:dob?.[1]||''};
 }
 let pendingBookingIdPhoto='';
-async function imageFileToDataUrl(file){
- if(!file||!/^image\//.test(file.type))throw new Error('Please select a valid image file.');
- if(file.size>12*1024*1024)throw new Error('Image is too large. Please use an image under 12 MB.');
- try{if(typeof createImageBitmap==='function'){const bitmap=await createImageBitmap(file),scale=Math.min(1,1800/Math.max(bitmap.width,bitmap.height));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));const ctx=canvas.getContext('2d');if(!ctx)throw new Error('Image editor is unavailable.');ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close?.();let quality=.84,data=canvas.toDataURL('image/jpeg',quality);while(data.length>3*1024*1024&&quality>.55){quality-=.08;data=canvas.toDataURL('image/jpeg',quality);}if(data.length>4*1024*1024)throw new Error('Image remains too large after compression. Choose a smaller image.');return data;}}catch(err){if(err?.message)throw err;}
- if(file.size>3*1024*1024)throw new Error('This device cannot safely compress this large image. Choose an image under 3 MB.');
- return await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('Could not read the selected image.'));reader.readAsDataURL(file);});
+async function runBookingIdOCR(e){
+  const file=e?.target?.files?.[0];
+  const status=document.getElementById('bkOcrStatus');
+  if(file){
+    const prev=document.getElementById('bkIdPreview');
+    if(prev){prev.src=URL.createObjectURL(file);prev.style.display='block';}
+    const reader=new FileReader();
+    reader.onload=()=>{pendingBookingIdPhoto=reader.result||'';};
+    reader.readAsDataURL(file);
+  }
+  const text=await runImageOCR(file,status);
+  const parsed=parseIdText(text);
+  const type=document.getElementById('bkIdType'), num=document.getElementById('bkIdNumber');
+  if(parsed.idType&&type)type.value=parsed.idType;
+  if(parsed.idNumber&&num)num.value=parsed.idNumber;
+  const nameField=document.getElementById('bkGuest');if(parsed.name&&nameField&&!nameField.value.trim())nameField.value=parsed.name;
+  const dobField=document.getElementById('bkDob');if(parsed.dob&&dobField&&!dobField.value.trim())dobField.value=parsed.dob;
+  if(text && !parsed.idNumber && status)status.textContent='OCR complete. No confident ID number pattern was detected; review the image and enter/verify the number manually.';
 }
-async function captureOccupantIdPhoto(e){const input=e?.target,file=input?.files?.[0],card=input?.closest('[data-occ]');if(!file||!card)return;const status=card.querySelector('[data-occ-photo-status]'),preview=card.querySelector('[data-occ-id-preview]');card.__photoPromise=(async()=>{try{const data=await imageFileToDataUrl(file);card.dataset.idPhoto=data;if(preview){preview.src=data;preview.style.display='block';}if(status)status.textContent='ID photo selected and compressed. Save the booking to keep it.';await runGenericOcr({target:{files:[file]}},input);}catch(err){if(status)status.textContent=err.message||'Could not read the ID photo.';input.value='';}})();await card.__photoPromise;}
-async function runBookingIdOCR(e){const file=e?.target?.files?.[0],status=document.getElementById('bkOcrStatus');if(file){try{pendingBookingIdPhoto=await imageFileToDataUrl(file);const prev=document.getElementById('bkIdPreview');if(prev){prev.src=pendingBookingIdPhoto;prev.style.display='block';}if(status)status.textContent='ID photo selected and compressed. Save the booking to keep it.';}catch(err){if(status)status.textContent=err.message||'Could not read this ID photo.';e.target.value='';return;}}const text=await runImageOCR(file,status),parsed=parseIdText(text||'');const type=document.getElementById('bkIdType'),num=document.getElementById('bkIdNumber');if(parsed.idType&&type)type.value=parsed.idType;if(parsed.idNumber&&num)num.value=parsed.idNumber;const nameField=document.getElementById('bkGuest');if(parsed.name&&nameField&&!nameField.value.trim())nameField.value=parsed.name;}
+async function runGenericOcr(e,btn){
+  const file=e?.target?.files?.[0] || btn?.closest('.field')?.querySelector('input[type=file]')?.files?.[0];
+  const status=document.getElementById('guestOcrStatus') || btn?.closest('.field')?.querySelector('.muted');
+  const text=await runImageOCR(file,status);
+  const parsed=parseIdText(text);
+  const scope=btn?.closest('[data-occ]');  const type=(scope||document).querySelector('[data-setting="occIdType"]') || document.getElementById('gIdType');  const num=(scope||document).querySelector('[data-setting="occIdNumber"]') || document.getElementById('gIdNumber');
+  if(parsed.idType&&type)type.value=parsed.idType;
+  if(parsed.idNumber&&num)num.value=parsed.idNumber;
+  const nameField=(scope||document).querySelector('[data-setting="occName"]')||(scope||document).getElementById?.('gName');if(parsed.name&&nameField&&!nameField.value.trim())nameField.value=parsed.name;
+}
 function demoOCR(btn){ return runGenericOcr(null,btn); }
 
-async function saveBookingForm(id){
- await Promise.all([...document.querySelectorAll('[data-occ]')].map(x=>x.__photoPromise||Promise.resolve()));
+function saveBookingForm(id){
  const name=document.getElementById('bkGuest')?.value?.trim()||'Guest', phone=document.getElementById('bkPhone')?.value?.trim()||'';
- let g=DB.guests.find(x=>x.name.toLowerCase()===name.toLowerCase()&&x.phone===phone);
+ // On edit, resolve the existing guest by the booking's immutable guestId first.
+ // Name/phone are editable attributes, never the identity key.
+ const editingBooking=id?(DB.bookings||[]).find(x=>String(x.id)===String(id)):null;
+ let g=(editingBooking?.guestId!=null?(DB.guests||[]).find(x=>String(x.id)===String(editingBooking.guestId)):null)
+   ||(DB.guests||[]).find(x=>String(x.name||'').trim().toLowerCase()===name.toLowerCase()&&String(x.phone||'').trim()===phone);
  if(!g){g={id:'g'+Date.now(),name,phone,email:'',idType:'',idNumber:'',idPhoto:'',occupants:[],vehicles:[]};DB.guests.push(g)}
+ g.name=name;g.phone=phone;
  g.idType=document.getElementById('bkIdType')?.value?.trim()||g.idType||'';g.idNumber=document.getElementById('bkIdNumber')?.value?.trim()||g.idNumber||'';
 if(pendingBookingIdPhoto) g.idPhoto=pendingBookingIdPhoto;
 
@@ -982,7 +1111,7 @@ if(pendingBookingIdPhoto) g.idPhoto=pendingBookingIdPhoto;
  const reservationConflict=DB.reservations.some(other=>other.roomId===roomId&&other.status!=='cancelled'&&other.status!=='converted'&&checkIn<other.to&&checkOut>other.from);
  if(bookingConflict||reservationConflict){toast(`Room ${r.number} is already booked for overlapping dates.`);return}
  const base=Number(r.rate||0)*nightsBetween(checkIn,checkOut), discount=Math.max(0,Number(document.getElementById('bkDiscount').value||0)), paid=Math.max(0,Number(document.getElementById('bkPaid').value||0));
- const occ=[...document.querySelectorAll('[data-occ]')].map(x=>({id:x.dataset.occupantId||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:x.dataset.idPhoto||''}));
+ const occ=[...document.querySelectorAll('#occList [data-occ]')].map((x,i)=>{const oldId=x.dataset.aureliaOccupantId||'';const prior=(g.occupants||[]).find(o=>oldId&&String(o.id)===String(oldId))||(g.occupants||[])[i]||{};const photo=x.dataset.aureliaOccupantPhoto||x.querySelector('[data-occ-preview]')?.getAttribute('src')||prior.idPhoto||'';return {id:prior.id||oldId||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:photo}});
  const veh=[...document.querySelectorAll('[data-veh]')].map(x=>({id:'v'+Date.now()+Math.random(),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:''}));
  g.occupants=occ;g.vehicles=veh;
  const data={guestId:g.id,roomId,checkIn,checkOut,guests:1+occ.length,base,discount,paid,notes:document.getElementById('bkNotes').value};
@@ -1003,16 +1132,15 @@ function openGuest(id){
  `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveGuest('${id||''}')">Save guest</button>`);
 }
 let pendingGuestPhoto='';
-async function previewGuestPhoto(e){const f=e?.target?.files?.[0];if(!f)return;try{pendingGuestPhoto=await imageFileToDataUrl(f);const p=document.getElementById('gPhotoPreview');if(p){p.src=pendingGuestPhoto;p.style.display='block'}const status=document.getElementById('guestOcrStatus');if(status)status.textContent='ID photo selected and compressed. Save the guest to keep it.';}catch(err){const status=document.getElementById('guestOcrStatus');if(status)status.textContent=err.message||'Could not read the ID photo.';e.target.value='';}}
+function previewGuestPhoto(e){const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{pendingGuestPhoto=r.result;const p=document.getElementById('gPhotoPreview');if(p){p.src=r.result;p.style.display='block'}};r.readAsDataURL(f)}
 function updateGuestOccupantCount(){const c=document.querySelectorAll('#guestOccList [data-occ]').length;const el=document.getElementById('guestOccCount');if(el)el.textContent=c}
 function addGuestOccupant(){const c=document.getElementById('guestOccList');c.insertAdjacentHTML('beforeend',occupantHTML({},c.querySelectorAll('[data-occ]').length));updateGuestOccupantCount()}
 function addGuestVehicle(){const c=document.getElementById('guestVehList');c.insertAdjacentHTML('beforeend',vehicleHTML({},c.querySelectorAll('[data-veh]').length))}
-async function saveGuest(id){
- await Promise.all([...document.querySelectorAll('#guestOccList [data-occ]')].map(x=>x.__photoPromise||Promise.resolve()));
+function saveGuest(id){
  const name=document.getElementById('gName').value.trim(), phone=document.getElementById('gPhone').value.trim();
  let g=id?DB.guests.find(x=>x.id===id):{id:'g'+Date.now(),occupants:[],vehicles:[]};if(!g)return;
  g.name=name;g.phone=phone;g.email=document.getElementById('gEmail').value;g.idType=document.getElementById('gIdType').value;g.idNumber=document.getElementById('gIdNumber').value;if(pendingGuestPhoto)g.idPhoto=pendingGuestPhoto;
- g.occupants=[...document.querySelectorAll('#guestOccList [data-occ]')].map(x=>({id:x.dataset.occupantId||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:x.dataset.idPhoto||''}));
+ g.occupants=[...document.querySelectorAll('#guestOccList [data-occ]')].map(x=>({id:'o'+Date.now()+Math.random(),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:''}));
  g.vehicles=[...document.querySelectorAll('#guestVehList [data-veh]')].map(x=>({id:'v'+Date.now()+Math.random(),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:''}));
  if(!id)DB.guests.push(g);audit(id?'Guest edited':'Guest created',g.name);save();pendingGuestPhoto='';closeModal();showPage('guests');toast(`Guest saved · ${1+g.occupants.length} total guest${g.occupants.length?'s':''}`);
 }
@@ -1412,7 +1540,7 @@ function restaurantCustomerBox(){
     <div class="restaurant-customer">
       <div class="row" style="justify-content:space-between"><b>RANDOM / WALK-IN GUEST</b><span class="audit-chip walkin-badge">Restaurant only</span></div>
       <div class="field" style="margin-top:9px"><label>Walk-in customer name (optional)</label>
-        <input id="restaurantWalkinName" placeholder="Customer name" value="${esc(window.restaurantWalkinName||"")}" oninput="window.restaurantWalkinName=this.value;restaurantMode='walkin'">
+        <input id="restaurantWalkinName" placeholder="Customer name" value="${esc(typeof window.restaurantWalkinName==="string"?window.restaurantWalkinName:"")}" oninput="window.restaurantWalkinName=this.value;restaurantMode='walkin'">
       </div>
       <div class="field" style="margin-top:9px"><label>Mobile number</label>
         <input id="restaurantWalkin" placeholder="+91 mobile number" value="${esc(restaurantWalkinMobile)}" oninput="restaurantWalkinMobile=this.value;restaurantMode='walkin'">
@@ -1464,36 +1592,6 @@ function restaurantStockCheck(){
     if(!i||remaining(i)<x.qty)return {ok:false,item:i?.name||x.name,available:i?remaining(i):0};
   }
   return {ok:true};
-}
-function commitRestaurant(mode){
-  if(!childOn("restaurant","restaurantBilling")){toast("Restaurant billing is disabled");return}
-  if(!DB.restaurantCart.length){toast("Add food first");return}
-  if(mode==="room" && (!childOn("restaurant","addToRoom")||!restaurantSelectedBooking)){toast("Select a staying guest first");return}
-  if(mode==="walkin" && !restaurantWalkinMobile.trim()){toast("Enter walk-in mobile number");return}
-  const stock=restaurantStockCheck();if(!stock.ok){toast(`Insufficient stock: ${stock.item} (${stock.available} available)`);return}
-  const c=restaurantModeData(mode),saleId="RS-"+Date.now(),amount=restaurantTotal();
-  const walkInNo=mode==="walkin" ? "WALK-IN-"+String((DB.restaurantSales||[]).filter(x=>x.mode==="walkin").length+1).padStart(4,"0") : "";
-  const sale={id:saleId,walkInNo,mode,bookingId:c.booking?.id||"",guestId:c.guest?.id||"",guestName:c.guest?.name||(window.restaurantWalkinName||"Walk-in Customer").trim(),roomNumber:c.room?.number||"",mobile:c.mobile||"",items:DB.restaurantCart.map(x=>({...x})),amount,status:"UNPAID",createdAt:new Date().toISOString()};
-  /* Demo transaction: stock ledger + restaurant sale + optional folio charge. */
-  sale.items.forEach(x=>{
-    const i=DB.inventory.find(y=>y.id===x.itemId);
-    DB.inventoryLedger.push({id:"t"+Date.now()+Math.random(),type:"sale",itemId:i.id,qty:x.qty,unitPrice:x.price,amount:x.qty*x.price,bookingId:c.booking?.id||"",restaurantSaleId:saleId,at:new Date().toISOString(),note:"Restaurant sale"});
-  });
-  if(c.booking){
-    c.booking.charges=c.booking.charges||[];
-    sale.items.forEach((item,idx)=>c.booking.charges.push({
-      id:"c"+Date.now()+"-"+idx,
-      item:"Restaurant · "+item.name+" · Bill "+saleId,
-      qty:Number(item.qty||1),rate:Number(item.price||0),
-      amount:Number(item.qty||1)*Number(item.price||0),
-      at:new Date().toISOString(),restaurantSaleId:saleId,restaurantItemName:item.name
-    }));
-    sale.status="ON_FOLIO";
-  }
-  DB.restaurantSales.unshift(sale);
-  audit("Restaurant sale created",`${saleId} · ${mode} · ${money(amount)}${c.booking?" · "+c.booking.sr:""}`);
-  DB.restaurantCart=[];save();renderRestaurant();
-  toast(mode==="room"?`Food added to Room ${c.room.number} folio`:"Walk-in restaurant bill created");
 }
 function restaurantDraft(){
   const c=restaurantModeData(restaurantSelectedBooking?"room":"walkin");
@@ -1553,6 +1651,7 @@ table th{background:#f0e8da!important;color:#284234!important}
 }
 async function loadJsPdf(){
   if(window.jspdf?.jsPDF)return true;
+  if(window.__AURELIA_SECURE_DB_READY)return false;
   try{
     await new Promise((resolve,reject)=>{
       const sc=document.createElement("script");
@@ -1681,6 +1780,13 @@ function pagesSettingsNew(){
   const masterKeys=Object.keys(NEW_FEATURE_TREE);
   return `<div class="hero"><div><h1>Settings</h1><p>Hotel identity, master features and detailed function kill-switches.</p></div><div class="actions"><span class="muted">Feature controls</span></div></div>
   <div class="grid two">
+    <section class="card" id="aureliaDriveSettingsCard"><div class="section-title"><h2>Google Drive backup</h2><span class="muted">Not connected</span></div>
+      <p class="muted">Google Drive backup is not active yet. Your records are not being synced to Google Drive. Continue using Offline Device Backup (Export / Import) to make a copy before changing phones or clearing app data.</p>
+      <div class="field full"><label>Connection status</label><input value="Not configured" readonly></div>
+      <div class="field full"><label>Backup method</label><input value="Offline device export / import" readonly></div>
+      <button class="btn" type="button" disabled aria-disabled="true">Google Drive connection — coming later</button>
+      <p class="muted">When implemented, this section will support account connection and encrypted backup transfer. Do not assume cloud copies exist until the status explicitly confirms a successful backup.</p>
+    </section>
     <section class="card"><div class="section-title"><h2>Hotel identity</h2></div>
       <div class="logo-preview"><img id="settingsLogo" src="${DB.settings.logo||""}" onerror="this.style.display='none'"><div><button class="btn" onclick="document.getElementById('logoFile').click()">Upload logo</button><input id="logoFile" type="file" accept="image/*" hidden onchange="setLogo(event)"></div></div>
       <div class="form-grid" style="margin-top:12px">${field("Hotel name","hotelName",DB.settings.hotelName)}${field("Phone","phone",DB.settings.phone)}${field("Address","address",DB.settings.address,true)}${field("GST","gst",DB.settings.gst)}${field("UPI","upi",DB.settings.upi)}${field("Currency","currency",DB.settings.currency)}</div>
@@ -2088,58 +2194,6 @@ function saveRestaurantIngredient(id){
 pages.restaurantHistory=pagesRestaurantHistoryFinal;
 pages.pos=pagesPOSFinal;
 
-/* Final restaurant commit path: Made Food is the saleable item.
-   Raw kitchen ingredients are NOT treated as ready-made inventory. */
-window.commitRestaurant = function(mode){
-  if(!childOn("restaurant","restaurantBilling")){toast("Restaurant billing is disabled");return}
-  if(!DB.restaurantCart.length){toast("Add food first");return}
-  if(mode==="room" && (!childOn("restaurant","addToRoom") || !restaurantSelectedBooking)){
-    toast("Select a staying guest first");return
-  }
-  const selected=DB.bookings.find(b=>b.id===restaurantSelectedBooking);
-  const g=selected&&guest(selected), r=selected&&room(selected);
-  const amount=restaurantTotal();
-  const saleId="RS-"+Date.now();
-  const sale={
-    id:saleId,
-    mode:mode==="room"?"stay":"walkin",
-    bookingId:selected?.id||"",
-    guestId:g?.id||"",
-    guestName:g?.name||"",
-    roomNumber:r?.number||"",
-    mobile:mode==="walkin"?(restaurantWalkinMobile||"").trim():(g?.phone||""),
-    items:DB.restaurantCart.map(x=>({...x})),
-    amount,
-    status:mode==="room"?"ON_FOLIO":"OPEN",
-    createdAt:new Date().toISOString()
-  };
-  if(mode==="room" && selected){
-    selected.charges=selected.charges||[];
-    DB.restaurantCart.forEach((foodItem,index)=>{
-      const qty=Number(foodItem.qty||1), rate=Number(foodItem.price||foodItem.rate||0);
-      selected.charges.push({
-        id:"c"+Date.now()+"_"+index,
-        item:foodItem.name||foodItem.item||"Restaurant item",
-        restaurantItemName:foodItem.name||foodItem.item||"Restaurant item",
-        qty,
-        rate,
-        amount:qty*rate,
-        at:sale.createdAt,
-        restaurantSaleId:saleId
-      });
-    });
-  }
-  DB.restaurantSales.unshift(sale);
-  audit(mode==="room"?"Restaurant food added to room folio":"Restaurant walk-in bill opened",
-        `${saleId} · ${sale.items.map(x=>x.name+" × "+x.qty).join(", ")} · ${money(amount)}`);
-  DB.restaurantCart=[];
-  if(mode==="room") restaurantSelectedBooking=restaurantSelectedBooking;
-  else DB.openRestaurantBillId=saleId;
-  save();
-  renderRestaurant();
-  toast(mode==="room"?"Food added to room folio":"Walk-in restaurant bill opened");
-};
-
 /* Refresh if POS is currently visible after this replacement layer loads. */
 if(typeof currentPage!=="undefined" && currentPage==="pos") showPage("pos");
 
@@ -2341,52 +2395,7 @@ async function sendBookingTerms(id){
 /* Removed automatic demo booking seed: new installations start without fabricated guest or stay records. */
 </script>
 
-<script id="aurelia-google-drive-settings-ui">
-(function(){
-  const originalSettings = window.pagesSettings;
-  if (typeof originalSettings !== 'function') return;
-  window.pagesSettings = function(){
-    const page = originalSettings();
-    if (page.includes('aureliaGoogleDriveSettingsCard')) return page;
-    const card = `
-      <section class="card" id="aureliaGoogleDriveSettingsCard" style="margin-top:16px">
-        <div class="section-title"><h2>Google Drive Backup</h2><span class="status reserved">Not connected</span></div>
-        <p class="muted">Connect the hotel's shared Google account to store encrypted, device-specific backup versions. Each device keeps its own local PMS records and backup history; this does not synchronize or merge live records.</p>
-        <div class="subcard">
-          <div style="font-weight:800;font-size:17px;margin-bottom:6px">Cloud backup account</div>
-          <div class="muted" style="margin-bottom:12px">Sign in securely with Google when connection support is enabled. The app should request only the Drive access needed for its backup files.</div>
-          <div class="actions">
-            <button type="button" class="btn primary" onclick="aureliaConnectGoogleDrive()">Connect Google Drive</button>
-            <button type="button" class="btn" onclick="aureliaShowDriveBackupStatus()">Backup status</button>
-            <button type="button" class="btn" onclick="aureliaBackupNow()">Back up now</button>
-          </div>
-          <div id="aureliaDriveBackupStatus" role="status" class="muted" style="margin-top:12px">Status: Google Drive is not connected. Local PMS changes remain on this device.</div>
-        </div>
-        <div class="grid three" style="margin-top:12px">
-          <div class="feature-row"><b>Pending changes</b><div class="muted" id="aureliaDrivePendingCount">Not available yet</div></div>
-          <div class="feature-row"><b>Last successful backup</b><div class="muted" id="aureliaDriveLastSuccess">Never confirmed</div></div>
-          <div class="feature-row"><b>Last error</b><div class="muted" id="aureliaDriveLastError">None recorded</div></div>
-        </div>
-        <p class="muted" style="font-size:12px;margin-top:12px">Connection, encrypted snapshots, resumable uploads, durable change tracking and restore must be wired into the native Android backup service before these controls can perform real Drive operations. This panel does not claim a backup has occurred.</p>
-      </section>`;
-    return page + card;
-  };
-  window.aureliaConnectGoogleDrive = function(){
-    const el = document.getElementById('aureliaDriveBackupStatus');
-    if(el) el.textContent = 'Google sign-in is not active yet. The native Android OAuth and Drive backup service must be integrated before an account can be connected.';
-    if(typeof toast === 'function') toast('Google Drive connection is not enabled yet.');
-  };
-  window.aureliaShowDriveBackupStatus = function(){
-    const el = document.getElementById('aureliaDriveBackupStatus');
-    if(el) el.textContent = 'Not connected — no Drive backup has been confirmed. Local data remains on this device.';
-  };
-  window.aureliaBackupNow = function(){
-    const el = document.getElementById('aureliaDriveBackupStatus');
-    if(el) el.textContent = 'Back up now is unavailable until Google Drive authorization and the encrypted native backup service are implemented.';
-    if(typeof toast === 'function') toast('Drive backup service is not enabled yet.');
-  };
-})();
-</script>
+
 
 
 <script>
@@ -2806,47 +2815,37 @@ function commitRestaurant(mode){
 }
 
 
-/* OCR preprocessing: upscale and enhance contrast before Tesseract; keep manual review available. */
+/* Offline OCR: use the native on-device ML Kit bridge in the installed Android app.
+   Browser previews intentionally do not load remote OCR scripts or contact a CDN. */
 async function runImageOCR(file,statusEl){
- if(!file){if(statusEl)statusEl.textContent="Select a government ID image first.";return null}
- if(!/^image\//i.test(file.type)){if(statusEl)statusEl.textContent="Please select an image file (JPG or PNG).";return null}
- if(file.size>12*1024*1024){if(statusEl)statusEl.textContent="Image is too large. Use an image under 12 MB.";return null}
- if(ocrBusy){if(statusEl)statusEl.textContent="OCR is already running. Please wait for it to finish.";return null}
+ if(!file){if(statusEl)statusEl.textContent='Select a government ID image first.';return null}
+ if(!/^image\//i.test(file.type)){if(statusEl)statusEl.textContent='Please select an image file (JPG or PNG).';return null}
+ if(file.size>8*1024*1024){if(statusEl)statusEl.textContent='Image is too large. Use an image under 8 MB.';return null}
+ if(ocrBusy){if(statusEl)statusEl.textContent='OCR is already running. Please wait for it to finish.';return null}
+ if(!(window.AureliaNative&&typeof window.AureliaNative.postMessage==='function'&&window.__AURELIA_SECURE_DB_READY)){
+  if(statusEl)statusEl.textContent='Offline OCR requires the installed Aurelia Android app. In this browser preview, enter ID details manually; no online OCR library will be loaded.';
+  return null;
+ }
  ocrBusy=true;
  try{
-  if(statusEl)statusEl.textContent="Loading OCR engine… first use may need internet access.";
-  if(!window.Tesseract){
-   if(!window.aureliaTesseractLoad)window.aureliaTesseractLoad=(async()=>{
-    let last;
-    for(const src of ["https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js","https://unpkg.com/tesseract.js@5/dist/tesseract.min.js"]){
-     try{await new Promise((resolve,reject)=>{const sc=document.createElement("script");sc.src=src;sc.async=true;sc.onload=resolve;sc.onerror=()=>{sc.remove();reject(new Error("OCR library failed to load"))};document.head.appendChild(sc)});if(window.Tesseract)return;throw new Error("OCR library did not initialize")}catch(e){last=e}
-    }
-    throw last||new Error("OCR engine unavailable");
-   })();
-   await window.aureliaTesseractLoad;
-  }
-  if(!window.Tesseract)throw new Error("OCR engine did not initialize");
-  const img=await new Promise((resolve,reject)=>{const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{URL.revokeObjectURL(u);resolve(im)};im.onerror=()=>{URL.revokeObjectURL(u);reject(new Error("Invalid image"))};im.src=u});
-  const w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;if(!w||!h)throw new Error("Empty image");
-  const scale=Math.min(3,2400/Math.max(w,h)),canvas=document.createElement("canvas");
-  canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(h*scale));
-  const ctx=canvas.getContext("2d",{willReadFrequently:true});if(!ctx)throw new Error("Canvas unavailable");
-  ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
-  const frame=ctx.getImageData(0,0,canvas.width,canvas.height),d=frame.data;
-  for(let i=0;i<d.length;i+=4){const y=.299*d[i]+.587*d[i+1]+.114*d[i+2],v=Math.max(0,Math.min(255,(y-128)*1.45+128));d[i]=d[i+1]=d[i+2]=v;d[i+3]=255}
-  ctx.putImageData(frame,0,0);
-  const logger=m=>{if(statusEl&&m.status)statusEl.textContent="OCR: "+m.status+(m.progress!=null?" · "+Math.round(m.progress*100)+"%":"")};
-  const first=await Tesseract.recognize(canvas,"eng",{logger,tessedit_pageseg_mode:6});let text=String(first?.data?.text||"").trim(),parsed={};
-  try{parsed=parseIdText(text)}catch(e){}
-  if(!parsed.idNumber||!parsed.name||parsed.name.length<4){
-   if(statusEl)statusEl.textContent="Trying an alternate text layout…";
-   try{const second=await Tesseract.recognize(canvas,"eng",{logger,tessedit_pageseg_mode:11});const t=String(second?.data?.text||"").trim();if(t.length>text.length)text=text+"\n"+t}catch(e){}
-  }
-  text=text.replace(/\r/g,"\n").replace(/[ \t]+/g," ").replace(/\n{2,}/g,"\n").trim();
-  if(statusEl)statusEl.textContent=text?"OCR finished. Review every extracted field against the ID before saving.":"No readable text found. Try a sharp, straight-on, well-lit photo without glare.";
-  return text||null;
- }catch(err){console.warn("[AURELIA OCR]",err);if(statusEl)statusEl.textContent="OCR failed to load or read the image. Check internet access on first use, try a clear JPG/PNG photo, or enter details manually.";return null}
- finally{ocrBusy=false}
+  if(statusEl)statusEl.textContent='Reading ID locally on this device…';
+  const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(new Error('Could not read selected image'));reader.onload=()=>resolve(String(reader.result||''));reader.readAsDataURL(file)});
+  const imageBase64=dataUrl.includes(',')?dataUrl.slice(dataUrl.indexOf(',')+1):'';
+  if(!imageBase64)throw new Error('Selected image could not be encoded.');
+  const requestId='ocr_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  window.__aureliaOcrPending=window.__aureliaOcrPending||{};
+  const textResult=await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>{delete window.__aureliaOcrPending[requestId];reject(new Error('On-device OCR timed out. Please try again.'))},30000);
+   window.__aureliaOcrPending[requestId]={resolve:value=>{clearTimeout(timer);delete window.__aureliaOcrPending[requestId];resolve(value)},reject:error=>{clearTimeout(timer);delete window.__aureliaOcrPending[requestId];reject(error)}};
+   window.AureliaNative.postMessage(JSON.stringify({type:'recognizeIdImage',requestId,imageBase64}));
+  });
+  if(statusEl)statusEl.textContent=textResult?'On-device OCR finished. Review every extracted field against the ID before saving.':'No readable text found. Try a sharp, straight-on, well-lit photo without glare.';
+  return textResult||null;
+ }catch(err){
+  console.warn('[AURELIA OCR]',err);
+  if(statusEl)statusEl.textContent='On-device OCR could not read this image. Try a clearer JPG/PNG photo or enter the ID details manually.';
+  return null;
+ }finally{ocrBusy=false}
 }
 
 /* AURELIA reliability additions: export, backup, security controls, and browser navigation. */
@@ -2861,69 +2860,19 @@ function aureliaSaveGoogleClientId(){
  DB.settings.googleClientId=id;save();return id;
 }
 function aureliaConnectDrive(){
- const clientId=aureliaSaveGoogleClientId();
- if(!clientId||!clientId.endsWith('.apps.googleusercontent.com')){
-  aureliaDriveStatus('Enter a valid Google OAuth Web Client ID ending in .apps.googleusercontent.com first.');toast('Google Client ID required');return;
- }
- if(!location.protocol.startsWith('http')||location.protocol==='file:'){
-  aureliaDriveStatus('Google sign-in requires this app to be hosted on HTTPS. A local file or preview iframe origin cannot complete OAuth reliably.');
-  toast('Open the hosted HTTPS app to connect Google Drive');return;
- }
- if(!window.google?.accounts?.oauth2){
-  aureliaDriveStatus('Loading Google sign-in… If this message remains, allow access to accounts.google.com and reload.');
-  const script=document.createElement('script');script.src='https://accounts.google.com/gsi/client';script.async=true;
-  script.onload=()=>aureliaConnectDrive();script.onerror=()=>aureliaDriveStatus('Google sign-in library could not load. Check network/content blockers.');
-  document.head.appendChild(script);return;
- }
- try{
-  const client=google.accounts.oauth2.initTokenClient({
-   client_id:clientId,
-   scope:'https://www.googleapis.com/auth/drive.appdata',
-   callback:async response=>{
-    if(response.error||!response.access_token){aureliaDriveStatus('Google authorization failed: '+(response.error_description||response.error||'no access token'));return}
-    aureliaDriveAccessToken=response.access_token;
-    DB.settings.driveConnectedAt=new Date().toISOString();DB.settings.backupDestination='drive';
-    aureliaStorage.setItem('aurelia_pms_v3',JSON.stringify(DB));
-    aureliaDriveStatus('Google Drive authorized for this session. Uploading current backup…');
-    await aureliaUploadDriveBackup();
-   }
-  });
-  client.requestAccessToken({prompt:'consent'});
- }catch(e){aureliaDriveStatus('Could not start Google sign-in: '+(e.message||e));}
+ const message='Google Drive sync is disabled in this Android build until encrypted cloud uploads, upload verification, and tested restore are implemented. Use the passphrase-encrypted backup export instead.';
+ aureliaDriveStatus(message);toast('Google Drive sync is not available in this build');
 }
 async function aureliaUploadDriveBackup(){
- if(!aureliaDriveAccessToken){aureliaDriveStatus('Connect Google Drive first.');toast('Google Drive is not connected');return}
- const payload=JSON.stringify({app:'AURELIA PMS',version:4,exportedAt:new Date().toISOString(),data:DB});
- try{
-  const headers={Authorization:'Bearer '+aureliaDriveAccessToken};
-  const list=await fetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q='+encodeURIComponent("name='AURELIA-PMS-AutoBackup.json' and trashed=false")+'&fields=files(id,name)',{headers});
-  if(!list.ok)throw new Error('Drive file lookup failed ('+list.status+'). Reconnect Google Drive if authorization expired.');
-  const found=await list.json();
-  const boundary='aurelia_'+Date.now();
-  const metadata={name:'AURELIA-PMS-AutoBackup.json',mimeType:'application/json',parents:['appDataFolder']};
-  let url='https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,modifiedTime';
-  let method='POST',bodyMeta=metadata;
-  if(found.files?.length){url='https://www.googleapis.com/upload/drive/v3/files/'+encodeURIComponent(found.files[0].id)+'?uploadType=multipart&fields=id,name,modifiedTime';method='PATCH';bodyMeta={name:'AURELIA-PMS-AutoBackup.json',mimeType:'application/json'};}
-  const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(bodyMeta)+'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+payload+'\r\n--'+boundary+'--';
-  const res=await fetch(url,{method,headers:{...headers,'Content-Type':'multipart/related; boundary='+boundary},body});
-  if(!res.ok)throw new Error('Drive upload failed ('+res.status+'). Check OAuth scope and Google Drive API configuration.');
-  const result=await res.json();DB.settings.lastDriveBackupAt=new Date().toISOString();
-  // Persist the backup timestamp without scheduling another cloud upload.
-  aureliaStorage.setItem('aurelia_pms_v3',JSON.stringify(DB));
-  aureliaDriveStatus('Google Drive backup successful at '+new Date().toLocaleString()+'. File: '+(result.name||'AURELIA-PMS-AutoBackup.json'));
-  toast('Google Drive backup complete');
- }catch(e){aureliaDriveStatus('Google Drive backup failed: '+(e.message||e));}
+ const message='Google Drive backup is disabled because this build does not yet implement verified encrypted cloud backups. Use Export backup and keep the passphrase safe.';
+ aureliaDriveStatus(message);toast('Use the encrypted local backup option');
 }
-function aureliaQueueDriveBackup(){
- if(DB.settings.backupDestination!=='drive'||!aureliaDriveAccessToken)return;
- clearTimeout(aureliaDriveUploadTimer);
- aureliaDriveUploadTimer=setTimeout(()=>aureliaUploadDriveBackup(),2500);
-}
+function aureliaQueueDriveBackup(){ /* Cloud uploads intentionally disabled until encrypted/verified sync exists. */ }
 function aureliaSetBackupDestination(value){
- DB.settings.backupDestination=value==='drive'?'drive':'local';save();
+ DB.settings.backupDestination='local';save();
  const note=document.getElementById('aureliaDriveNote');
- if(note)note.textContent=value==='drive'?'Google Drive selected. This preview cannot authenticate or upload to Drive until OAuth/API integration is configured. Local recovery snapshots continue to be saved.':'Local device/browser selected. Local recovery snapshots are saved on each successful app save.';
- toast(value==='drive'?'Drive preference saved; connection still required':'Local backup preference saved');
+ if(note)note.textContent='Google Drive sync is disabled in this build until encrypted cloud uploads and restore can be verified. Use the passphrase-encrypted Export backup action.';
+ toast(value==='drive'?'Google Drive sync is unavailable; local encrypted storage remains active':'Local backup preference saved');
 }
 function aureliaDownloadBackup(){
   try{
