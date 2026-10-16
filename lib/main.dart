@@ -2,7 +2,8 @@ import 'dart:async';
 import 'image_viewer_engine.dart';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;\nimport 'dart:typed_data';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart';
