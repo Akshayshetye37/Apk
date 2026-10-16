@@ -651,7 +651,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         final resized=decoded.width>2400?img.copyResize(decoded,width:2400):decoded;
         final enhanced=img.adjustColor(img.grayscale(resized),contrast:1.3,brightness:0.03);
         final dir=await getTemporaryDirectory();
-        final file=File('\${dir.path}/aurelia_ocr_\${DateTime.now().microsecondsSinceEpoch}.jpg');
+        final file=File('${dir.path}/aurelia_ocr_${DateTime.now().microsecondsSinceEpoch}.jpg');
         await file.writeAsBytes(img.encodeJpg(enhanced,quality:94),flush:true);
         List<({double top,double left,String text})> spatialLines(RecognizedText result){
           final lines=<({double top,double left,String text})>[];
@@ -662,10 +662,9 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         try{
           final latinRecognizer=TextRecognizer(script:TextRecognitionScript.latin);
           try{final result=await latinRecognizer.processImage(InputImage.fromFilePath(file.path));final lines=spatialLines(result);latin=lines.isEmpty?result.text.trim():lines.map((l)=>l.text).where((s)=>s.isNotEmpty).join('\n');}finally{await latinRecognizer.close();}
-          final devanagariRecognizer=TextRecognizer(script:TextRecognitionScript.devanagari);
-          try{final result=await devanagariRecognizer.processImage(InputImage.fromFilePath(file.path));devanagari=spatialLines(result).map((l)=>l.text).where((s)=>s.isNotEmpty).join('\n');}finally{await devanagariRecognizer.close();}
+          devanagari = await const MethodChannel('aurelia/native_ocr').invokeMethod<String>('recognizeDevanagari', {'path': file.path}) ?? '';
           final merged=[latin,devanagari].where((s)=>s.trim().isNotEmpty).toSet().join('\n');
-          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(\${jsonEncode(requestId)},\${jsonEncode(merged)},null);');
+          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(' + jsonEncode(requestId) + ',' + jsonEncode(merged) + ',null);');
         }finally{try{await file.delete();}catch(_){}}
         return;
       }

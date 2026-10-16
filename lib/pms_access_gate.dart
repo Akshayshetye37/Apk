@@ -90,7 +90,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         _lockUntil = lock == null ? null : DateTime.tryParse(lock);
         _deviceAuthAvailable = deviceAuth;
         _biometricEnabled = biometricPreference == 'true';
-        _pinEntryEnabled = pinEntryPreference != 'false' || biometricPreference != 'true';
+        _pinEntryEnabled = pinEntryPreference != 'false' || biometricPreference != 'true' || !deviceAuth;
         _loading = false;
       });
       _startLockoutTicker();

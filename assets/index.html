@@ -1097,7 +1097,7 @@ async function saveBookingForm(id){
  if(existing){Object.assign(existing,data);existing.guestId=guestId;existing.charges=existing.charges||[];const charge=existing.charges.find(c=>c.item==='Room charges');if(charge){charge.qty=nightsBetween(checkIn,checkOut);charge.rate=r.rate;charge.amount=base;charge.at=checkIn;}else existing.charges.unshift({id:'c'+Date.now(),item:'Room charges',qty:nightsBetween(checkIn,checkOut),rate:r.rate,amount:base,at:checkIn});}
  else{const b={id:'b'+Date.now(),sr:'BKG-'+String(DB.seq.booking++).padStart(6,'0'),...data,status:'active',charges:[{id:'c'+Date.now(),item:'Room charges',qty:nightsBetween(checkIn,checkOut),rate:r.rate,amount:base,at:checkIn}],payments:paid?[{id:'p'+Date.now(),amount:paid,method:'Unspecified',status:'verified',at:new Date().toISOString(),ref:'MANUAL'}]:[]};DB.bookings.unshift(b);r.status='occupied';}
  if(isNew)DB.guests.push(guest);
- for(const rows of [DB.bookings||[],DB.reservations||[]])for(const row of rows){if(String(row.guestId||'')!==String(guestId))continue;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
+ for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){if(String(row.guestId||'')!==String(guestId))continue;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
  if(typeof dedupeExistingGuestsInPlace==='function')dedupeExistingGuestsInPlace();
  audit(id?'Booking edited':'Booking created',id||DB.bookings[0].sr);save();closeModal();pendingBookingIdPhoto='';pendingBookingPhotoPromise=Promise.resolve();showPage('bookings');toast('Booking saved · '+(1+occ.length)+' guest'+(occ.length?'s':'')+' · '+money(base)+' room charges');
 }
@@ -1127,11 +1127,11 @@ async function saveGuest(id){
  guest.occupants=[...document.querySelectorAll('#guestOccList [data-occ]')].map((x,i)=>{const occupantId=x.dataset.aureliaOccupantId||'',old=(guest.occupants||[]).find(o=>occupantId&&String(o.id)===String(occupantId))||(guest.occupants||[])[i]||{};return {id:old.id||occupantId||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:x.dataset.aureliaOccupantPhoto||old.idPhoto||''};});
  guest.vehicles=[...document.querySelectorAll('#guestVehList [data-veh]')].map((x,i)=>{const old=(guest.vehicles||[])[i]||{};return {id:old.id||('v'+Date.now()+Math.random()),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:old.photo||''};});
  const duplicate=findCanonicalGuest(guest,stableId);let saved;
- if(duplicate&&String(duplicate.id)!==String(stableId)){const survivorId=duplicate.id;Object.assign(duplicate,guest,{id:survivorId});saved=duplicate;for(const rows of [DB.bookings||[],DB.reservations||[]])for(const record of rows)if(String(record.guestId||'')===String(stableId))record.guestId=survivorId;DB.guests=DB.guests.filter(x=>String(x.id)!==String(stableId));}
+ if(duplicate&&String(duplicate.id)!==String(stableId)){const survivorId=duplicate.id;Object.assign(duplicate,guest,{id:survivorId});saved=duplicate;for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const record of rows)if(String(record.guestId||'')===String(stableId))record.guestId=survivorId;DB.guests=DB.guests.filter(x=>String(x.id)!==String(stableId));}
  else if(original){Object.assign(original,guest,{id:stableId});saved=original;}
  else{saved=guest;DB.guests.push(saved);}
  dedupeExistingGuestsInPlace();
- for(const rows of [DB.bookings||[],DB.reservations||[]])for(const record of rows){if(String(record.guestId||'')!==String(saved.id))continue;if('guestName'in record)record.guestName=saved.name;if('name'in record)record.name=saved.name;if('phone'in record)record.phone=saved.phone;if('mobile'in record)record.mobile=saved.phone;if('idNumber'in record)record.idNumber=saved.idNumber;}
+ for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const record of rows){if(String(record.guestId||'')!==String(saved.id))continue;if('guestName'in record)record.guestName=saved.name;if('name'in record)record.name=saved.name;if('phone'in record)record.phone=saved.phone;if('mobile'in record)record.mobile=saved.phone;if('idNumber'in record)record.idNumber=saved.idNumber;}
  audit(id?'Guest edited':'Guest created',saved.name);save();pendingGuestPhoto='';pendingGuestPhotoPromise=Promise.resolve();closeModal();showPage('guests');toast('Guest saved · '+(1+(saved.occupants||[]).length)+' total guest'+(saved.occupants?.length?'s':''));
 }
 function openCharge(bid){
@@ -2908,8 +2908,8 @@ async function aureliaUploadDriveBackup(){
  if(passphrase.length<12){aureliaDriveStatus('Choose a backup passphrase of at least 12 characters.');toast('Backup passphrase is too short');return;}
  if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){aureliaDriveStatus('Encrypted backup sharing is available only in the installed Android app.');return;}
  const requestId='backup_'+Date.now()+'_'+Math.random().toString(36).slice(2);
- window.aureliaNativeBackupExportResult=function(id,ok,error){if(String(id)!==requestId)return;const note=document.getElementById('aureliaDriveNote');if(ok){if(note)note.textContent='Android share sheet closed. Confirm the encrypted file is present in Google Drive before relying on this backup.';toast('Encrypted backup shared; verify its destination');}else{if(note)note.textContent='Encrypted backup export failed: '+(error||'unknown error');toast('Backup export failed');}};
- try{aureliaDriveStatus('Encrypting PMS data before opening Android share sheet…');window.AureliaNative.postMessage(JSON.stringify({type:'exportEncryptedBackup',requestId,data:JSON.stringify(DB),passphrase}));}
+ window.aureliaNativeBackupExportResult=function(id,ok,error){if(String(id)!==requestId)return;const note=document.getElementById('aureliaDriveNote');if(ok){if(note)note.textContent='Android share sheet closed. Confirm the encrypted file is present in Google Drive before relying on this backup.';const secretInput=document.getElementById('aureliaDrivePassphrase');if(secretInput)secretInput.value='';toast('Encrypted backup shared; verify its destination');}else{if(note)note.textContent='Encrypted backup export failed: '+(error||'unknown error');toast('Backup export failed');}};
+ try{dedupeExistingGuestsInPlace();aureliaDriveStatus('Encrypting PMS data before opening Android share sheet…');window.AureliaNative.postMessage(JSON.stringify({type:'exportEncryptedBackup',requestId,data:JSON.stringify(DB),passphrase}));}
  catch(error){aureliaDriveStatus('Could not start encrypted backup: '+(error?.message||'unknown error'));}
 }
 async function aureliaRestoreDriveBackup(event){
@@ -3306,14 +3306,14 @@ function dedupeExistingGuestsInPlace(){
   if(!prior){index.set(key,g);kept.push(g);continue;}
   const stable=prior.id||g.id;Object.assign(prior,g,{id:stable,name:g.name||prior.name,phone:g.phone||prior.phone,idNumber:g.idNumber||prior.idNumber,idPhoto:g.idPhoto||prior.idPhoto,occupants:g.occupants?.length?g.occupants:(prior.occupants||[]),vehicles:g.vehicles?.length?g.vehicles:(prior.vehicles||[])});aliases.set(String(g.id),String(stable));
  }
- if(aliases.size)for(const rows of [DB.bookings||[],DB.reservations||[]])for(const row of rows){const stable=aliases.get(String(row.guestId||''));if(stable)row.guestId=stable;}
+ if(aliases.size)for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){const stable=aliases.get(String(row.guestId||''));if(stable)row.guestId=stable;}
  DB.guests=kept;return DB.guests;
 }
 window.upsertGuestAndCascade=function(incoming,existingId){
  const data=Object.assign({},incoming||{}),match=findCanonicalGuest(data,existingId),saved=match||Object.assign({id:data.id||'g'+Date.now(),occupants:[],vehicles:[]},data),old=match?.id||existingId||'';
  if(match)Object.assign(match,data,{id:match.id||data.id||'g'+Date.now()});else DB.guests.push(saved);
  dedupeExistingGuestsInPlace();
- for(const rows of [DB.bookings||[],DB.reservations||[]])for(const row of rows){if(String(row.guestId||'')!==String(saved.id)&&(!old||String(row.guestId||'')!==String(old)))continue;row.guestId=saved.id;if('guestName'in row)row.guestName=saved.name;if('name'in row)row.name=saved.name;if('phone'in row)row.phone=saved.phone;if('mobile'in row)row.mobile=saved.phone;if('idNumber'in row)row.idNumber=saved.idNumber;}
+ for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){if(String(row.guestId||'')!==String(saved.id)&&(!old||String(row.guestId||'')!==String(old)))continue;row.guestId=saved.id;if('guestName'in row)row.guestName=saved.name;if('name'in row)row.name=saved.name;if('phone'in row)row.phone=saved.phone;if('mobile'in row)row.mobile=saved.phone;if('idNumber'in row)row.idNumber=saved.idNumber;}
  return saved;
 };
 window.deduplicateGuestsInPlace=dedupeExistingGuestsInPlace;
@@ -3344,14 +3344,14 @@ function dedupeExistingGuestsInPlace(){
   const stable=prior.id||g.id;Object.assign(prior,g,{id:stable,name:g.name||prior.name,phone:g.phone||prior.phone,idNumber:g.idNumber||prior.idNumber,idPhoto:g.idPhoto||prior.idPhoto,occupants:g.occupants?.length?g.occupants:(prior.occupants||[]),vehicles:g.vehicles?.length?g.vehicles:(prior.vehicles||[])});
   aliases.set(String(g.id),String(stable));
  }
- if(aliases.size)for(const rows of [DB.bookings||[],DB.reservations||[]])for(const row of rows){const stable=aliases.get(String(row.guestId||''));if(stable)row.guestId=stable;}
+ if(aliases.size)for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){const stable=aliases.get(String(row.guestId||''));if(stable)row.guestId=stable;}
  DB.guests=kept;return DB.guests;
 }
 window.upsertGuestAndCascade=function(incoming,existingId){
  const payload=Object.assign({},incoming||{}),match=findCanonicalGuest(payload,existingId),saved=match||Object.assign({id:payload.id||'g'+Date.now(),occupants:[],vehicles:[]},payload),old=match?.id||existingId||'';
  if(match)Object.assign(match,payload,{id:match.id||payload.id||'g'+Date.now()});else DB.guests.push(saved);
  dedupeExistingGuestsInPlace();
- for(const rows of [DB.bookings||[],DB.reservations||[]])for(const row of rows){if(String(row.guestId||'')!==String(saved.id)&&(!old||String(row.guestId||'')!==String(old))continue;row.guestId=saved.id;if('guestName'in row)row.guestName=saved.name;if('name'in row)row.name=saved.name;if('phone'in row)row.phone=saved.phone;if('mobile'in row)row.mobile=saved.phone;if('idNumber'in row)row.idNumber=saved.idNumber;}
+ for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){if(String(row.guestId||'')!==String(saved.id)&&(!old||String(row.guestId||'')!==String(old))continue;row.guestId=saved.id;if('guestName'in row)row.guestName=saved.name;if('name'in row)row.name=saved.name;if('phone'in row)row.phone=saved.phone;if('mobile'in row)row.mobile=saved.phone;if('idNumber'in row)row.idNumber=saved.idNumber;}
  return saved;
 };
 window.deduplicateGuestsInPlace=dedupeExistingGuestsInPlace;
@@ -3381,14 +3381,14 @@ function dedupeExistingGuestsInPlace(){
   if(!prior){index.set(key,g);kept.push(g);continue;}
   const stable=prior.id||g.id;Object.assign(prior,g,{id:stable,name:g.name||prior.name,phone:g.phone||prior.phone,idNumber:g.idNumber||prior.idNumber,idPhoto:g.idPhoto||prior.idPhoto,occupants:g.occupants?.length?g.occupants:(prior.occupants||[]),vehicles:g.vehicles?.length?g.vehicles:(prior.vehicles||[])});aliases.set(String(g.id),String(stable));
  }
- if(aliases.size)for(const list of [DB.bookings||[],DB.reservations||[]])for(const rec of list){const id=aliases.get(String(rec.guestId||''));if(id)rec.guestId=id;}
+ if(aliases.size)for(const list of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const rec of list){const id=aliases.get(String(rec.guestId||''));if(id)rec.guestId=id;}
  DB.guests=kept;return DB.guests;
 }
 window.upsertGuestAndCascade=function(incoming,existingId){
  const data=Object.assign({},incoming||{}),match=findCanonicalGuest(data,existingId),saved=match||Object.assign({id:data.id||'g'+Date.now(),occupants:[],vehicles:[]},data),old=match?.id||existingId||'';
  if(match)Object.assign(match,data,{id:match.id||data.id||'g'+Date.now()});else DB.guests.push(saved);
  dedupeExistingGuestsInPlace();
- for(const list of [DB.bookings||[],DB.reservations||[]])for(const rec of list){if(String(rec.guestId||'')!==String(saved.id)&&(!old||String(rec.guestId||'')!==String(old)))continue;rec.guestId=saved.id;if('guestName'in rec)rec.guestName=saved.name;if('name'in rec)rec.name=saved.name;if('phone'in rec)rec.phone=saved.phone;if('mobile'in rec)rec.mobile=saved.phone;if('idNumber'in rec)rec.idNumber=saved.idNumber;}
+ for(const list of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const rec of list){if(String(rec.guestId||'')!==String(saved.id)&&(!old||String(rec.guestId||'')!==String(old)))continue;rec.guestId=saved.id;if('guestName'in rec)rec.guestName=saved.name;if('name'in rec)rec.name=saved.name;if('phone'in rec)rec.phone=saved.phone;if('mobile'in rec)rec.mobile=saved.phone;if('idNumber'in rec)rec.idNumber=saved.idNumber;}
  return saved;
 };
 window.deduplicateGuestsInPlace=dedupeExistingGuestsInPlace;
@@ -3406,7 +3406,7 @@ function findCanonicalGuest(incoming,existingId){
  if(existingId){const g=all.find(x=>String(x.id)===String(existingId));if(g)return g;}
  if(incoming.id){const g=all.find(x=>String(x.id)===String(incoming.id));if(g)return g;}
  const number=guestCanonicalIdNumber(incoming.idNumber||incoming.idProofNumber);
- if(number.length>=4){const g=all.find(x=>guestCanonicalIdNumber(x.idNumber||x.idProofNumber)===number);if(g)return g;}
+ if(number.length>=8){const g=all.find(x=>guestCanonicalIdNumber(x.idNumber||x.idProofNumber)===number);if(g)return g;}
  const name=guestCanonicalName(incoming.name||incoming.guestName),phone=String(incoming.phone||incoming.mobile||'').replace(/\D/g,'').slice(-10);
  if(name&&phone){const g=all.find(x=>guestCanonicalName(x.name||x.guestName)===name&&String(x.phone||x.mobile||'').replace(/\D/g,'').slice(-10)===phone);if(g)return g;}
  return null;
@@ -3414,18 +3414,18 @@ function findCanonicalGuest(incoming,existingId){
 function dedupeExistingGuestsInPlace(){
  if(!Array.isArray(DB.guests))DB.guests=[];
  const index=new Map(),aliases=new Map(),kept=[];
- for(const g of DB.guests){if(!g)continue;const number=guestCanonicalIdNumber(g.idNumber||g.idProofNumber),name=guestCanonicalName(g.name||g.guestName),phone=String(g.phone||g.mobile||'').replace(/\D/g,'').slice(-10),key=number.length>=4?'idnum:'+number:(name&&phone?'name-phone:'+name+'|'+phone:'id:'+String(g.id||('unkeyed-'+kept.length))),prior=index.get(key);
+ for(const g of DB.guests){if(!g)continue;const number=guestCanonicalIdNumber(g.idNumber||g.idProofNumber),name=guestCanonicalName(g.name||g.guestName),phone=String(g.phone||g.mobile||'').replace(/\D/g,'').slice(-10),key=number.length>=8?'idnum:'+number:(name&&phone?'name-phone:'+name+'|'+phone:'id:'+String(g.id||('unkeyed-'+kept.length))),prior=index.get(key);
   if(!prior){index.set(key,g);kept.push(g);continue;}
   const stable=prior.id||g.id;Object.assign(prior,g,{id:stable,name:g.name||prior.name,phone:g.phone||prior.phone,idNumber:g.idNumber||prior.idNumber,idPhoto:g.idPhoto||prior.idPhoto,occupants:g.occupants?.length?g.occupants:(prior.occupants||[]),vehicles:g.vehicles?.length?g.vehicles:(prior.vehicles||[])});aliases.set(String(g.id),String(stable));
  }
- if(aliases.size)for(const list of [DB.bookings||[],DB.reservations||[]])for(const row of list){const id=aliases.get(String(row.guestId||''));if(id)row.guestId=id;}
+ if(aliases.size)for(const list of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of list){const id=aliases.get(String(row.guestId||''));if(id)row.guestId=id;}
  DB.guests=kept;return kept;
 }
 window.upsertGuestAndCascade=function(incoming,existingId){
  const payload=Object.assign({},incoming||{}),matched=findCanonicalGuest(payload,existingId),guest=matched||Object.assign({id:payload.id||'g'+Date.now(),occupants:[],vehicles:[]},payload),previousId=matched?.id||existingId||'';
  if(matched)Object.assign(matched,payload,{id:matched.id||payload.id||'g'+Date.now()});else DB.guests.push(guest);
  dedupeExistingGuestsInPlace();
- for(const list of [DB.bookings||[],DB.reservations||[]])for(const row of list){if(String(row.guestId||'')!==String(guest.id)&&(!previousId||String(row.guestId||'')!==String(previousId)))continue;row.guestId=guest.id;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
+ for(const list of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of list){if(String(row.guestId||'')!==String(guest.id)&&(!previousId||String(row.guestId||'')!==String(previousId)))continue;row.guestId=guest.id;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
  return guest;
 };
 window.deduplicateGuestsInPlace=dedupeExistingGuestsInPlace;
@@ -3443,7 +3443,7 @@ function findCanonicalGuest(incoming,existingId){
  if(existingId){const hit=all.find(g=>String(g.id)===String(existingId));if(hit)return hit;}
  if(incoming.id){const hit=all.find(g=>String(g.id)===String(incoming.id));if(hit)return hit;}
  const number=guestCanonicalIdNumber(incoming.idNumber||incoming.idProofNumber);
- if(number.length>=4){const hit=all.find(g=>guestCanonicalIdNumber(g.idNumber||g.idProofNumber)===number);if(hit)return hit;}
+ if(number.length>=8){const hit=all.find(g=>guestCanonicalIdNumber(g.idNumber||g.idProofNumber)===number);if(hit)return hit;}
  const name=guestCanonicalName(incoming.name||incoming.guestName),phone=String(incoming.phone||incoming.mobile||'').replace(/\D/g,'').slice(-10);
  if(name&&phone){const hit=all.find(g=>guestCanonicalName(g.name||g.guestName)===name&&String(g.phone||g.mobile||'').replace(/\D/g,'').slice(-10)===phone);if(hit)return hit;}
  return null;
@@ -3452,7 +3452,7 @@ function dedupeExistingGuestsInPlace(){
  if(!Array.isArray(DB.guests))DB.guests=[];
  const byKey=new Map(),aliases=new Map(),kept=[];
  for(const g of DB.guests){if(!g)continue;const number=guestCanonicalIdNumber(g.idNumber||g.idProofNumber),name=guestCanonicalName(g.name||g.guestName),phone=String(g.phone||g.mobile||'').replace(/\D/g,'').slice(-10);
-  const key=number.length>=4?'idnum:'+number:(name&&phone?'name-phone:'+name+'|'+phone:'id:'+String(g.id||('unkeyed-'+kept.length))),prior=byKey.get(key);
+  const key=number.length>=8?'idnum:'+number:(name&&phone?'name-phone:'+name+'|'+phone:'id:'+String(g.id||('unkeyed-'+kept.length))),prior=byKey.get(key);
   if(!prior){byKey.set(key,g);kept.push(g);continue;}
   const canonicalId=prior.id||g.id;Object.assign(prior,g,{id:canonicalId,name:g.name||prior.name,phone:g.phone||prior.phone,idNumber:g.idNumber||prior.idNumber,idPhoto:g.idPhoto||prior.idPhoto,occupants:g.occupants?.length?g.occupants:(prior.occupants||[]),vehicles:g.vehicles?.length?g.vehicles:(prior.vehicles||[])});aliases.set(String(g.id),String(canonicalId));
  }
@@ -3463,7 +3463,7 @@ window.upsertGuestAndCascade=function(incoming,existingId){
  const data=Object.assign({},incoming||{}),match=findCanonicalGuest(data,existingId),guest=match||Object.assign({id:data.id||'g'+Date.now(),occupants:[],vehicles:[]},data),oldId=match?.id||existingId||'';
  if(match)Object.assign(match,data,{id:match.id||data.id||'g'+Date.now()});else DB.guests.push(guest);
  dedupeExistingGuestsInPlace();
- for(const rows of [DB.bookings||[],DB.reservations||[]])for(const row of rows){if(String(row.guestId||'')!==String(guest.id)&&(!oldId||String(row.guestId||'')!==String(oldId)))continue;row.guestId=guest.id;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
+ for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){if(String(row.guestId||'')!==String(guest.id)&&(!oldId||String(row.guestId||'')!==String(oldId)))continue;row.guestId=guest.id;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
  return guest;
 };
 window.deduplicateGuestsInPlace=dedupeExistingGuestsInPlace;
