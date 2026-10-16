@@ -561,8 +561,8 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
     if (!mounted) return;
     setState(() => _unlocked = true);
     if (!_pmsLoaded) {
-      await _loadLocalPms();
-      if (mounted) setState(() => _pmsLoaded = true);
+      final loaded = await _loadLocalPms();
+      if (mounted) setState(() => _pmsLoaded = loaded);
     }
   }
 
@@ -612,8 +612,8 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       if (value['type'] == 'reloadSecurePms') {
         if (requestId == null) throw const FormatException('Missing secure reload request id');
         // Reload from the encrypted native store, never via WebView location.reload().
-        await _loadLocalPms();
-        if (mounted) setState(() { _pmsLoaded = true; _loading = false; });
+        final loaded = await _loadLocalPms();
+        if (mounted) setState(() { _pmsLoaded = loaded; _loading = false; });
         return;
       }
       if (value['type'] == 'restoreEncryptedBackup') {
@@ -630,7 +630,10 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         // Re-bootstrap the local page from the encrypted store before reporting
         // success. A JavaScript reload would bypass secure bootstrap.
         await Future<void>.delayed(const Duration(milliseconds: 120));
-        await _loadLocalPms();
+        final loaded = await _loadLocalPms();
+        if (!loaded) {
+          throw StateError('Backup data was encrypted and saved, but the PMS could not reopen it. Keep the app installed and recover access before trying again.');
+        }
         if (mounted) setState(() { _pmsLoaded = true; _loading = false; });
         await _controller.runJavaScript(
           'window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},true,null);',
@@ -844,7 +847,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
     }
   }
 
-  Future<void> _loadLocalPms() async {
+  Future<bool> _loadLocalPms() async {
     try {
       final saved = await AureliaEncryptedPmsStore.read();
       final html = await rootBundle.loadString('assets/index.html');
@@ -868,6 +871,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         page,
         baseUrl: 'file:///android_asset/flutter_assets/assets/index.html',
       );
+      return true;
     } catch (error) {
       debugPrint('Could not safely open Aurelia PMS data: $error');
       if (mounted) setState(() => _loading = false);
@@ -877,6 +881,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         '<p>Your saved data has not been deleted or replaced. Do not uninstall the app or clear its data. '
         'Restore access to the device encryption key or recover from a trusted backup before continuing.</p></body></html>',
       );
+      return false;
     }
   }
 
