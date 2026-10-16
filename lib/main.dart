@@ -21,6 +21,8 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr/qr.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image/image.dart' as img;
 import 'package:share_plus/share_plus.dart';
 
 
@@ -623,6 +625,36 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         await Future<void>.delayed(const Duration(milliseconds: 120));
         await _loadLocalPms();
         if (mounted) setState(() { _pmsLoaded = true; _loading = false; });
+        return;
+      }
+      if (value['type'] == 'recognizeIdImage') {
+        final encoded = value['imageBase64'];
+        if (requestId == null || encoded is! String || encoded.isEmpty || encoded.length > 12 * 1024 * 1024) {
+          throw const FormatException('ID image is missing or exceeds the size limit.');
+        }
+        final raw = base64Decode(encoded);
+        if (raw.isEmpty || raw.length > 8 * 1024 * 1024) throw const FormatException('ID image exceeds the 8 MiB limit.');
+        final decoded = img.decodeImage(raw);
+        if (decoded == null) throw const FormatException('Could not decode this ID image.');
+        // Improve low-contrast scans before OCR. Keep dimensions bounded to avoid
+        // excessive memory use on older phones; never overwrite the original image.
+        final resized = decoded.width > 2400
+            ? img.copyResize(decoded, width: 2400)
+            : decoded;
+        final gray = img.grayscale(resized);
+        final enhanced = img.adjustColor(gray, contrast: 1.35, brightness: 0.04);
+        final temp = await getTemporaryDirectory();
+        final ocrFile = File('${temp.path}/aurelia_ocr_${DateTime.now().microsecondsSinceEpoch}.jpg');
+        await ocrFile.writeAsBytes(img.encodeJpg(enhanced, quality: 94), flush: true);
+        final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+        try {
+          final result = await recognizer.processImage(InputImage.fromFilePath(ocrFile.path));
+          final text = result.text.trim();
+          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},${jsonEncode(text)},null);');
+        } finally {
+          await recognizer.close();
+          try { await ocrFile.delete(); } catch (_) {}
+        }
         return;
       }
       if (value['type'] == 'setAppProtection') {
