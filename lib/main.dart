@@ -627,14 +627,14 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           passphrase,
         );
         await AureliaEncryptedPmsStore.write(restored);
-        await _controller.runJavaScript(
-          'window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},true,null);',
-        );
-        // Re-bootstrap the local page from the encrypted store. A JavaScript reload
-        // would bypass this secure bootstrap and revert to legacy localStorage.
+        // Re-bootstrap the local page from the encrypted store before reporting
+        // success. A JavaScript reload would bypass secure bootstrap.
         await Future<void>.delayed(const Duration(milliseconds: 120));
         await _loadLocalPms();
         if (mounted) setState(() { _pmsLoaded = true; _loading = false; });
+        await _controller.runJavaScript(
+          'window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},true,null);',
+        );
         return;
       }
       if (value['type'] == 'recognizeIdImage') {
@@ -801,7 +801,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           'ppt':'application/vnd.ms-powerpoint','pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation',
           'zip':'application/zip','rtf':'application/rtf',
         };
-        final mime = mimeByExtension[ext] ?? (mimeValue == 'application/octet-stream' ? mimeValue : mimeValue);
+        final mime = mimeByExtension[ext] ?? 'application/octet-stream';
         final temp = await getTemporaryDirectory();
         final file = File('${temp.path}/$safeName');
         await file.writeAsBytes(bytes, flush: true);
