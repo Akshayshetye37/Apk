@@ -2,7 +2,7 @@ import 'dart:async';
 import 'image_viewer_engine.dart';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math' as math;
+import 'dart:math' as math;\nimport 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart';
@@ -600,10 +600,20 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         final temp = await getTemporaryDirectory();
         final file = File('${temp.path}/aurelia-pms-backup-${DateTime.now().toUtc().toIso8601String().replaceAll(':', '-')}.aurelia');
         await file.writeAsString(envelope, flush: true);
-        await Share.shareXFiles(
-          [XFile(file.path, mimeType: 'application/octet-stream', name: 'aurelia-pms-encrypted-backup.aurelia')],
-          subject: 'Encrypted Aurelia PMS backup',
+        final savedPath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save encrypted Aurelia PMS backup — choose Google Drive or device storage',
+          fileName: 'aurelia-pms-encrypted-backup.aurelia',
+          type: FileType.custom,
+          allowedExtensions: const ['aurelia'],
+          bytes: Uint8List.fromList(utf8.encode(envelope)),
         );
+        if (savedPath == null || savedPath.isEmpty) {
+          await _controller.runJavaScript(
+            'window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode('Backup save cancelled.')});',
+          );
+          return;
+        }
+        try { await file.delete(); } catch (_) {}
         await _controller.runJavaScript(
           'window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},true,null);',
         );
