@@ -663,9 +663,15 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       if (value['type'] == 'setAppProtection') {
         final enabled = value['enabled'];
         if (enabled is! bool) throw const FormatException('Protection setting must be true or false.');
-        await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', enabled ? 'true' : 'false');
+        if (!enabled) {
+          // Fail closed: do not allow WebView JavaScript to persistently disable
+          // the native lock that protects guest and payment data.
+          await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', 'true');
+          await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},false,${jsonEncode('App protection cannot be disabled in this secure build.')});');
+          return;
+        }
+        await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', 'true');
         await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},true,null);');
-        if (!enabled && mounted) setState(() => _unlocked = true);
         return;
       }
       if (value['type'] == 'createLocalBackup') {
