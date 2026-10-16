@@ -219,14 +219,37 @@
       }
       const canonical = [];
       for (const line of db.restaurantCart) {
-        const menuItem = db.madeFoods.find(function (item) { return item.id === line.itemId && item.active !== false; });
         const qty = Number(line.qty);
-        const price = Number(menuItem && menuItem.sell);
-        if (!menuItem || !Number.isFinite(qty) || !Number.isInteger(qty) || qty < 1 || qty > 1000 || !Number.isFinite(price) || price <= 0) {
-          if (typeof window.toast === 'function') window.toast('Only active restaurant menu items with valid quantities and prices can be billed.');
+        const requestedSource = line.sourceType;
+        let item = null;
+        let sourceType = requestedSource;
+        if (requestedSource === 'stock') {
+          item = (db.inventory || []).find(function (entry) { return entry.id === line.itemId; });
+        } else if (requestedSource === 'made') {
+          item = db.madeFoods.find(function (entry) { return entry.id === line.itemId && entry.active !== false; });
+        } else {
+          item = db.madeFoods.find(function (entry) { return entry.id === line.itemId && entry.active !== false; });
+          if (item) sourceType = 'made';
+          else {
+            item = (db.inventory || []).find(function (entry) { return entry.id === line.itemId; });
+            if (item) sourceType = 'stock';
+          }
+        }
+        const price = Number(item && item.sell);
+        if (!item || (sourceType !== 'made' && sourceType !== 'stock') ||
+            !Number.isFinite(qty) || !Number.isInteger(qty) || qty < 1 || qty > 1000 ||
+            !Number.isFinite(price) || price <= 0) {
+          if (typeof window.toast === 'function') window.toast('Only valid active menu or saleable stock items with bounded quantities and configured prices can be billed.');
           return;
         }
-        canonical.push({ itemId: menuItem.id, name: String(menuItem.name), unit: String(menuItem.unit || 'plate'), price: price, qty: qty });
+        canonical.push({
+          itemId: item.id,
+          sourceType: sourceType,
+          name: String(item.name),
+          unit: String(item.unit || (sourceType === 'made' ? 'plate' : 'piece')),
+          price: price,
+          qty: qty
+        });
       }
       db.restaurantCart.splice(0, db.restaurantCart.length, ...canonical);
       return originalCommitRestaurant(mode);
