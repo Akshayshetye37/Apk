@@ -160,7 +160,7 @@ test('room billing canonicalizes prices and rejects non-menu items', () => {
   app.commitRestaurant('room');
   assert.equal(committedMode, 'room');
   assert.equal(commitCount, 1);
-  assert.deepEqual(committedCart, [{ itemId: 'food1', name: 'Chicken Curry', unit: 'plate', price: 180, qty: 2 }]);
+  assert.deepEqual(committedCart, [{ itemId: 'food1', sourceType: 'made', name: 'Chicken Curry', unit: 'plate', price: 180, qty: 2 }]);
   appDb.restaurantCart[0].itemId = 'hotel-room-charge';
   app.commitRestaurant('room');
   assert.equal(commitCount, 1);
