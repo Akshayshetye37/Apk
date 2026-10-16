@@ -354,6 +354,10 @@
         const container = document.getElementById('guestOccList');
         const rows = container ? Array.from(container.querySelectorAll('[data-occ]')) : [];
         const photos = rows.map(row => row.dataset.occupantIdPhoto || '');
+        const primaryInput = Array.from(document.querySelectorAll('input[type="file"]')).find(input =>
+          /(id|identity|passport|license|licence|aadhaar|aadhar)/i.test(input.id + ' ' + input.name + ' ' +
+            (input.closest('.field')?.innerText || '')));
+        const primaryPhoto = primaryInput?.dataset.aureliaImageData || '';
         const name = document.getElementById('gName')?.value?.trim() || '';
         const phone = document.getElementById('gPhone')?.value?.trim() || '';
         const existing = id && typeof DB !== 'undefined' ? DB.guests.find(g => g.id === id) : null;
@@ -362,8 +366,11 @@
         const result = originalSaveGuest.apply(this, arguments);
         if (wasOpen && !document.getElementById('guestOccList') && typeof DB !== 'undefined') {
           const guest = id ? DB.guests.find(g => g.id === id) : [...DB.guests].reverse().find(g => g.name === name && g.phone === phone);
-          if (guest && Array.isArray(guest.occupants)) {
-            guest.occupants = guest.occupants.map((o, i) => ({...o, idPhoto: photos[i] || prior[i] || o.idPhoto || ''}));
+          if (guest) {
+            if (primaryPhoto) guest.idPhoto = primaryPhoto;
+            if (Array.isArray(guest.occupants)) {
+              guest.occupants = guest.occupants.map((o, i) => ({...o, idPhoto: photos[i] || prior[i] || o.idPhoto || ''}));
+            }
             if (typeof window.save === 'function') save();
           }
         }
@@ -376,6 +383,10 @@
         const container = document.getElementById('occList');
         const rows = container ? Array.from(container.querySelectorAll('[data-occ]')) : [];
         const photos = rows.map(row => row.dataset.occupantIdPhoto || '');
+        const primaryInput = Array.from(document.querySelectorAll('input[type="file"]')).find(input =>
+          /(id|identity|passport|license|licence|aadhaar|aadhar)/i.test(input.id + ' ' + input.name + ' ' +
+            (input.closest('.field')?.innerText || '')));
+        const primaryPhoto = primaryInput?.dataset.aureliaImageData || '';
         const name = document.getElementById('bkGuest')?.value?.trim() || 'Guest';
         const phone = document.getElementById('bkPhone')?.value?.trim() || '';
         const existing = typeof DB !== 'undefined' ? DB.guests.find(g => g.name.toLowerCase() === name.toLowerCase() && g.phone === phone) : null;
@@ -384,8 +395,11 @@
         const result = originalSaveBookingForm.apply(this, arguments);
         if (wasOpen && !document.getElementById('occList') && typeof DB !== 'undefined') {
           const guest = [...DB.guests].reverse().find(g => g.name.toLowerCase() === name.toLowerCase() && g.phone === phone);
-          if (guest && Array.isArray(guest.occupants)) {
-            guest.occupants = guest.occupants.map((o, i) => ({...o, idPhoto: photos[i] || prior[i] || o.idPhoto || ''}));
+          if (guest) {
+            if (primaryPhoto) guest.idPhoto = primaryPhoto;
+            if (Array.isArray(guest.occupants)) {
+              guest.occupants = guest.occupants.map((o, i) => ({...o, idPhoto: photos[i] || prior[i] || o.idPhoto || ''}));
+            }
             if (typeof window.save === 'function') save();
           }
         }
