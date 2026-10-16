@@ -156,6 +156,23 @@ class AureliaEncryptedPmsStore {
     }
   }
 
+  /// Retains a bounded history of encrypted snapshots inside app-private storage.
+  /// These files are ciphertext using the same device-held key; they are not cloud backups.
+  static Future<void> createLocalSnapshot() async {
+    final primary = await _file('aurelia-pms-primary.enc');
+    if (!await primary.exists()) throw StateError('There is no saved PMS database to back up yet.');
+    final dir = Directory('${(await _directory()).path}/backups');
+    await dir.create(recursive: true);
+    final stamp = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
+    final destination = File('${dir.path}/aurelia-pms-$stamp.enc');
+    await primary.copy(destination.path);
+    final snapshots = await dir.list().where((entry) => entry is File && entry.path.endsWith('.enc')).cast<File>().toList();
+    snapshots.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+    for (final old in snapshots.skip(14)) {
+      try { await old.delete(); } catch (_) {}
+    }
+  }
+
   static const int _backupIterations = 310000;
   static const String _backupAad = 'aurelia-pms-portable-backup-v1';
   static final Pbkdf2 _backupKdf = Pbkdf2(
@@ -608,12 +625,28 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         if (mounted) setState(() { _pmsLoaded = true; _loading = false; });
         return;
       }
+      if (value['type'] == 'createLocalBackup') {
+        await AureliaEncryptedPmsStore.createLocalSnapshot();
+        await _controller.runJavaScript('window.aureliaNativeLocalBackupResult?.(${jsonEncode(requestId)},true,null);');
+        return;
+      }
       if (value['type'] == 'savePmsData') {
         final dataValue = value['data'];
         if (requestId == null || dataValue is! String || dataValue.length > 20 * 1024 * 1024) {
           throw const FormatException('Missing or oversized secure database fields');
         }
         await AureliaEncryptedPmsStore.write(dataValue);
+        // If auto-backup is enabled in the saved PMS settings, keep a bounded
+        // encrypted on-device snapshot after each committed database change.
+        try {
+          final decoded = jsonDecode(dataValue);
+          final settings = decoded is Map ? decoded['settings'] : null;
+          if (settings is Map && settings['autoBackupEnabled'] == true) {
+            await AureliaEncryptedPmsStore.createLocalSnapshot();
+          }
+        } catch (error) {
+          debugPrint('Automatic encrypted local snapshot failed: $error');
+        }
         await _controller.runJavaScript(
           'window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},true,null);',
         );
