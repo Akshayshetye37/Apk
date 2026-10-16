@@ -55,3 +55,6 @@ jobs:
         run: node --test tests/backup_import.test.js
       - name: Run Indian ID OCR parser regression tests
         run: node --test tests/identity_parser.test.js
+
+      - name: Run guest identity regression tests
+        run: node --test tests/guest_identity.test.js
