@@ -1058,8 +1058,8 @@ function parseIdText(text){
  const dob= t.match(/(?:DOB|DATE OF BIRTH|D\.?O\.?B\.?|BIRTH)\s*[:：-]?\s*(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}[/-]\d{2}[/-]\d{2})/i);
  return {idType,idNumber,name:name.replace(/\s{2,}/g,' '),dob:dob?.[1]||''};
 }
-let pendingBookingIdPhoto='';
-async function runBookingIdOCR(e){const file=e?.target?.files?.[0],status=document.getElementById('bkOcrStatus');if(file){try{pendingBookingIdPhoto=await aureliaImageFileToDataUrl(file);const prev=document.getElementById('bkIdPreview');if(prev){prev.src=pendingBookingIdPhoto;prev.style.display='block';}if(status)status.textContent='ID photo compressed and ready to save.';}catch(err){if(status)status.textContent=err.message||'Could not read ID photo.';e.target.value='';return;}}const text=await runImageOCR(file,status),parsed=parseIdText(text||'');const type=document.getElementById('bkIdType'),num=document.getElementById('bkIdNumber');if(parsed.idType&&type)type.value=parsed.idType;if(parsed.idNumber&&num)num.value=parsed.idNumber;const nameField=document.getElementById('bkGuest');if(parsed.name&&nameField&&!nameField.value.trim())nameField.value=parsed.name;const dobField=document.getElementById('bkDob');if(parsed.dob&&dobField&&!dobField.value.trim())dobField.value=parsed.dob;if(text&&!parsed.idNumber&&status)status.textContent='OCR complete. Verify the image and enter the ID number manually if needed.';}
+let pendingBookingIdPhoto='',pendingBookingPhotoPromise=Promise.resolve();
+async function runBookingIdOCR(e){const file=e?.target?.files?.[0],status=document.getElementById('bkOcrStatus');if(file){const previousPhoto=pendingBookingIdPhoto;pendingBookingPhotoPromise=(async()=>{try{pendingBookingIdPhoto=await aureliaImageFileToDataUrl(file);const prev=document.getElementById('bkIdPreview');if(prev){prev.src=pendingBookingIdPhoto;prev.style.display='block';}if(status)status.textContent='ID photo compressed and ready to save.';}catch(err){pendingBookingIdPhoto=previousPhoto;if(status)status.textContent=err.message||'Could not read ID photo.';e.target.value='';}})();await pendingBookingPhotoPromise;}const text=await runImageOCR(file,status),parsed=parseIdText(text||'');const type=document.getElementById('bkIdType'),num=document.getElementById('bkIdNumber');if(parsed.idType&&type)type.value=parsed.idType;if(parsed.idNumber&&num)num.value=parsed.idNumber;const nameField=document.getElementById('bkGuest');if(parsed.name&&nameField&&!nameField.value.trim())nameField.value=parsed.name;const dobField=document.getElementById('bkDob');if(parsed.dob&&dobField&&!dobField.value.trim())dobField.value=parsed.dob;if(text&&!parsed.idNumber&&status)status.textContent='OCR complete. Verify the image and enter the ID number manually if needed.';}
 async function runGenericOcr(e,btn){
   const file=e?.target?.files?.[0] || btn?.closest('.field')?.querySelector('input[type=file]')?.files?.[0];
   const status=document.getElementById('guestOcrStatus') || btn?.closest('.field')?.querySelector('.muted');
@@ -1072,7 +1072,7 @@ async function runGenericOcr(e,btn){
 }
 function demoOCR(btn){ return runGenericOcr(null,btn); }
 
-async function saveBookingForm(id){await Promise.all([...document.querySelectorAll('#occList [data-occ]')].map(x=>x.__photoPromise||Promise.resolve()));
+async function saveBookingForm(id){await Promise.all([pendingBookingPhotoPromise,...[...document.querySelectorAll('#occList [data-occ]')].map(x=>x.__photoPromise||Promise.resolve())]);
  const name=document.getElementById('bkGuest')?.value?.trim()||'Guest', phone=document.getElementById('bkPhone')?.value?.trim()||'';
  // On edit, resolve the existing guest by the booking's immutable guestId first.
  // Name/phone are editable attributes, never the identity key.
@@ -1112,12 +1112,12 @@ function openGuest(id){
  <div class="subcard"><div class="subhead"><b>Vehicles (${g?.vehicles?.length||0})</b><button class="btn small" onclick="addGuestVehicle()">＋ Add vehicle</button></div><div id="guestVehList">${(g?.vehicles||[]).map((v,i)=>vehicleHTML(v,i)).join('')}</div></div>`,
  `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveGuest('${id||''}')">Save guest</button>`);
 }
-let pendingGuestPhoto='';
-async function previewGuestPhoto(e){const f=e?.target?.files?.[0];if(!f)return;try{pendingGuestPhoto=await aureliaImageFileToDataUrl(f);const p=document.getElementById('gPhotoPreview');if(p){p.src=pendingGuestPhoto;p.style.display='block'}const status=document.getElementById('guestOcrStatus');if(status)status.textContent='ID photo compressed and ready to save.';}catch(err){const status=document.getElementById('guestOcrStatus');if(status)status.textContent=err.message||'Could not read ID photo.';e.target.value='';}}
+let pendingGuestPhoto='',pendingGuestPhotoPromise=Promise.resolve();
+async function previewGuestPhoto(e){const f=e?.target?.files?.[0];if(!f)return;const previousPhoto=pendingGuestPhoto;pendingGuestPhotoPromise=(async()=>{try{pendingGuestPhoto=await aureliaImageFileToDataUrl(f);const p=document.getElementById('gPhotoPreview');if(p){p.src=pendingGuestPhoto;p.style.display='block'}const status=document.getElementById('guestOcrStatus');if(status)status.textContent='ID photo compressed and ready to save.';}catch(err){pendingGuestPhoto=previousPhoto;const status=document.getElementById('guestOcrStatus');if(status)status.textContent=err.message||'Could not read ID photo.';e.target.value='';}})();return pendingGuestPhotoPromise;}
 function updateGuestOccupantCount(){const c=document.querySelectorAll('#guestOccList [data-occ]').length;const el=document.getElementById('guestOccCount');if(el)el.textContent=c}
 function addGuestOccupant(){const c=document.getElementById('guestOccList');c.insertAdjacentHTML('beforeend',occupantHTML({},c.querySelectorAll('[data-occ]').length));updateGuestOccupantCount()}
 function addGuestVehicle(){const c=document.getElementById('guestVehList');c.insertAdjacentHTML('beforeend',vehicleHTML({},c.querySelectorAll('[data-veh]').length))}
-async function saveGuest(id){await Promise.all([...document.querySelectorAll('#guestOccList [data-occ]')].map(x=>x.__photoPromise||Promise.resolve()));
+async function saveGuest(id){await Promise.all([pendingGuestPhotoPromise,...[...document.querySelectorAll('#guestOccList [data-occ]')].map(x=>x.__photoPromise||Promise.resolve())]);
  const name=document.getElementById('gName').value.trim(), phone=document.getElementById('gPhone').value.trim();
  let g=id?DB.guests.find(x=>x.id===id):{id:'g'+Date.now(),occupants:[],vehicles:[]};if(!g)return;
  g.name=name;g.phone=phone;g.email=document.getElementById('gEmail').value;g.idType=document.getElementById('gIdType').value;g.idNumber=document.getElementById('gIdNumber').value;if(pendingGuestPhoto)g.idPhoto=pendingGuestPhoto;
