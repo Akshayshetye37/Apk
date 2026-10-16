@@ -3471,7 +3471,7 @@ function dedupeExistingGuestsInPlace(preferredId){
  for(const g of DB.guests){
   if(!g)continue;
   const number=guestCanonicalIdNumber(g.idNumber||g.idProofNumber),name=guestCanonicalName(g.name||g.guestName),phone=String(g.phone||g.mobile||'').replace(/\D/g,'').slice(-10);
-  const key=number.length>=8?'idnum:'+number:(name&&phone?'name-phone:'+name+'|'+phone:'id:'+String(g.id||('unkeyed-'+kept.length)));
+  const key=number?'idnum:'+number:(name&&phone?'name-phone:'+name+'|'+phone:'id:'+String(g.id||('unkeyed-'+kept.length)));
   const prior=byKey.get(key);
   if(!prior){byKey.set(key,g);kept.push(g);continue;}
   if(preferredId!=null&&String(g.id)===String(preferredId)&&String(prior.id)!==String(preferredId)){

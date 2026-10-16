@@ -73,6 +73,24 @@ test('editing a guest keeps its immutable ID and reassigns linked records', () =
   assert.equal(database.folios[0].guestId, 'stable-guest');
 });
 
+test('same name and phone with conflicting short ID numbers are not merged', () => {
+  const database = {
+    guests: [
+      { id: 'guest-a', name: 'Ravi Kumar', phone: '9000000001', idNumber: '12345' },
+      { id: 'guest-b', name: 'Ravi Kumar', phone: '9000000001', idNumber: '67890' },
+    ],
+    bookings: [],
+    reservations: [],
+    folios: [],
+    invoices: [],
+    restaurantSales: [],
+  };
+
+  runDedupe(database);
+  assert.equal(database.guests.length, 2);
+  assert.deepEqual(database.guests.map(g => g.id), ['guest-a', 'guest-b']);
+});
+
 test('same-name guests with different phone numbers are not merged', () => {
   const database = {
     guests: [
