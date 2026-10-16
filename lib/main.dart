@@ -672,9 +672,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           await file.writeAsBytes(pdfBytes, flush: true);
           final navigator = aureliaNavigatorKey.currentState;
           if (navigator == null) throw StateError('The in-app PDF viewer is not available.');
-          await navigator.push(MaterialPageRoute<void>(
+          // Resolve the WebView request as soon as the viewer is launched;
+          // do not keep the JavaScript bridge waiting until the user closes the PDF.
+          unawaited(navigator.push(MaterialPageRoute<void>(
             builder: (_) => ProductionPdfViewerRoute(filePath: file.path, documentTitle: pdfName),
-          ));
+          )));
         }
         await _controller.runJavaScript('window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);');
         return;
