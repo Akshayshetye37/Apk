@@ -170,17 +170,46 @@
         const current = String((typeof DB !== 'undefined' && DB.settings && DB.settings.googleDriveFolderId) || '');
         const escaped = typeof window.esc === 'function' ? esc(current) : current.replace(/[&<>"]/g, '');
         html += '<section class="card" id="aureliaDriveFolderIdCard" style="margin-top:16px">' +
-          '<div class="section-title"><h2>Google Drive backup target</h2><span class="status reserved">Not connected</span></div>' +
-          '<p class="muted">Enter the destination folder ID from Google Drive. This ID is saved locally; uploads and restores remain disabled until secure Google authorization and encrypted backup sync are implemented.</p>' +
+          '<div class="section-title"><h2>Backup and Google Drive</h2><span class="status reserved">Drive not connected</span></div>' +
+          '<p class="muted">Save a Drive folder ID below. Real cloud uploads require Google OAuth setup. Until connected, automatic backups are encrypted on this device.</p>' +
           '<div class="field"><label for="aureliaDriveFolderId">Google Drive folder ID</label>' +
-          '<input id="aureliaDriveFolderId" type="text" maxlength="200" autocomplete="off" value="' + escaped + '" placeholder="Paste Drive folder ID">' +
-          '</div><div class="actions" style="margin-top:10px"><button class="btn" type="button" onclick="aureliaSaveDriveFolderId()">Save folder ID</button>' +
+          '<input id="aureliaDriveFolderId" type="text" maxlength="200" autocomplete="off" value="' + escaped + '" placeholder="Paste Drive folder ID"></div>' +
+          '<div class="actions" style="margin-top:10px"><button class="btn" type="button" onclick="aureliaSaveDriveFolderId()">Save folder ID</button>' +
           '<button class="btn" type="button" onclick="aureliaClearDriveFolderId()">Clear</button></div>' +
+          '<hr style="margin:14px 0;border-color:var(--line)"><h3>Backup</h3>' +
+          '<p class="muted">Backup now creates a portable encrypted backup. Backup Auto keeps up to 15 encrypted snapshots in app-private storage after saved changes.</p>' +
+          '<label style="display:flex;gap:10px;align-items:center;margin:10px 0"><input id="aureliaAutoBackupToggle" type="checkbox" ' +
+          ((typeof DB !== 'undefined' && DB.settings && DB.settings.autoBackupEnabled === true) ? 'checked' : '') +
+          ' onchange="aureliaSetAutoBackup(this.checked)"> Backup Auto</label>' +
+          '<div class="actions"><button class="btn primary" type="button" onclick="aureliaBackupNow()">Backup now</button>' +
+          '<button class="btn" type="button" onclick="aureliaCreateLocalSnapshot()">Save device snapshot</button></div>' +
+          '<div id="aureliaBackupStatus" class="muted" role="status" style="margin-top:8px"></div>' +
           '<div id="aureliaDriveFolderIdStatus" class="muted" role="status" style="margin-top:8px">Folder ID is a destination setting, not proof of a backup.</div></section>';
         return html;
       };
     }
   } catch (error) { console.warn('Could not add Drive target field:', error); }
+  window.aureliaSetAutoBackup = function (enabled) {
+    if (typeof DB === 'undefined' || !DB.settings) return;
+    DB.settings.autoBackupEnabled = !!enabled;
+    if (typeof window.save === 'function') window.save();
+    const status = document.getElementById('aureliaBackupStatus');
+    if (status) status.textContent = enabled ? 'Encrypted device snapshots enabled after saved changes.' : 'Automatic snapshots disabled; existing backups are retained.';
+  };
+  window.aureliaNativeLocalBackupResult = function (requestId, ok, error) {
+    const status = document.getElementById('aureliaBackupStatus');
+    if (status) status.textContent = ok ? 'Encrypted device snapshot saved.' : 'Backup failed: ' + String(error || 'Unknown error');
+  };
+  window.aureliaCreateLocalSnapshot = function () {
+    if (!window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function') { notifyBackup('Install the Android app to create device snapshots.'); return; }
+    window.AureliaNative.postMessage(JSON.stringify({type:'createLocalBackup',requestId:'local_backup_' + Date.now()}));
+    notifyBackup('Saving encrypted device snapshot…');
+  };
+  function notifyBackup(message) { if (typeof window.toast === 'function') window.toast(message); }
+  window.aureliaBackupNow = function () {
+    if (typeof window.aureliaDownloadBackup === 'function') window.aureliaDownloadBackup();
+    else notifyBackup('Backup service is not ready.');
+  };
   window.aureliaSaveDriveFolderId = function () {
     const input = document.getElementById('aureliaDriveFolderId');
     if (!input || typeof DB === 'undefined' || !DB.settings) return;
