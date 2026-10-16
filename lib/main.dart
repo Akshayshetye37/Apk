@@ -641,32 +641,32 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         return;
       }
       if (value['type'] == 'recognizeIdImage') {
-        final encoded = value['imageBase64'];
-        if (requestId == null || encoded is! String || encoded.isEmpty || encoded.length > 12 * 1024 * 1024) throw const FormatException('ID image is missing or exceeds the size limit.');
-        final raw = base64Decode(encoded);
-        if (raw.isEmpty || raw.length > 8 * 1024 * 1024) throw const FormatException('ID image exceeds the 8 MiB limit.');
-        final decoded = img.decodeImage(raw);
-        if (decoded == null) throw const FormatException('Could not decode this ID image.');
-        final resized = decoded.width > 2400 ? img.copyResize(decoded, width: 2400) : decoded;
-        final enhanced = img.adjustColor(img.grayscale(resized), contrast: 1.3, brightness: 0.03);
-        final temp = await getTemporaryDirectory();
-        final ocrFile = File('\${temp.path}/aurelia_ocr_\${DateTime.now().microsecondsSinceEpoch}.jpg');
-        await ocrFile.writeAsBytes(img.encodeJpg(enhanced, quality: 94), flush: true);
-        List<({double top,double left,String text})> orderedLines(RecognizedText recognized) {
+        final encoded=value['imageBase64'];
+        if(requestId==null||encoded is! String||encoded.isEmpty||encoded.length>12*1024*1024)throw const FormatException('ID image is missing or too large.');
+        final raw=base64Decode(encoded);
+        if(raw.isEmpty||raw.length>8*1024*1024)throw const FormatException('ID image exceeds the 8 MiB limit.');
+        final decoded=img.decodeImage(raw);
+        if(decoded==null)throw const FormatException('Could not decode this ID image.');
+        final resized=decoded.width>2400?img.copyResize(decoded,width:2400):decoded;
+        final enhanced=img.adjustColor(img.grayscale(resized),contrast:1.3,brightness:0.03);
+        final temp=await getTemporaryDirectory();
+        final file=File('\${temp.path}/aurelia_ocr_\${DateTime.now().microsecondsSinceEpoch}.jpg');
+        await file.writeAsBytes(img.encodeJpg(enhanced,quality:94),flush:true);
+        List<({double top,double left,String text})> orderedLines(RecognizedText result){
           final lines=<({double top,double left,String text})>[];
-          for(final block in recognized.blocks){for(final line in block.lines){lines.add((top:line.boundingBox.top,left:line.boundingBox.left,text:line.text.trim()));}}
+          for(final block in result.blocks){for(final line in block.lines){lines.add((top:line.boundingBox.top,left:line.boundingBox.left,text:line.text.trim()));}}
           lines.sort((a,b){final dy=a.top-b.top;if(dy.abs()>12)return dy.compareTo(0);return a.left.compareTo(b.left);});
           return lines;
         }
-        String latinText='',devanagariText='';
-        try {
+        String latin='',devanagari='';
+        try{
           final latinRecognizer=TextRecognizer(script:TextRecognitionScript.latin);
-          try{final result=await latinRecognizer.processImage(InputImage.fromFilePath(ocrFile.path));final lines=orderedLines(result);latinText=lines.isEmpty?result.text.trim():lines.map((x)=>x.text).where((x)=>x.isNotEmpty).join('\n');}finally{await latinRecognizer.close();}
+          try{final result=await latinRecognizer.processImage(InputImage.fromFilePath(file.path));final lines=orderedLines(result);latin=lines.isEmpty?result.text.trim():lines.map((l)=>l.text).where((s)=>s.isNotEmpty).join('\n');}finally{await latinRecognizer.close();}
           final devanagariRecognizer=TextRecognizer(script:TextRecognitionScript.devanagari);
-          try{final result=await devanagariRecognizer.processImage(InputImage.fromFilePath(ocrFile.path));final lines=orderedLines(result);devanagariText=lines.map((x)=>x.text).where((x)=>x.isNotEmpty).join('\n');}finally{await devanagariRecognizer.close();}
-          final combined=[latinText,devanagariText].where((x)=>x.trim().isNotEmpty).toSet().join('\n');
+          try{final result=await devanagariRecognizer.processImage(InputImage.fromFilePath(file.path));devanagari=orderedLines(result).map((l)=>l.text).where((s)=>s.isNotEmpty).join('\n');}finally{await devanagariRecognizer.close();}
+          final combined=[latin,devanagari].where((s)=>s.trim().isNotEmpty).toSet().join('\n');
           await _controller.runJavaScript('window.aureliaNativeOcrResult?.(\${jsonEncode(requestId)},\${jsonEncode(combined)},null);');
-        } finally {try{await ocrFile.delete();}catch(_){}}
+        }finally{try{await file.delete();}catch(_){}}
         return;
       }
       if (value['type'] == 'setBiometricEnabled') {
