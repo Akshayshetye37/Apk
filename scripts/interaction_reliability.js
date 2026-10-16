@@ -172,7 +172,12 @@
           throw new Error('Could not save restored data; previous in-memory data was restored. ' + errorMessage(saveError));
         }
         notify('Backup imported and saved. Refreshing PMS view…');
-        setTimeout(function () { window.location.reload(); }, 250);
+        if (isNativeSecureApp()) {
+          const requestId = 'reload_' + Date.now().toString(36);
+          window.AureliaNative.postMessage(JSON.stringify({ type: 'reloadSecurePms', requestId: requestId }));
+        } else {
+          setTimeout(function () { window.location.reload(); }, 250);
+        }
       } catch (error) { notify('Import failed: ' + errorMessage(error)); }
     };
     reader.readAsText(file);
