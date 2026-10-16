@@ -1377,11 +1377,13 @@ function callGuest(phone){if(!phone){toast('No phone number');return}location.hr
 function msgGuest(phone){if(!phone){toast('No WhatsApp number');return}window.open(`https://wa.me/${String(phone).replace(/\D/g,'')}`,'_blank','noopener')}
 function setLogo(e){const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{DB.settings.logo=r.result;save();refreshBrand();showPage('settings');toast('Logo saved')};r.readAsDataURL(f)}
 function refreshBrand(){document.getElementById('brandName').textContent=DB.settings.hotelName||'AURELIA 5★';const img=document.getElementById('brandLogo');img.src=DB.settings.logo||'';img.style.display=DB.settings.logo?'block':'none'}
-function saveSettings(){
+async function saveSettings(){
  if(document.getElementById('aureliaGoogleClientId'))DB.settings.googleClientId=document.getElementById('aureliaGoogleClientId').value.trim();
  document.querySelectorAll('[data-setting]').forEach(el=>{if(Object.prototype.hasOwnProperty.call(DB.settings,el.dataset.setting))DB.settings[el.dataset.setting]=el.value});
  document.querySelectorAll('[data-setting-check]').forEach(el=>DB.settings[el.dataset.settingCheck]=el.checked);
- save();refreshBrand();audit('Settings updated','Hotel identity / master features');save();showPage('settings');toast('Settings saved');
+ save();refreshBrand();audit('Settings updated','Hotel identity / master features');save();
+ try{await window.aureliaWaitForSecureSave?.();showPage('settings');toast('Settings saved securely');}
+ catch(error){toast('Settings could not be confirmed as saved. Keep this page open and retry.');}
 }
 function searchAll(q){
  dedupeExistingGuestsInPlace();q=String(q||'').trim().toLowerCase();if(!q)return[];const out=[];
@@ -1796,7 +1798,7 @@ function pagesSettingsNew(){
       <p class="muted">After saving, verify the file is visible in Google Drive before relying on it. Restore validates the encrypted envelope and database structure before replacing local records.</p>
     </section>
     <section class="card"><div class="section-title"><h2>Hotel identity</h2></div>
-      <div class="logo-preview"><img id="settingsLogo" src="${DB.settings.logo||""}" onerror="this.style.display='none'"><div><button class="btn" onclick="document.getElementById('logoFile').click()">Upload logo</button><input id="logoFile" type="file" accept="image/*" hidden onchange="setLogo(event)"></div></div>
+      <div class="logo-preview"><img id="settingsLogo" src="${DB.settings.logo||""}" onerror="this.style.display='none'"><div><button class="btn" onclick="document.getElementById('logoFile').click()">Upload logo</button><input id="logoFile" type="file" accept="image/*" hidden onchange="setLogo(event)"><small id="logoUploadNote" class="muted" role="status" style="display:block;margin-top:8px">${DB.settings.logo?"Saved logo loaded from settings.":"No hotel logo uploaded yet."}</small></div></div>
       <div class="form-grid" style="margin-top:12px">${field("Hotel name","hotelName",DB.settings.hotelName)}${field("Phone","phone",DB.settings.phone)}${field("Address","address",DB.settings.address,true)}${field("GST","gst",DB.settings.gst)}${field("UPI","upi",DB.settings.upi)}${field("Currency","currency",DB.settings.currency)}</div>
       <div class="form-grid" style="margin-top:12px"><div class="field full"><label>UPI payment QR image</label>
         <input id="upiQrFile" type="file" accept="image/*" hidden onchange="setUPIQR(event)">
