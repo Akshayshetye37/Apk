@@ -16,13 +16,13 @@ import 'pms_access_gate.dart';
 import 'pdf_viewer_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:local_auth/local_auth.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:qr/qr.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
+import 'package:local_auth/local_auth.dart';
 import 'package:share_plus/share_plus.dart';
 
 
@@ -671,7 +671,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         final ocrFile = File('${temp.path}/aurelia_ocr_${DateTime.now().microsecondsSinceEpoch}.jpg');
         await ocrFile.writeAsBytes(img.encodeJpg(enhanced, quality: 94), flush: true);
         final inputImage = InputImage.fromFilePath(ocrFile.path);
-        final recognizedLines = <String>[];
+        final recognized = <({double top, double left, String text})>[];
         final recognizers = <TextRecognizer>[
           TextRecognizer(script: TextRecognitionScript.latin),
           TextRecognizer(script: TextRecognitionScript.devanagiri),
@@ -679,21 +679,33 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         try {
           for (final recognizer in recognizers) {
             final result = await recognizer.processImage(inputImage);
-            // ML Kit returns line geometry; sort by visual position to keep fields
-            // in reading order on multi-column Indian ID layouts.
-            final lines = result.blocks.expand((block) => block.lines).toList()
-              ..sort((a, b) {
-                final vertical = a.boundingBox.top.compareTo(b.boundingBox.top);
-                if (vertical.abs() > 8) return vertical;
-                return a.boundingBox.left.compareTo(b.boundingBox.left);
-              });
-            for (final line in lines) {
-              final value = line.text.trim();
-              if (value.isEmpty) continue;
-              final key = value.toUpperCase().replaceAll(RegExp(r'\s+'), '');
-              final duplicate = recognizedLines.any((existing) =>
-                  existing.toUpperCase().replaceAll(RegExp(r'\s+'), '') == key);
-              if (!duplicate) recognizedLines.add(value);
+            for (final block in result.blocks) {
+              for (final line in block.lines) {
+                final value = line.text.trim();
+                if (value.isEmpty) continue;
+                recognized.add((top: line.boundingBox.top.toDouble(),
+                  left: line.boundingBox.left.toDouble(), text: value));
+              }
+            }
+          }
+          // Sort by actual pixel coordinates (compareTo() returns only -1/0/1).
+          // Merge Latin and Devanagari lines in spatial reading order.
+          recognized.sort((a, b) => a.top.compareTo(b.top));
+          final rows = <List<({double top, double left, String text})>>[];
+          for (final line in recognized) {
+            if (rows.isEmpty || (line.top - rows.last.first.top).abs() > 12) {
+              rows.add(<({double top, double left, String text})>[line]);
+            } else {
+              rows.last.add(line);
+            }
+          }
+          final recognizedLines = <String>[];
+          final seen = <String>{};
+          for (final row in rows) {
+            row.sort((a, b) => a.left.compareTo(b.left));
+            for (final line in row) {
+              final key = line.text.toUpperCase().replaceAll(RegExp(r'\s+'), '');
+              if (seen.add(key)) recognizedLines.add(line.text);
             }
           }
           final text = recognizedLines.join('\n').trim();
@@ -708,46 +720,31 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       }
       if (value['type'] == 'setBiometricEnabled') {
         final enabled = value['enabled'];
-        if (requestId == null || enabled is! bool) {
-          throw const FormatException('Biometric preference must be true or false.');
+        if (requestId == null || enabled is! bool) throw const FormatException('Biometric preference must be true or false.');
+        final deviceSupported = await LocalAuthentication().isDeviceSupported();
+        if (enabled && !deviceSupported) {
+          throw const FormatException('This device does not support Android device authentication.');
         }
-        if (enabled && !await LocalAuthentication().isDeviceSupported()) {
-          throw StateError('This device does not support secure device authentication.');
-        }
-        await AureliaSecureVault.writeSecret(
-          'aurelia_pms_biometric_enabled_v1',
-          enabled ? 'true' : 'false',
-        );
-        // Never leave the user without an available unlock method when device
-        // authentication is switched off.
+        await AureliaSecureVault.writeSecret('aurelia_pms_biometric_enabled_v1', enabled ? 'true' : 'false');
         if (!enabled) {
+          // Never strand the user outside the app when biometric/device auth is disabled.
           await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', 'true');
         }
-        await _controller.runJavaScript(
-          'window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},true,null);',
-        );
+        await _controller.runJavaScript('window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
       if (value['type'] == 'setPinEntryEnabled') {
         final enabled = value['enabled'];
-        if (requestId == null || enabled is! bool) {
-          throw const FormatException('PIN-entry preference must be true or false.');
-        }
+        if (requestId == null || enabled is! bool) throw const FormatException('PIN entry preference must be true or false.');
         if (!enabled) {
-          final biometricEnabled =
-              await AureliaSecureVault.readSecret('aurelia_pms_biometric_enabled_v1') == 'true';
+          final biometricEnabled = await AureliaSecureVault.readSecret('aurelia_pms_biometric_enabled_v1');
           final deviceSupported = await LocalAuthentication().isDeviceSupported();
-          if (!biometricEnabled || !deviceSupported) {
-            throw StateError('Enable supported device authentication before disabling PIN entry.');
+          if (biometricEnabled != 'true' || !deviceSupported) {
+            throw const FormatException('Enable supported Android device authentication before disabling PIN entry.');
           }
         }
-        await AureliaSecureVault.writeSecret(
-          'aurelia_pms_pin_entry_enabled_v1',
-          enabled ? 'true' : 'false',
-        );
-        await _controller.runJavaScript(
-          'window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},true,null);',
-        );
+        await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', enabled ? 'true' : 'false');
+        await _controller.runJavaScript('window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
       if (value['type'] == 'setAppProtection') {
@@ -921,7 +918,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       debugPrint('Aurelia native bridge rejected request: $error');
       if (requestId != null) {
         try {
-          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
+          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
         } catch (_) {}
       }
     }

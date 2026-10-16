@@ -53,3 +53,5 @@ jobs:
 
       - name: Run backup import regression tests
         run: node --test tests/backup_import.test.js
+      - name: Run Indian ID OCR parser regression tests
+        run: node --test tests/identity_parser.test.js

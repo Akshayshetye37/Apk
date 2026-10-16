@@ -561,7 +561,7 @@ function exportPrintDocument(scope,id,format){
 
  if(scope==='guest'&&data){
    const g=data.guest||{};
-   body+=section('Guest profile',`${g.idPhoto?`<div style="margin-bottom:12px"><b>Guest ID photo</b><br><img src="${g.idPhoto}" alt="Guest identity document" style="max-width:100%;max-height:260px;object-fit:contain;border:1px solid #d8e5e5;border-radius:8px"></div>`:''}<div class="grid">
+   body+=section('Guest profile',`${g.idPhoto?`<div style="margin-bottom:12px"><b>Guest ID photo</b><br><img src="${esc(g.idPhoto)}" alt="Guest identity document" style="max-width:100%;max-height:260px;object-fit:contain;border:1px solid #d8e5e5;border-radius:8px"></div>`:''}<div class="grid">
     <div><b>Guest ID</b><br>${esc(g.id||'')}</div><div><b>Name</b><br>${esc(g.name||'')}</div><div><b>Phone / WhatsApp</b><br>${esc(g.phone||'')}</div>
     <div><b>Email</b><br>${esc(g.email||'')}</div><div><b>ID Type</b><br>${esc(g.idType||'')}</div>
     <div><b>ID Number</b><br>${esc(g.idNumber||'')}</div><div><b>Total guests</b><br>${1+(g.occupants?.length||0)}</div>
@@ -741,7 +741,7 @@ function pagesBookings(){
  <div class="grid three" style="margin-bottom:14px">${kpi('Total bookings',DB.bookings.length,'All statuses')}${kpi('Active stays',DB.bookings.filter(b=>b.status==='active').length,'Currently active')}${kpi('Outstanding',money(DB.bookings.filter(b=>b.status==='active').reduce((n,b)=>n+due(b),0)),'Active folios')}</div>
  <div class="list">${DB.bookings.map(b=>{let g=guest(b),r=room(b);return `<div class="item">
  <div class="item-head"><div><h3>${b.sr}</h3><b>${g?.name||'Unknown guest'}</b><div class="muted">Room ${r?.number||'-'} · ${b.guests||1} guest(s)</div></div><span class="status ${b.status==='active'?'occupied':'available'}">${b.status}</span></div>
- <div class="row" style="margin:12px 0"><span>${fmt(b.checkIn)} → ${fmt(b.checkOut)}</span></div>${g?.idPhoto?`<div class="row" style="margin:8px 0"><img class="photo" src="${g.idPhoto}" alt="Guest ID photo" style="max-width:110px;max-height:84px;object-fit:contain"></div>`:""}
+ <div class="row" style="margin:12px 0"><span>${fmt(b.checkIn)} → ${fmt(b.checkOut)}</span></div>${g?.idPhoto?`<div class="row" style="margin:8px 0"><img class="photo" src="${esc(g.idPhoto)}" alt="Guest ID photo" style="max-width:110px;max-height:84px;object-fit:contain"></div>`:""}
  <div class="row"><span>Total <b>${money(total(b))}</b></span><span>Paid <b>${money(b.paid)}</b></span><span class="${due(b)?'due':'ok'}">Due <b>${money(due(b))}</b></span></div>
  <div class="actions" style="margin-top:12px"><button class="btn small" onclick="callGuest('${g?.phone||''}')">☎ Call</button><button class="btn small" onclick="msgGuest('${g?.phone||''}')">WhatsApp</button><button class="btn small" onclick="shareInvoice('${b.id}')">Invoice</button><button class="btn small" onclick="showPage('folio');setTimeout(()=>openFolio('${b.id}'),50)">Folio</button><button class="btn small" onclick="openBooking('${b.id}')">Edit</button><button class="btn small" onclick="checkout('${b.id}')">Checkout</button>${b.status==='active'?`<button type="button" class="btn small" onclick="sendBookingTerms('${b.id}')">Terms & Conditions</button>`:""}</div>
  </div>`}).join('')||'<div class="card empty">No bookings</div>'}</div>`;
@@ -790,7 +790,7 @@ function pagesGuests(){
  return `<div class="hero"><div><h1>Guests / Occupants / Vehicles</h1><p>Every person has identity information and every vehicle can be recorded.</p></div><button class="btn primary" onclick="openGuest()">＋ Add guest</button></div>
  <div class="list">${DB.guests.map(g=>`<div class="item"><div class="item-head"><div><h3>${g.name}</h3><div class="muted">${g.phone||'No phone'} · ${g.email||'No email'}</div></div><span class="status occupied">Primary guest</span></div>
  <div class="row" style="margin:10px 0"><span>ID: <b>${g.idType||'Not recorded'}</b> ${g.idNumber||''}</span><span>Occupants: <b>${g.occupants?.length||0}</b></span><span>Vehicles: <b>${g.vehicles?.length||0}</b></span></div>
- <div class="row">${g.idPhoto?`<img class="photo" src="${g.idPhoto}" alt="ID">`:'<span class="muted">No ID photo</span>'}${(g.vehicles||[]).map(v=>`<span class="status available">${v.reg} · ${v.type}</span>`).join('')}</div>
+ <div class="row">${g.idPhoto?`<img class="photo" src="${esc(g.idPhoto)}" alt="ID">`:'<span class="muted">No ID photo</span>'}${(g.vehicles||[]).map(v=>`<span class="status available">${v.reg} · ${v.type}</span>`).join('')}</div>
  <div class="actions" style="margin-top:12px"><button class="btn small" onclick="openGuest('${g.id}')">Edit / OCR</button><button class="btn small" onclick="guestHistory('${g.id}')">History</button><button class="btn small" onclick="quickGuestExport('${g.id}')">Export all guest data</button></div>
  </div>`).join('')}</div>`;
 }
@@ -1015,13 +1015,13 @@ window.aureliaNativeOcrResult=function(requestId,text,error){const p=window.__au
 async function runImageOCR(file,statusEl){
  if(!file){if(statusEl)statusEl.textContent='Select a government ID image first.';return null;}
  if(!/^image\//.test(file.type)){if(statusEl)statusEl.textContent='Please select an image file.';return null;}
- if(file.size>8*1024*1024){if(statusEl)statusEl.textContent='Image is too large. Please use an image under 8 MB.';return null;}
+ if(file.size>12*1024*1024){if(statusEl)statusEl.textContent='Image is too large. Please use an image under 12 MB.';return null;}
  if(ocrBusy){if(statusEl)statusEl.textContent='OCR is already running. Please wait.';return null;}
  ocrBusy=true;
  try{
   if(!(window.AureliaNative&&typeof window.AureliaNative.postMessage==='function'&&window.__AURELIA_SECURE_DB_READY)){if(statusEl)statusEl.textContent='Offline OCR is available in the installed Android app. This browser preview has no bundled OCR engine.';return null;}
   if(statusEl)statusEl.textContent='Reading ID locally on this device…';
-  const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(new Error('Could not read selected image'));reader.onload=()=>resolve(String(reader.result||''));reader.readAsDataURL(file);});
+  const dataUrl=await aureliaImageFileToDataUrl(file);
   const imageBase64=dataUrl.includes(',')?dataUrl.slice(dataUrl.indexOf(',')+1):'';
   if(!imageBase64)throw new Error('Selected image could not be encoded.');
   const requestId='ocr_'+Date.now()+'_'+Math.random().toString(36).slice(2);
@@ -1052,7 +1052,7 @@ function parseIdText(text){
  else if(aadhaar){idType='Aadhaar Card';idNumber=aadhaar[1].replace(/\s+/g,' ');}
  else if(dl){idType='Driving Licence';idNumber=dl[1].replace(/\s+/g,' ').toUpperCase();}
  else if(voter){idType='Voter ID';idNumber=voter[1].toUpperCase();}
- else if(passport||passportNameLine)idType='Passport';
+ else if(passport||passportNameLine){idType='Passport';idNumber=(passport.match(/^P<[A-Z]{3}([A-Z0-9<]{9})/)||[])[1]?.replace(/</g,'')||'';}
  const dobMatch=normalized.match(/(?:DOB|DATE OF BIRTH|D\.?O\.?B\.?|BIRTH|जन्म(?:\s*तिथि)?)\s*[:：-]?\s*(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}[/-]\d{2}[/-]\d{2})/i);
  const phoneMatch=normalized.match(/\b([6-9]\d{9})\b/);
  const gender=/\bFEMALE\b/i.test(normalized)?'Female':/\bMALE\b/i.test(normalized)?'Male':'';
@@ -1129,7 +1129,7 @@ async function saveGuest(id){
  guest.name=name;guest.phone=phone;guest.email=document.getElementById('gEmail')?.value||'';guest.idType=document.getElementById('gIdType')?.value||'';guest.idNumber=document.getElementById('gIdNumber')?.value||'';if(pendingGuestPhoto)guest.idPhoto=pendingGuestPhoto;
  guest.occupants=[...document.querySelectorAll('#guestOccList [data-occ]')].map((x,i)=>{const occupantId=x.dataset.aureliaOccupantId||'',old=(guest.occupants||[]).find(o=>occupantId&&String(o.id)===String(occupantId))||(guest.occupants||[])[i]||{};return {id:old.id||occupantId||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:x.dataset.aureliaOccupantPhoto||old.idPhoto||''};});
  guest.vehicles=[...document.querySelectorAll('#guestVehList [data-veh]')].map((x,i)=>{const old=(guest.vehicles||[])[i]||{};return {id:old.id||('v'+Date.now()+Math.random()),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:old.photo||''};});
- const duplicate=findCanonicalGuest(guest,stableId);let saved;
+ const incomingId=guestCanonicalIdNumber(guest.idNumber||guest.idProofNumber),incomingName=guestCanonicalName(guest.name||guest.guestName),incomingPhone=String(guest.phone||guest.mobile||'').replace(/\D/g,'').slice(-10);const duplicate=(DB.guests||[]).find(candidate=>{if(!candidate||String(candidate.id)===String(stableId))return false;const candidateId=guestCanonicalIdNumber(candidate.idNumber||candidate.idProofNumber);if(incomingId.length>=4&&candidateId===incomingId)return true;return !!incomingName&&!!incomingPhone&&incomingName===guestCanonicalName(candidate.name||candidate.guestName)&&incomingPhone===String(candidate.phone||candidate.mobile||'').replace(/\D/g,'').slice(-10);});let saved;
  if(duplicate&&String(duplicate.id)!==String(stableId)){const survivorId=duplicate.id;Object.assign(duplicate,guest,{id:survivorId});saved=duplicate;for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const record of rows)if(String(record.guestId||'')===String(stableId))record.guestId=survivorId;DB.guests=DB.guests.filter(x=>String(x.id)!==String(stableId));}
  else if(original){Object.assign(original,guest,{id:stableId});saved=original;}
  else{saved=guest;DB.guests.push(saved);}
@@ -1368,7 +1368,7 @@ function saveSettings(){
  save();refreshBrand();audit('Settings updated','Hotel identity / master features');save();showPage('settings');toast('Settings saved');
 }
 function searchAll(q){
- q=q.trim().toLowerCase();if(!q)return[];const out=[];
+ dedupeExistingGuestsInPlace();q=String(q||'').trim().toLowerCase();if(!q)return[];const out=[];
  DB.guests.forEach(g=>{if(`${g.name} ${g.phone} ${g.idNumber}`.toLowerCase().includes(q))out.push({group:'Guests',title:g.name,sub:`${g.phone||''} · ${g.idType||''}`,fn:()=>openGuest(g.id)})});
  DB.rooms.forEach(r=>{if(`${r.number} ${r.type} ${r.status}`.toLowerCase().includes(q))out.push({group:'Rooms',title:`Room ${r.number}`,sub:`${r.type} · ${r.status}`,fn:()=>showPage('rooms')})});
  DB.bookings.forEach(b=>{if(`${b.sr} ${guest(b)?.name||''}`.toLowerCase().includes(q))out.push({group:'Bookings',title:b.sr,sub:`${guest(b)?.name||''} · Room ${room(b)?.number||''}`,fn:()=>openBooking(b.id)})});
