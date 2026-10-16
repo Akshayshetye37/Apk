@@ -13,6 +13,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:cryptography/cryptography.dart';
 import 'pms_access_gate.dart';
+import 'pdf_viewer_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -398,6 +399,8 @@ Future<Uint8List> _renderHtmlPdf(String source) async {
   return document.save();
 }
 
+final GlobalKey<NavigatorState> aureliaNavigatorKey = GlobalKey<NavigatorState>();
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const AureliaPmsApp());
@@ -409,6 +412,7 @@ class AureliaPmsApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: aureliaNavigatorKey,
       title: 'Aurelia PMS',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -666,10 +670,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           final temp = await getTemporaryDirectory();
           final file = File('${temp.path}/$pdfName');
           await file.writeAsBytes(pdfBytes, flush: true);
-          final result = await OpenFilex.open(file.path, type: 'application/pdf');
-          if (result.type != ResultType.done) {
-            throw StateError('No compatible PDF app could open this document: ${result.message}');
-          }
+          final navigator = aureliaNavigatorKey.currentState;
+          if (navigator == null) throw StateError('The in-app PDF viewer is not available.');
+          await navigator.push(MaterialPageRoute<void>(
+            builder: (_) => ProductionPdfViewerRoute(filePath: file.path, documentTitle: pdfName),
+          ));
         }
         await _controller.runJavaScript('window.aureliaNativeFileResult?.(${jsonEncode(requestId)},true,null);');
         return;
