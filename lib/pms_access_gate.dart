@@ -61,6 +61,13 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
 
   Future<void> _initialize() async {
     try {
+      final protection = await widget.readSecret('aurelia_pms_auth_enabled_v1');
+      if (protection == 'false') {
+        if (!mounted) return;
+        setState(() { _loading = false; _configured = false; });
+        await widget.onUnlocked();
+        return;
+      }
       final salt = await widget.readSecret(_saltKey);
       final hash = await widget.readSecret(_hashKey);
       if ((salt == null) != (hash == null)) {
