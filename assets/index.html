@@ -482,9 +482,17 @@ function setAllFeatures(on){
 }
 function getExportRecords(scope){
  if(scope==='guest')return [...(DB.guests||[])].filter(g=>g&&g.id!=null).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))).map(g=>({id:String(g.id),label:`${g.name||'Unnamed guest'} · ${g.phone||'No phone'} · ${String(g.id).slice(-6)}`}));
- if(scope==='booking')return DB.bookings.map(b=>({id:b.id,label:`${b.sr} · ${guest(b)?.name||''}`}));
+ if(scope==='booking'){
+  const unique=new Map();
+  for(const b of (DB.bookings||[])){if(!b||b.id==null)continue;const key=String(b.id);const prior=unique.get(key);if(!prior||String(b.updatedAt||b.createdAt||'')>=String(prior.updatedAt||prior.createdAt||''))unique.set(key,b);}
+  return [...unique.values()].map(b=>({id:String(b.id),label:`${b.sr||b.id} · ${guest(b)?.name||'Guest'}`})).sort((x,y)=>x.label.localeCompare(y.label));
+ }
  if(scope==='room')return DB.rooms.map(r=>({id:r.id,label:`Room ${r.number}`}));
- if(scope==='folio')return DB.bookings.filter(b=>b.status==='active').map(b=>({id:b.id,label:`${b.sr} · Room ${room(b)?.number||''}`}));
+ if(scope==='folio'){
+  const unique=new Map();
+  for(const b of (DB.bookings||[])){if(!b||b.id==null||b.status!=='active')continue;const key=String(b.id);if(!unique.has(key))unique.set(key,b);}
+  return [...unique.values()].map(b=>({id:String(b.id),label:`${b.sr||b.id} · Room ${room(b)?.number||''}`}));
+ }
  return [{id:'all',label:'Entire PMS data'}];
 }
 function refreshExportRecords(){
@@ -1531,7 +1539,7 @@ function restaurantCustomerBox(){
     <div class="restaurant-customer">
       <div class="row" style="justify-content:space-between"><b>RANDOM / WALK-IN GUEST</b><span class="audit-chip walkin-badge">Restaurant only</span></div>
       <div class="field" style="margin-top:9px"><label>Walk-in customer name (optional)</label>
-        <input id="restaurantWalkinName" placeholder="Customer name" value="${esc(window.restaurantWalkinName||"")}" oninput="window.restaurantWalkinName=this.value;restaurantMode='walkin'">
+        <input id="restaurantWalkinName" placeholder="Customer name" value="${esc(typeof window.restaurantWalkinName==="string"?window.restaurantWalkinName:"")}" oninput="window.restaurantWalkinName=this.value;restaurantMode='walkin'">
       </div>
       <div class="field" style="margin-top:9px"><label>Mobile number</label>
         <input id="restaurantWalkin" placeholder="+91 mobile number" value="${esc(restaurantWalkinMobile)}" oninput="restaurantWalkinMobile=this.value;restaurantMode='walkin'">
