@@ -3497,7 +3497,7 @@ function dedupeExistingGuestsInPlace(preferredId){
 window.upsertGuestAndCascade=function(incoming,existingId){
  const data=Object.assign({},incoming||{}),match=findCanonicalGuest(data,existingId),guest=match||Object.assign({id:data.id||'g'+Date.now(),occupants:[],vehicles:[]},data),oldId=match?.id||existingId||'';
  if(match)Object.assign(match,data,{id:match.id||data.id||'g'+Date.now()});else DB.guests.push(guest);
- dedupeExistingGuestsInPlace(saved.id);
+ dedupeExistingGuestsInPlace(guest.id);
  for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){if(String(row.guestId||'')!==String(guest.id)&&(!oldId||String(row.guestId||'')!==String(oldId)))continue;row.guestId=guest.id;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
  return guest;
 };
