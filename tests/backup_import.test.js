@@ -17,6 +17,8 @@ function createHarness(options = {}) {
     AureliaNative: options.native ? { postMessage: message => postedMessages.push(JSON.parse(message)) } : undefined,
     __AURELIA_SECURE_DB_READY: !!options.native,
     DB: options.db || { guests: [{ id: 'old' }], rooms: [], bookings: [], obsolete: ['remove me'] },
+    restaurantSelectedBooking: options.selectedBooking || '',
+    commitRestaurant: options.commitRestaurant,
     toast: message => messages.push(message),
     confirm: () => options.confirm !== false,
     addEventListener: (name, fn) => { listeners[name] = fn; },
@@ -42,11 +44,13 @@ function createHarness(options = {}) {
   const context = {
     window, document, navigator: {}, console, FileReader: FakeFileReader, Blob,
     URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
+    DB: window.DB, restaurantSelectedBooking: options.selectedBooking || '',
     setTimeout: () => 0, Date, JSON, Object, Array, Number, String, RegExp, Set, Promise
   };
   vm.runInNewContext(fs.readFileSync('scripts/interaction_reliability.js', 'utf8'), context);
   return {
     window, messages, postedMessages,
+    commitRestaurant(mode) { if (typeof window.commitRestaurant === 'function') return window.commitRestaurant(mode); },
     async importJson(content) {
       window.aureliaImportBackupFile({ size: Buffer.byteLength(content), content });
       await lastReader.done;
@@ -119,4 +123,44 @@ test('encrypted backup import is delegated to native decrypt-and-validate flow',
   assert.equal(app.postedMessages.length, 1);
   assert.equal(app.postedMessages[0].type, 'restoreEncryptedBackup');
   assert.equal(app.postedMessages[0].envelope.app, 'AURELIA PMS ENCRYPTED BACKUP');
+});
+
+test('room billing requires an active stay and valid room', () => {
+  let commits = 0;
+  const app = createHarness({
+    selectedBooking: 'b1',
+    commitRestaurant: () => { commits += 1; },
+    db: {
+      restaurantCart: [{ itemId: 'food1', name: 'Curry', price: 1, qty: 1 }],
+      madeFoods: [{ id: 'food1', name: 'Chicken Curry', sell: 180, unit: 'plate', active: true }],
+      bookings: [{ id: 'b1', roomId: 'r1', status: 'checked_out' }],
+      rooms: [{ id: 'r1', number: '101', status: 'available' }]
+    }
+  });
+  app.commitRestaurant('room');
+  assert.equal(commits, 0);
+  assert.match(app.messages.at(-1), /active checked-in guest/);
+});
+
+test('room billing canonicalizes prices and rejects non-menu items', () => {
+  let committedMode = '';
+  let committedCart = null;
+  const app = createHarness({
+    selectedBooking: 'b1',
+    commitRestaurant: mode => { committedMode = mode; committedCart = JSON.parse(JSON.stringify(appDb.restaurantCart)); },
+    db: {
+      restaurantCart: [{ itemId: 'food1', name: 'Forged name', price: 1, qty: 2 }],
+      madeFoods: [{ id: 'food1', name: 'Chicken Curry', sell: 180, unit: 'plate', active: true }],
+      bookings: [{ id: 'b1', roomId: 'r1', status: 'active' }],
+      rooms: [{ id: 'r1', number: '101', status: 'occupied' }]
+    }
+  });
+  const appDb = app.window.DB;
+  app.commitRestaurant('room');
+  assert.equal(committedMode, 'room');
+  assert.deepEqual(committedCart, [{ itemId: 'food1', name: 'Chicken Curry', unit: 'plate', price: 180, qty: 2 }]);
+  appDb.restaurantCart[0].itemId = 'hotel-room-charge';
+  app.commitRestaurant('room');
+  assert.equal(committedMode, 'room');
+  assert.match(app.messages.at(-1), /Only active restaurant menu items/);
 });
