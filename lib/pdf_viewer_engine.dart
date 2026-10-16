@@ -82,7 +82,7 @@ class _ProductionPdfViewerRouteState extends State<ProductionPdfViewerRoute> {
   }
 
   void _zoomChanged(ScaleEndDetails details) {
-    _zoom = _transformController.value.getMaxScaleOnAxis().clamp(1.0, 2.5);
+    _zoom = _transformController.value.getMaxScaleOnAxis().clamp(1.0, 2.5).toDouble();
     _render(_page, _zoom, debounce: true);
   }
 
@@ -131,10 +131,10 @@ class _ProductionPdfViewerRouteState extends State<ProductionPdfViewerRoute> {
       child: ColoredBox(color: const Color(0xFF172F27), child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(onPressed: _page > 0 && !_loading ? () { _zoom = 1; _render(_page - 1, 1); } : null,
+          IconButton(onPressed: _page > 0 && !_loading ? () { _zoom = 1; _transformController.value = Matrix4.identity(); _render(_page - 1, 1); } : null,
             icon: const Icon(Icons.chevron_left, color: Colors.white)),
           Text('Page ${_page + 1} of $_pageCount', style: const TextStyle(color: Colors.white)),
-          IconButton(onPressed: _page + 1 < _pageCount && !_loading ? () { _zoom = 1; _render(_page + 1, 1); } : null,
+          IconButton(onPressed: _page + 1 < _pageCount && !_loading ? () { _zoom = 1; _transformController.value = Matrix4.identity(); _render(_page + 1, 1); } : null,
             icon: const Icon(Icons.chevron_right, color: Colors.white)),
         ],
       )),
