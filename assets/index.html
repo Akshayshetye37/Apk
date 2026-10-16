@@ -1101,7 +1101,7 @@ async function saveBookingForm(id){
  else{const b={id:'b'+Date.now(),sr:'BKG-'+String(DB.seq.booking++).padStart(6,'0'),...data,status:'active',charges:[{id:'c'+Date.now(),item:'Room charges',qty:nightsBetween(checkIn,checkOut),rate:r.rate,amount:base,at:checkIn}],payments:paid?[{id:'p'+Date.now(),amount:paid,method:'Unspecified',status:'verified',at:new Date().toISOString(),ref:'MANUAL'}]:[]};DB.bookings.unshift(b);r.status='occupied';}
  if(isNew)DB.guests.push(guest);
  for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){if(String(row.guestId||'')!==String(guestId))continue;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
- if(typeof dedupeExistingGuestsInPlace==='function')dedupeExistingGuestsInPlace();
+ if(typeof dedupeExistingGuestsInPlace==='function')dedupeExistingGuestsInPlace(guestId);
  audit(id?'Booking edited':'Booking created',id||DB.bookings[0].sr);save();closeModal();pendingBookingIdPhoto='';pendingBookingPhotoPromise=Promise.resolve();showPage('bookings');toast('Booking saved · '+(1+occ.length)+' guest'+(occ.length?'s':'')+' · '+money(base)+' room charges');
 }
 function openGuest(id){
@@ -1130,10 +1130,23 @@ async function saveGuest(id){
  guest.occupants=[...document.querySelectorAll('#guestOccList [data-occ]')].map((x,i)=>{const occupantId=x.dataset.aureliaOccupantId||'',old=(guest.occupants||[]).find(o=>occupantId&&String(o.id)===String(occupantId))||(guest.occupants||[])[i]||{};return {id:old.id||occupantId||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:x.dataset.aureliaOccupantPhoto||old.idPhoto||''};});
  guest.vehicles=[...document.querySelectorAll('#guestVehList [data-veh]')].map((x,i)=>{const old=(guest.vehicles||[])[i]||{};return {id:old.id||('v'+Date.now()+Math.random()),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:old.photo||''};});
  const incomingId=guestCanonicalIdNumber(guest.idNumber||guest.idProofNumber),incomingName=guestCanonicalName(guest.name||guest.guestName),incomingPhone=String(guest.phone||guest.mobile||'').replace(/\D/g,'').slice(-10);const duplicate=(DB.guests||[]).find(candidate=>{if(!candidate||String(candidate.id)===String(stableId))return false;const candidateId=guestCanonicalIdNumber(candidate.idNumber||candidate.idProofNumber);if(incomingId.length>=4&&candidateId.length>=4)return candidateId===incomingId;return !!incomingName&&!!incomingPhone&&incomingName===guestCanonicalName(candidate.name||candidate.guestName)&&incomingPhone===String(candidate.phone||candidate.mobile||'').replace(/\D/g,'').slice(-10);});let saved;
- if(duplicate&&String(duplicate.id)!==String(stableId)){const survivorId=duplicate.id;Object.assign(duplicate,guest,{id:survivorId});saved=duplicate;for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const record of rows)if(String(record.guestId||'')===String(stableId))record.guestId=survivorId;DB.guests=DB.guests.filter(x=>String(x.id)!==String(stableId));}
- else if(original){Object.assign(original,guest,{id:stableId});saved=original;}
+ if(duplicate&&String(duplicate.id)!==String(stableId)){
+  if(original){
+   const duplicateId=duplicate.id,editedGuest={...guest};
+   Object.assign(original,duplicate,editedGuest,{id:stableId});
+   if(!editedGuest.occupants?.length)original.occupants=duplicate.occupants||[];
+   if(!editedGuest.vehicles?.length)original.vehicles=duplicate.vehicles||[];
+   saved=original;
+   for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const record of rows)if(String(record.guestId||'')===String(duplicateId))record.guestId=stableId;
+   DB.guests=DB.guests.filter(x=>String(x.id)!==String(duplicateId));
+  }else{
+   const survivorId=duplicate.id;Object.assign(duplicate,guest,{id:survivorId});saved=duplicate;
+   for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const record of rows)if(String(record.guestId||'')===String(stableId))record.guestId=survivorId;
+   DB.guests=DB.guests.filter(x=>String(x.id)!==String(stableId));
+  }
+ }else if(original){Object.assign(original,guest,{id:stableId});saved=original;}
  else{saved=guest;DB.guests.push(saved);}
- dedupeExistingGuestsInPlace();
+ dedupeExistingGuestsInPlace(saved.id);
  for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const record of rows){if(String(record.guestId||'')!==String(saved.id))continue;if('guestName'in record)record.guestName=saved.name;if('name'in record)record.name=saved.name;if('phone'in record)record.phone=saved.phone;if('mobile'in record)record.mobile=saved.phone;if('idNumber'in record)record.idNumber=saved.idNumber;}
  audit(id?'Guest edited':'Guest created',saved.name);save();pendingGuestPhoto='';pendingGuestPhotoPromise=Promise.resolve();closeModal();showPage('guests');toast('Guest saved · '+(1+(saved.occupants||[]).length)+' total guest'+(saved.occupants?.length?'s':''));
 }
@@ -3451,21 +3464,40 @@ function findCanonicalGuest(incoming,existingId){
  if(name&&phone){const hit=all.find(g=>guestCanonicalName(g.name||g.guestName)===name&&String(g.phone||g.mobile||'').replace(/\D/g,'').slice(-10)===phone);if(hit)return hit;}
  return null;
 }
-function dedupeExistingGuestsInPlace(){
+function dedupeExistingGuestsInPlace(preferredId){
  if(!Array.isArray(DB.guests))DB.guests=[];
  const byKey=new Map(),aliases=new Map(),kept=[];
- for(const g of DB.guests){if(!g)continue;const number=guestCanonicalIdNumber(g.idNumber||g.idProofNumber),name=guestCanonicalName(g.name||g.guestName),phone=String(g.phone||g.mobile||'').replace(/\D/g,'').slice(-10);
-  const key=number.length>=8?'idnum:'+number:(name&&phone?'name-phone:'+name+'|'+phone:'id:'+String(g.id||('unkeyed-'+kept.length))),prior=byKey.get(key);
+ for(const g of DB.guests){
+  if(!g)continue;
+  const number=guestCanonicalIdNumber(g.idNumber||g.idProofNumber),name=guestCanonicalName(g.name||g.guestName),phone=String(g.phone||g.mobile||'').replace(/\D/g,'').slice(-10);
+  const key=number.length>=8?'idnum:'+number:(name&&phone?'name-phone:'+name+'|'+phone:'id:'+String(g.id||('unkeyed-'+kept.length)));
+  const prior=byKey.get(key);
   if(!prior){byKey.set(key,g);kept.push(g);continue;}
-  const canonicalId=prior.id||g.id;Object.assign(prior,g,{id:canonicalId,name:g.name||prior.name,phone:g.phone||prior.phone,idNumber:g.idNumber||prior.idNumber,idPhoto:g.idPhoto||prior.idPhoto,occupants:g.occupants?.length?g.occupants:(prior.occupants||[]),vehicles:g.vehicles?.length?g.vehicles:(prior.vehicles||[])});aliases.set(String(g.id),String(canonicalId));
+  if(preferredId!=null&&String(g.id)===String(preferredId)&&String(prior.id)!==String(preferredId)){
+   const priorIndex=kept.indexOf(prior),edited={...g};
+   Object.assign(g,prior,edited,{id:preferredId,name:edited.name||prior.name,phone:edited.phone||prior.phone,idNumber:edited.idNumber||prior.idNumber,idPhoto:edited.idPhoto||prior.idPhoto,occupants:edited.occupants?.length?edited.occupants:(prior.occupants||[]),vehicles:edited.vehicles?.length?edited.vehicles:(prior.vehicles||[])});
+   if(priorIndex>=0)kept[priorIndex]=g;
+   byKey.set(key,g);aliases.set(String(prior.id),String(preferredId));continue;
+  }
+  const canonicalId=prior.id||g.id;
+  Object.assign(prior,g,{id:canonicalId,name:g.name||prior.name,phone:g.phone||prior.phone,idNumber:g.idNumber||prior.idNumber,idPhoto:g.idPhoto||prior.idPhoto,occupants:g.occupants?.length?g.occupants:(prior.occupants||[]),vehicles:g.vehicles?.length?g.vehicles:(prior.vehicles||[])});
+  aliases.set(String(g.id),String(canonicalId));
  }
- if(aliases.size)for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){const id=aliases.get(String(row.guestId||''));if(id){row.guestId=id;const canonical=DB.guests.find(g=>String(g.id)===id);if('guestName'in row&&canonical)row.guestName=canonical.name||row.guestName;if('name'in row&&canonical)row.name=canonical.name||row.name;}}
+ if(aliases.size)for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){
+  const canonicalId=aliases.get(String(row.guestId||''));if(!canonicalId)continue;row.guestId=canonicalId;
+  const canonical=kept.find(g=>String(g.id)===String(canonicalId));if(!canonical)continue;
+  if('guestName'in row)row.guestName=canonical.name||row.guestName;
+  if('name'in row)row.name=canonical.name||row.name;
+  if('phone'in row)row.phone=canonical.phone||row.phone;
+  if('mobile'in row)row.mobile=canonical.phone||row.mobile;
+  if('idNumber'in row)row.idNumber=canonical.idNumber||row.idNumber;
+ }
  DB.guests=kept;return kept;
 }
 window.upsertGuestAndCascade=function(incoming,existingId){
  const data=Object.assign({},incoming||{}),match=findCanonicalGuest(data,existingId),guest=match||Object.assign({id:data.id||'g'+Date.now(),occupants:[],vehicles:[]},data),oldId=match?.id||existingId||'';
  if(match)Object.assign(match,data,{id:match.id||data.id||'g'+Date.now()});else DB.guests.push(guest);
- dedupeExistingGuestsInPlace();
+ dedupeExistingGuestsInPlace(saved.id);
  for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){if(String(row.guestId||'')!==String(guest.id)&&(!oldId||String(row.guestId||'')!==String(oldId)))continue;row.guestId=guest.id;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
  return guest;
 };
