@@ -110,6 +110,32 @@
     if (input.hasAttribute('data-preview-file') && ['pdf','png','jpg','jpeg','webp','gif','bmp'].includes(extension(file.name))) showPreview(file);
   }, true);
 
+  // Remove only the legacy fixed-position bottom-right action cluster.
+  function removeLegacyFloatingActions() {
+    const labels = ['export', 'import', 'open file'];
+    document.querySelectorAll('button, a, [role="button"]').forEach(function (el) {
+      const label = String(el.innerText || el.getAttribute('aria-label') || el.title || '')
+        .replace(/\\s+/g, ' ').trim().toLowerCase();
+      if (labels.indexOf(label) < 0) return;
+      let node = el, floating = false;
+      for (let depth = 0; node && depth < 4; depth++, node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (style.position === 'fixed' && style.bottom !== 'auto' && style.right !== 'auto') {
+          floating = true; break;
+        }
+      }
+      if (floating) {
+        const parent = el.parentElement;
+        el.remove();
+        if (parent && parent.children.length === 0) parent.remove();
+      }
+    });
+  }
+  removeLegacyFloatingActions();
+  if (document.documentElement) {
+    new MutationObserver(removeLegacyFloatingActions).observe(document.documentElement, {childList:true, subtree:true});
+  }
+
   // Route the PMS's existing Blob downloads through Android's Storage Access Framework.
   // This avoids WebView blob-download behavior that silently does nothing on Android.
   const originalDownloadBlob = typeof window.downloadBlob === 'function' ? window.downloadBlob : null;
