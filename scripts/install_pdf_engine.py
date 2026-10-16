@@ -135,9 +135,9 @@ object PdfEnginePlugin {
 (plugin_dir / "PdfEnginePlugin.kt").write_text(plugin, encoding="utf-8")
 if "PdfEnginePlugin.register(flutterEngine)" not in source:
     source = source.rstrip()
-    if re.search(r"class\s+MainActivity\s*:\s*FlutterActivity\s*(?:\(\s*\))?\s*(?:\{\s*\})?\s*$", source):
+    if re.search(r"(?m)^class\s+MainActivity\s*:\s*FlutterActivity\s*(?:\(\s*\))?\s*(?:\{\s*\})?\s*$", source):
         source = re.sub(
-            r"class\s+MainActivity\s*:\s*FlutterActivity\s*(?:\(\s*\))?\s*(?:\{\s*\})?\s*$",
+            r"(?m)^class\s+MainActivity\s*:\s*FlutterActivity\s*(?:\(\s*\))?\s*(?:\{\s*\})?\s*$",
             "class MainActivity : FlutterActivity() {\n"
             "    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {\n"
             "        super.configureFlutterEngine(flutterEngine)\n"
