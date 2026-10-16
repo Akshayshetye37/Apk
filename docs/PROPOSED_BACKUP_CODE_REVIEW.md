@@ -26,7 +26,7 @@ The native Flutter wrapper stores the PMS JSON payload in app-private files encr
 
 ## Safe implementation path
 
-- Keep the production hold active and Google Drive upload disabled.
+- Keep direct OAuth/Drive API sync disabled; validate the manual passphrase-encrypted `.aurelia` save/restore path on device before production.
 - Freeze the actual Flutter dependency graph and require `flutter pub get --enforce-lockfile` in CI.
 - Implement Drive backup for the **existing portable encrypted backup envelope**, not a hypothetical SQLCipher database. Upload one self-contained encrypted object per version, verify downloaded bytes with a cryptographic digest, select a version by a single manifest/object ID, and validate/decrypt the complete payload before calling the existing encrypted-store write path.
 - Never prune old versions until the newly uploaded version has passed read-back verification and the retention set has been fully enumerated. Keep at least one prior verified version.
