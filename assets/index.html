@@ -1567,36 +1567,6 @@ function restaurantStockCheck(){
   }
   return {ok:true};
 }
-function commitRestaurant(mode){
-  if(!childOn("restaurant","restaurantBilling")){toast("Restaurant billing is disabled");return}
-  if(!DB.restaurantCart.length){toast("Add food first");return}
-  if(mode==="room" && (!childOn("restaurant","addToRoom")||!restaurantSelectedBooking)){toast("Select a staying guest first");return}
-  if(mode==="walkin" && !restaurantWalkinMobile.trim()){toast("Enter walk-in mobile number");return}
-  const stock=restaurantStockCheck();if(!stock.ok){toast(`Insufficient stock: ${stock.item} (${stock.available} available)`);return}
-  const c=restaurantModeData(mode),saleId="RS-"+Date.now(),amount=restaurantTotal();
-  const walkInNo=mode==="walkin" ? "WALK-IN-"+String((DB.restaurantSales||[]).filter(x=>x.mode==="walkin").length+1).padStart(4,"0") : "";
-  const sale={id:saleId,walkInNo,mode,bookingId:c.booking?.id||"",guestId:c.guest?.id||"",guestName:c.guest?.name||(window.restaurantWalkinName||"Walk-in Customer").trim(),roomNumber:c.room?.number||"",mobile:c.mobile||"",items:DB.restaurantCart.map(x=>({...x})),amount,status:"UNPAID",createdAt:new Date().toISOString()};
-  /* Demo transaction: stock ledger + restaurant sale + optional folio charge. */
-  sale.items.forEach(x=>{
-    const i=DB.inventory.find(y=>y.id===x.itemId);
-    DB.inventoryLedger.push({id:"t"+Date.now()+Math.random(),type:"sale",itemId:i.id,qty:x.qty,unitPrice:x.price,amount:x.qty*x.price,bookingId:c.booking?.id||"",restaurantSaleId:saleId,at:new Date().toISOString(),note:"Restaurant sale"});
-  });
-  if(c.booking){
-    c.booking.charges=c.booking.charges||[];
-    sale.items.forEach((item,idx)=>c.booking.charges.push({
-      id:"c"+Date.now()+"-"+idx,
-      item:"Restaurant · "+item.name+" · Bill "+saleId,
-      qty:Number(item.qty||1),rate:Number(item.price||0),
-      amount:Number(item.qty||1)*Number(item.price||0),
-      at:new Date().toISOString(),restaurantSaleId:saleId,restaurantItemName:item.name
-    }));
-    sale.status="ON_FOLIO";
-  }
-  DB.restaurantSales.unshift(sale);
-  audit("Restaurant sale created",`${saleId} · ${mode} · ${money(amount)}${c.booking?" · "+c.booking.sr:""}`);
-  DB.restaurantCart=[];save();renderRestaurant();
-  toast(mode==="room"?`Food added to Room ${c.room.number} folio`:"Walk-in restaurant bill created");
-}
 function restaurantDraft(){
   const c=restaurantModeData(restaurantSelectedBooking?"room":"walkin");
   return {c,items:DB.restaurantCart,total:restaurantTotal()};
@@ -2190,58 +2160,6 @@ function saveRestaurantIngredient(id){
 /* Final restaurant render/history routing. */
 pages.restaurantHistory=pagesRestaurantHistoryFinal;
 pages.pos=pagesPOSFinal;
-
-/* Final restaurant commit path: Made Food is the saleable item.
-   Raw kitchen ingredients are NOT treated as ready-made inventory. */
-window.commitRestaurant = function(mode){
-  if(!childOn("restaurant","restaurantBilling")){toast("Restaurant billing is disabled");return}
-  if(!DB.restaurantCart.length){toast("Add food first");return}
-  if(mode==="room" && (!childOn("restaurant","addToRoom") || !restaurantSelectedBooking)){
-    toast("Select a staying guest first");return
-  }
-  const selected=DB.bookings.find(b=>b.id===restaurantSelectedBooking);
-  const g=selected&&guest(selected), r=selected&&room(selected);
-  const amount=restaurantTotal();
-  const saleId="RS-"+Date.now();
-  const sale={
-    id:saleId,
-    mode:mode==="room"?"stay":"walkin",
-    bookingId:selected?.id||"",
-    guestId:g?.id||"",
-    guestName:g?.name||"",
-    roomNumber:r?.number||"",
-    mobile:mode==="walkin"?(restaurantWalkinMobile||"").trim():(g?.phone||""),
-    items:DB.restaurantCart.map(x=>({...x})),
-    amount,
-    status:mode==="room"?"ON_FOLIO":"OPEN",
-    createdAt:new Date().toISOString()
-  };
-  if(mode==="room" && selected){
-    selected.charges=selected.charges||[];
-    DB.restaurantCart.forEach((foodItem,index)=>{
-      const qty=Number(foodItem.qty||1), rate=Number(foodItem.price||foodItem.rate||0);
-      selected.charges.push({
-        id:"c"+Date.now()+"_"+index,
-        item:foodItem.name||foodItem.item||"Restaurant item",
-        restaurantItemName:foodItem.name||foodItem.item||"Restaurant item",
-        qty,
-        rate,
-        amount:qty*rate,
-        at:sale.createdAt,
-        restaurantSaleId:saleId
-      });
-    });
-  }
-  DB.restaurantSales.unshift(sale);
-  audit(mode==="room"?"Restaurant food added to room folio":"Restaurant walk-in bill opened",
-        `${saleId} · ${sale.items.map(x=>x.name+" × "+x.qty).join(", ")} · ${money(amount)}`);
-  DB.restaurantCart=[];
-  if(mode==="room") restaurantSelectedBooking=restaurantSelectedBooking;
-  else DB.openRestaurantBillId=saleId;
-  save();
-  renderRestaurant();
-  toast(mode==="room"?"Food added to room folio":"Walk-in restaurant bill opened");
-};
 
 /* Refresh if POS is currently visible after this replacement layer loads. */
 if(typeof currentPage!=="undefined" && currentPage==="pos") showPage("pos");
