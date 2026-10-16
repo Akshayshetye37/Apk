@@ -415,6 +415,40 @@
     }
   } catch (_) {}
 
+  // Normalize image uploads across settings (hotel logo/payment QR) and guest
+  // forms. Keep the selected image preview visible and retain a data URL for save
+  // handlers; never rely on a transient WebView file:// URL as the stored image.
+  document.addEventListener('change', function (event) {
+    const input = event.target;
+    if (!input || input.type !== 'file' || !input.files || !input.files[0]) return;
+    const file = input.files[0];
+    if (!/^image\\//i.test(file.type)) return;
+    if (file.size > 8 * 1024 * 1024) {
+      input.value = '';
+      if (typeof window.toast === 'function') toast('Choose an image no larger than 8 MiB.');
+      return;
+    }
+    const field = input.closest('.field') || input.parentElement;
+    if (!field) return;
+    const reader = new FileReader();
+    reader.onerror = function () { if (typeof window.toast === 'function') toast('Could not read selected image. Please try again.'); };
+    reader.onload = function () {
+      const data = String(reader.result || '');
+      input.dataset.aureliaImageData = data;
+      let preview = field.querySelector('img[data-aurelia-upload-preview]');
+      if (!preview) {
+        preview = document.createElement('img');
+        preview.setAttribute('data-aurelia-upload-preview', '');
+        preview.alt = 'Selected image preview';
+        preview.style.cssText = 'display:block;max-width:220px;max-height:160px;object-fit:contain;margin-top:8px;border:1px solid var(--line);border-radius:8px;';
+        field.appendChild(preview);
+      }
+      preview.src = data;
+      preview.hidden = false;
+    };
+    reader.readAsDataURL(file);
+  }, true);
+
   // On-device OCR for primary guest/occupant ID image fields. Text is offered for
   // review/editing; OCR is never silently written into identity fields as ground truth.
   const pendingOcrTargets = Object.create(null);
