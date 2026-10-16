@@ -87,8 +87,13 @@ object PdfEnginePlugin {
                         try {
                             val pdf = renderer ?: error("No PDF is open.")
                             require(index in 0 until pdf.pageCount) { "Page index is out of range." }
-                            val w = (width * scale).toInt().coerceIn(300, MAX_RENDER_EDGE)
-                            val h = (height * scale).toInt().coerceIn(300, MAX_RENDER_EDGE)
+                            val baseW = (width * scale).toInt().coerceIn(300, MAX_RENDER_EDGE)
+                            val baseH = (height * scale).toInt().coerceIn(300, MAX_RENDER_EDGE)
+                            val pageInfo = pdf.openPage(index)
+                            val aspect = pageInfo.width.toDouble() / pageInfo.height.toDouble()
+                            pageInfo.close()
+                            val w = minOf(baseW.toDouble(), baseH * aspect).toInt().coerceIn(300, MAX_RENDER_EDGE)
+                            val h = (w / aspect).toInt().coerceIn(300, MAX_RENDER_EDGE)
                             val key = "$index:$w:$h"
                             val bytes = cache.get(key) ?: pdf.openPage(index).use { page ->
                                 val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
