@@ -25,7 +25,7 @@ if '_lockUntilKey' not in gate or '310000' not in gate or 'didChangeAppLifecycle
 if 'PmsAccessGate' not in main or 'local_auth' not in gate: errors.append('Native PIN/device authentication gate is missing.')
 if "if (!enabled)" not in main or 'App protection cannot be disabled in this secure build.' not in main: errors.append('Native app protection must fail closed when web content requests disabling the lock.')
 if "if (enabled === false)" not in file_viewing or 'App protection cannot be disabled in this secure build.' not in file_viewing: errors.append('Web settings bridge must not expose an app-lock disable action.')
-if '__aureliaRoomBillingGuardInstalled' not in backup or 'active checked-in guest' not in backup or 'menuItem.sell' not in backup: errors.append('Room billing must validate active stays and canonical menu prices.')
+if '__aureliaRoomBillingGuardInstalled' not in backup or 'active checked-in guest' not in backup or 'Number(item && item.sell)' not in backup or "requestedSource === 'stock'" not in backup: errors.append('Room billing must validate active stays, canonical menu prices, and saleable stock items.')
 if 'room billing requires an active stay' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower() or 'room billing canonicalizes prices' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower(): errors.append('Room billing regression tests are missing.')
 if not html.strip(): errors.append('Bundled PMS HTML asset is empty; refusing to package a blank app.')
 if 'quickchart.io/qr' in html.lower() or 'api.qrserver.com' in html.lower(): errors.append('External QR generation service remains in HTML.')
