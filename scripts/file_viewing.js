@@ -159,40 +159,27 @@
     document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 800);
   };
 
-  // Keep the Google Drive folder ID in the PMS backup/export area, but do not claim
-  // cloud backup works until OAuth and encrypted upload/restore are implemented.
+  // Expose only implemented encrypted local backup operations. Cloud backup is
+  // intentionally omitted until OAuth, encrypted upload, and verified restore exist.
   try {
     if (typeof pages !== 'undefined' && pages && typeof pages.importExport === 'function') {
       const originalImportExport = pages.importExport;
       pages.importExport = function () {
         let html = originalImportExport.apply(this, arguments);
-        if (html.includes('aureliaDriveFolderIdCard')) return html;
-        const current = String((typeof DB !== 'undefined' && DB.settings && DB.settings.googleDriveFolderId) || '');
-        const escaped = typeof window.esc === 'function' ? esc(current) : current.replace(/[&<>"]/g, '');
-        html += '<section class="card" id="aureliaDriveFolderIdCard" style="margin-top:16px">' +
-          '<div class="section-title"><h2>Backup and Google Drive</h2><span class="status reserved">Drive not connected</span></div>' +
-          '<p class="muted">Save a Drive folder ID below. Real cloud uploads require Google OAuth setup. Until connected, automatic backups are encrypted on this device.</p>' +
-          '<div class="field"><label for="aureliaDriveEmail">Google account email</label>' +
-          '<input id="aureliaDriveEmail" type="email" maxlength="254" autocomplete="email" value="' +
-          String((typeof DB !== 'undefined' && DB.settings && DB.settings.googleDriveEmail) || '').replace(/[&<>"]/g, '') +
-          '" placeholder="name@gmail.com"></div>' +
-          '<div class="field"><label for="aureliaDriveFolderId">Google Drive folder ID (optional)</label>' +
-          '<input id="aureliaDriveFolderId" type="text" maxlength="200" autocomplete="off" value="' + escaped + '" placeholder="Paste Drive folder ID"></div>' +
-          '<div class="actions" style="margin-top:10px"><button class="btn" type="button" onclick="aureliaSaveDriveFolderId()">Save folder ID</button>' +
-          '<button class="btn" type="button" onclick="aureliaClearDriveFolderId()">Clear</button></div>' +
-          '<hr style="margin:14px 0;border-color:var(--line)"><h3>Backup</h3>' +
-          '<p class="muted">Backup now creates a portable encrypted backup. Backup Auto keeps up to 15 encrypted snapshots in app-private storage after saved changes.</p>' +
+        if (html.includes('aureliaLocalBackupCard')) return html;
+        html += '<section class="card" id="aureliaLocalBackupCard" style="margin-top:16px">' +
+          '<div class="section-title"><h2>Encrypted backups</h2><span class="status reserved">Device only</span></div>' +
+          '<p class="muted">Portable exports are encrypted with your passphrase. Automatic snapshots stay encrypted on this device. Cloud backup is unavailable.</p>' +
           '<label style="display:flex;gap:10px;align-items:center;margin:10px 0"><input id="aureliaAutoBackupToggle" type="checkbox" ' +
           ((typeof DB !== 'undefined' && DB.settings && DB.settings.autoBackupEnabled === true) ? 'checked' : '') +
           ' onchange="aureliaSetAutoBackup(this.checked)"> Backup Auto</label>' +
-          '<div class="actions"><button class="btn primary" type="button" onclick="aureliaBackupNow()">Backup now</button>' +
+          '<div class="actions"><button class="btn primary" type="button" onclick="aureliaBackupNow()">Export encrypted backup</button>' +
           '<button class="btn" type="button" onclick="aureliaCreateLocalSnapshot()">Save device snapshot</button></div>' +
-          '<div id="aureliaBackupStatus" class="muted" role="status" style="margin-top:8px"></div>' +
-          '<div id="aureliaDriveFolderIdStatus" class="muted" role="status" style="margin-top:8px">Folder ID is a destination setting, not proof of a backup.</div></section>';
+          '<div id="aureliaBackupStatus" class="muted" role="status" style="margin-top:8px"></div></section>';
         return html;
       };
     }
-  } catch (error) { console.warn('Could not add Drive target field:', error); }
+  } catch (error) { console.warn('Could not add encrypted local backup controls:', error); }
   window.aureliaSetAppProtection = function (enabled) {
     const status = document.getElementById('aureliaProtectionStatus');
     if (enabled === false) {
@@ -240,37 +227,6 @@
     if (typeof window.aureliaDownloadBackup === 'function') window.aureliaDownloadBackup();
     else notifyBackup('Backup service is not ready.');
   };
-  window.aureliaSaveDriveFolderId = function () {
-    const input = document.getElementById('aureliaDriveFolderId');
-    if (!input || typeof DB === 'undefined' || !DB.settings) return;
-    const id = input.value.trim();
-    const emailInput = document.getElementById('aureliaDriveEmail');
-    const email = emailInput ? emailInput.value.trim() : '';
-    if (email && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
-      const status = document.getElementById('aureliaDriveFolderIdStatus');
-      if (status) status.textContent = 'Enter a valid Google account email address.';
-      return;
-    }
-    if (id.length > 200 || /[\\/\s]/.test(id)) {
-      const status = document.getElementById('aureliaDriveFolderIdStatus');
-      if (status) status.textContent = 'Enter only the folder ID from the Drive URL, without spaces or slashes.';
-      return;
-    }
-    DB.settings.googleDriveFolderId = id;
-    DB.settings.googleDriveEmail = email;
-    if (typeof window.save === 'function') save();
-    const status = document.getElementById('aureliaDriveFolderIdStatus');
-    if (status) status.textContent = 'Google account and folder settings saved on this device. Google sign-in/upload still requires OAuth app configuration.';
-    if (typeof window.toast === 'function') toast('Drive destination saved locally; Google Drive is not yet connected.');
-  };
-  window.aureliaClearDriveFolderId = function () {
-    const input = document.getElementById('aureliaDriveFolderId');
-    if (input) input.value = '';
-    if (typeof DB !== 'undefined' && DB.settings) { delete DB.settings.googleDriveFolderId; if (typeof window.save === 'function') save(); }
-    const status = document.getElementById('aureliaDriveFolderIdStatus');
-    if (status) status.textContent = 'Folder ID cleared. Cloud upload is not enabled.';
-  };
-
   // Intercept the app's print-window pattern. On Android, render that printable
   // HTML into a real PDF and open it with the device's PDF handler instead of relying
   // on unsupported WebView pop-up windows.
