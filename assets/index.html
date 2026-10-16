@@ -3351,7 +3351,7 @@ window.upsertGuestAndCascade=function(incoming,existingId){
  const payload=Object.assign({},incoming||{}),match=findCanonicalGuest(payload,existingId),saved=match||Object.assign({id:payload.id||'g'+Date.now(),occupants:[],vehicles:[]},payload),old=match?.id||existingId||'';
  if(match)Object.assign(match,payload,{id:match.id||payload.id||'g'+Date.now()});else DB.guests.push(saved);
  dedupeExistingGuestsInPlace();
- for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){if(String(row.guestId||'')!==String(saved.id)&&(!old||String(row.guestId||'')!==String(old))continue;row.guestId=saved.id;if('guestName'in row)row.guestName=saved.name;if('name'in row)row.name=saved.name;if('phone'in row)row.phone=saved.phone;if('mobile'in row)row.mobile=saved.phone;if('idNumber'in row)row.idNumber=saved.idNumber;}
+ for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){if(String(row.guestId||'')!==String(saved.id)&&(!old||String(row.guestId||'')!==String(old)))continue;row.guestId=saved.id;if('guestName'in row)row.guestName=saved.name;if('name'in row)row.name=saved.name;if('phone'in row)row.phone=saved.phone;if('mobile'in row)row.mobile=saved.phone;if('idNumber'in row)row.idNumber=saved.idNumber;}
  return saved;
 };
 window.deduplicateGuestsInPlace=dedupeExistingGuestsInPlace;
