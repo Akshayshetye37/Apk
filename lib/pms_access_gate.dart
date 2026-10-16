@@ -48,6 +48,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
   bool _configured = false;
   bool _busy = false;
   bool _deviceAuthAvailable = false;
+  bool _biometricEnabled = false;
   int _failedAttempts = 0;
   DateTime? _lockUntil;
   String? _error;
@@ -62,6 +63,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
   Future<void> _initialize() async {
     try {
       final protection = await widget.readSecret('aurelia_pms_auth_enabled_v1');
+      final biometricPreference = await widget.readSecret('aurelia_pms_biometric_enabled_v1');
       if (protection == 'false') {
         if (!mounted) return;
         setState(() { _loading = false; _configured = false; });
@@ -85,6 +87,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         _failedAttempts = int.tryParse(attempts ?? '') ?? 0;
         _lockUntil = lock == null ? null : DateTime.tryParse(lock);
         _deviceAuthAvailable = deviceAuth;
+        _biometricEnabled = biometricPreference == 'true';
         _loading = false;
       });
       _startLockoutTicker();
@@ -360,7 +363,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                         ),
                       ),
                     ),
-                    if (_configured && _deviceAuthAvailable) ...[
+                    if (_configured && _deviceAuthAvailable && _biometricEnabled) ...[
                       const SizedBox(height: 8),
                       SizedBox(
                         width: double.infinity,
