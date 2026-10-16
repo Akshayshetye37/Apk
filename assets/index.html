@@ -1041,7 +1041,7 @@ function parseIdText(text){
  const dobMatch=normalized.match(/(?:DOB|DATE OF BIRTH|D\.?O\.?B\.?|BIRTH|जन्म)\s*[:：-]?\s*(\d{2}[/-]\d{2}[/-]\d{4}|\d{4}[/-]\d{2}[/-]\d{2})/i),phoneMatch=normalized.match(/\b([6-9]\d{9})\b/),gender=/\bFEMALE\b/i.test(normalized)?'Female':/\bMALE\b/i.test(normalized)?'Male':'';
  const noise=/\b(GOVERNMENT|UNIQUE|IDENTIFICATION|AUTHORITY|UIDAI|AADHAAR|AADHAR|MERA|PEHCHAN|INCOME|TAX|DEPARTMENT|PERMANENT|ACCOUNT|NUMBER|CARD|ELECTION|COMMISSION|ELECTOR|PHOTO|IDENTITY|DRIVING|LICENCE|LICENSE|UNION|REPUBLIC|PASSPORT|ADDRESS|FATHER|MOTHER|HUSBAND|WIFE|SIGNATURE|ISSUE|VALID|TILL|DATE|BIRTH|MALE|FEMALE|TRANSGENDER|MAHARASHTRA|STATE|TRANSPORT|AUTHORISATION|ENROLMENT|ENROLLMENT)\b/i;
  const clean=s=>String(s||'').replace(/^(?:MR|MRS|MS|SHRI|SMT|KUMARI|DR)\.?\s+/i,'').replace(/[^A-Za-z .'-]/g,' ').replace(/\s+/g,' ').trim(),valid=s=>{const n=clean(s),w=n.split(/\s+/).filter(Boolean);return n.length>=4&&n.length<=55&&!noise.test(n)&&w.length>=2&&w.length<=5&&w.every(x=>/^[A-Za-z][A-Za-z'.-]*$/.test(x));};
- let name='';if(passport){const part=passport.replace(/\s/g,'').substring(5).split('<<');if(part.length>=2){const surname=part[0].replace(/</g,' ').trim(),given=part[1].replace(/</g,' ').trim();if(surname&&given)name=clean(given+' '+surname);}}
+ let name='';if(passport){const p=passport.replace(/\s/g,'').substring(5).split('<<');if(p.length>=2){const surname=p[0].replace(/</g,' ').trim(),given=p[1].replace(/</g,' ').trim();if(surname&&given)name=clean(given+' '+surname);}}
  if(!name)for(let i=0;i<lines.length;i++){if(/\b(?:FATHER|MOTHER|HUSBAND|SPOUSE|WIFE)'?S?\s+NAME\b/i.test(lines[i]))continue;const m=lines[i].match(/^(?:FULL\s+)?(?:NAME|NAME OF HOLDER|HOLDER NAME)\s*[:：.-]?\s*(.+)$/i);if(m&&valid(m[1])){name=clean(m[1]);break;}if(/^(?:FULL\s+)?NAME\s*[:：.-]?$/i.test(lines[i])&&lines[i+1]&&valid(lines[i+1])){name=clean(lines[i+1]);break;}}
  if(!name)for(let i=1;i<lines.length;i++){if(/\b(?:DOB|DATE OF BIRTH|YEAR OF BIRTH|BIRTH)\b|जन्म/i.test(lines[i])){for(let b=1;b<=2&&i-b>=0;b++)if(valid(lines[i-b])){name=clean(lines[i-b]);break;}if(name)break;}}
  if(!name)name=lines.map(clean).filter(valid).find(s=>!/^GOVERNMENT|^REPUBLIC|^UNIQUE IDENTIFICATION|^ELECTION COMMISSION|^INCOME TAX|^INDIA\b|^AADHAAR|^AADHAR|^DRIVING LICENCE|^PERMANENT ACCOUNT/i.test(s))||'';
@@ -1063,22 +1063,23 @@ function demoOCR(btn){ return runGenericOcr(null,btn); }
 
 async function saveBookingForm(id){
  await Promise.all([pendingBookingPhotoPromise,...[...document.querySelectorAll('#occList [data-occ]')].map(x=>x.__photoPromise||Promise.resolve())]);
- const name=document.getElementById('bkGuest')?.value?.trim()||'Guest',phone=document.getElementById('bkPhone')?.value?.trim()||'',roomId=document.getElementById('bkRoom')?.value,r=DB.rooms.find(x=>x.id===roomId),checkIn=document.getElementById('bkIn')?.value,checkOut=document.getElementById('bkOut')?.value,existing=id?(DB.bookings||[]).find(x=>String(x.id)===String(id)):null;
+ const name=document.getElementById('bkGuest')?.value?.trim()||'Guest',phone=document.getElementById('bkPhone')?.value?.trim()||'';
+ const roomId=document.getElementById('bkRoom')?.value,r=DB.rooms.find(x=>x.id===roomId),checkIn=document.getElementById('bkIn')?.value,checkOut=document.getElementById('bkOut')?.value,existing=id?(DB.bookings||[]).find(x=>String(x.id)===String(id)):null;
  if(id&&!existing){toast('Booking not found. Refresh and try again.');return;}if(!r){toast('Select a room');return;}if(!checkIn||!checkOut||new Date(checkOut)<=new Date(checkIn)){toast('Check-out must be after check-in.');return;}if(['cleaning','maintenance'].includes(r.status)){toast('Room '+r.number+' is currently '+r.status);return;}
  const conflict=DB.bookings.some(x=>String(x.id)!==String(id)&&x.roomId===roomId&&!['checked_out','cancelled'].includes(x.status)&&checkIn<x.checkOut&&checkOut>x.checkIn),resConflict=DB.reservations.some(x=>x.roomId===roomId&&!['cancelled','converted'].includes(x.status)&&checkIn<(x.to||x.checkOut||'')&&checkOut>(x.from||x.checkIn||''));
  if(conflict||resConflict){toast('Room '+r.number+' is already booked for overlapping dates.');return;}
  const base=Number(r.rate||0)*nightsBetween(checkIn,checkOut),discount=Math.max(0,Number(document.getElementById('bkDiscount')?.value||0)),paid=Math.max(0,Number(document.getElementById('bkPaid')?.value||0));
- const old=existing?.guestId!=null?(DB.guests||[]).find(x=>String(x.id)===String(existing.guestId)):null,idNumber=document.getElementById('bkIdNumber')?.value?.trim()||'',normName=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' '),normId=s=>String(s||'').trim().toUpperCase().replace(/\s+/g,'');
- let g=old;if(!g&&idNumber)g=DB.guests.find(x=>normId(x.idNumber||x.idProofNumber)===normId(idNumber));if(!g)g=DB.guests.find(x=>normName(x.name||x.guestName)===normName(name)&&normName(x.phone||x.mobile)===normName(phone));
- const isNew=!g;if(!g)g={id:'g'+Date.now(),occupants:[],vehicles:[]};const guestId=g.id;
- g.name=name;g.phone=phone;g.idType=document.getElementById('bkIdType')?.value?.trim()||g.idType||'';g.idNumber=idNumber||g.idNumber||'';if(pendingBookingIdPhoto)g.idPhoto=pendingBookingIdPhoto;
- const occ=[...document.querySelectorAll('#occList [data-occ]')].map((x,i)=>{const oid=x.dataset.aureliaOccupantId||'',old=(g.occupants||[]).find(o=>oid&&String(o.id)===String(oid))||(g.occupants||[])[i]||{},photo=x.dataset.aureliaOccupantPhoto||x.querySelector('[data-occ-preview]')?.getAttribute('src')||old.idPhoto||'';return {id:old.id||oid||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:photo};});
- const veh=[...document.querySelectorAll('#vehList [data-veh]')].map((x,i)=>{const old=(g.vehicles||[])[i]||{};return {id:old.id||('v'+Date.now()+Math.random()),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:old.photo||''};});
- g.occupants=occ;g.vehicles=veh;const data={guestId,roomId,checkIn,checkOut,guests:1+occ.length,base,discount,paid,notes:document.getElementById('bkNotes')?.value||''};
- if(existing){Object.assign(existing,data);existing.guestId=guestId;existing.charges=existing.charges||[];const c=existing.charges.find(c=>c.item==='Room charges');if(c){c.qty=nightsBetween(checkIn,checkOut);c.rate=r.rate;c.amount=base;c.at=checkIn;}else existing.charges.unshift({id:'c'+Date.now(),item:'Room charges',qty:nightsBetween(checkIn,checkOut),rate:r.rate,amount:base,at:checkIn});}
+ const priorGuest=existing?.guestId!=null?(DB.guests||[]).find(x=>String(x.id)===String(existing.guestId)):null,idNumber=document.getElementById('bkIdNumber')?.value?.trim()||'',normName=s=>String(s||'').trim().toLowerCase().replace(/\s+/g,' '),normId=s=>String(s||'').trim().toUpperCase().replace(/\s+/g,'');
+ let guest=priorGuest;if(!guest&&idNumber)guest=DB.guests.find(x=>normId(x.idNumber||x.idProofNumber)===normId(idNumber));if(!guest)guest=DB.guests.find(x=>normName(x.name||x.guestName)===normName(name)&&normName(x.phone||x.mobile)===normName(phone));
+ const isNew=!guest;if(!guest)guest={id:'g'+Date.now(),occupants:[],vehicles:[]};const guestId=guest.id;
+ guest.name=name;guest.phone=phone;guest.idType=document.getElementById('bkIdType')?.value?.trim()||guest.idType||'';guest.idNumber=idNumber||guest.idNumber||'';if(pendingBookingIdPhoto)guest.idPhoto=pendingBookingIdPhoto;
+ const occ=[...document.querySelectorAll('#occList [data-occ]')].map((x,i)=>{const oid=x.dataset.aureliaOccupantId||'',old=(guest.occupants||[]).find(o=>oid&&String(o.id)===String(oid))||(guest.occupants||[])[i]||{},photo=x.dataset.aureliaOccupantPhoto||x.querySelector('[data-occ-preview]')?.getAttribute('src')||old.idPhoto||'';return {id:old.id||oid||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:photo};});
+ const vehicles=[...document.querySelectorAll('#vehList [data-veh]')].map((x,i)=>{const old=(guest.vehicles||[])[i]||{};return {id:old.id||('v'+Date.now()+Math.random()),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:old.photo||''};});
+ guest.occupants=occ;guest.vehicles=vehicles;const data={guestId,roomId,checkIn,checkOut,guests:1+occ.length,base,discount,paid,notes:document.getElementById('bkNotes')?.value||''};
+ if(existing){Object.assign(existing,data);existing.guestId=guestId;existing.charges=existing.charges||[];const charge=existing.charges.find(c=>c.item==='Room charges');if(charge){charge.qty=nightsBetween(checkIn,checkOut);charge.rate=r.rate;charge.amount=base;charge.at=checkIn;}else existing.charges.unshift({id:'c'+Date.now(),item:'Room charges',qty:nightsBetween(checkIn,checkOut),rate:r.rate,amount:base,at:checkIn});}
  else{const b={id:'b'+Date.now(),sr:'BKG-'+String(DB.seq.booking++).padStart(6,'0'),...data,status:'active',charges:[{id:'c'+Date.now(),item:'Room charges',qty:nightsBetween(checkIn,checkOut),rate:r.rate,amount:base,at:checkIn}],payments:paid?[{id:'p'+Date.now(),amount:paid,method:'Unspecified',status:'verified',at:new Date().toISOString(),ref:'MANUAL'}]:[]};DB.bookings.unshift(b);r.status='occupied';}
- if(isNew)DB.guests.push(g);
- for(const list of [DB.bookings||[],DB.reservations||[]])for(const rec of list){if(String(rec.guestId||'')!==String(guestId))continue;if('guestName'in rec)rec.guestName=g.name;if('name'in rec)rec.name=g.name;if('phone'in rec)rec.phone=g.phone;if('mobile'in rec)rec.mobile=g.phone;if('idNumber'in rec)rec.idNumber=g.idNumber;}
+ if(isNew)DB.guests.push(guest);
+ for(const rows of [DB.bookings||[],DB.reservations||[]])for(const row of rows){if(String(row.guestId||'')!==String(guestId))continue;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
  if(typeof dedupeExistingGuestsInPlace==='function')dedupeExistingGuestsInPlace();
  audit(id?'Booking edited':'Booking created',id||DB.bookings[0].sr);save();closeModal();pendingBookingIdPhoto='';pendingBookingPhotoPromise=Promise.resolve();showPage('bookings');toast('Booking saved · '+(1+occ.length)+' guest'+(occ.length?'s':'')+' · '+money(base)+' room charges');
 }
@@ -1099,19 +1100,20 @@ async function previewGuestPhoto(e){const f=e?.target?.files?.[0];if(!f)return;c
 function updateGuestOccupantCount(){const c=document.querySelectorAll('#guestOccList [data-occ]').length;const el=document.getElementById('guestOccCount');if(el)el.textContent=c}
 function addGuestOccupant(){const c=document.getElementById('guestOccList');c.insertAdjacentHTML('beforeend',occupantHTML({},c.querySelectorAll('[data-occ]').length));updateGuestOccupantCount()}
 function addGuestVehicle(){const c=document.getElementById('guestVehList');c.insertAdjacentHTML('beforeend',vehicleHTML({},c.querySelectorAll('[data-veh]').length))}
-async async async async async function saveGuest(id){
+async async async async async async function saveGuest(id){
  await Promise.all([pendingGuestPhotoPromise,...[...document.querySelectorAll('#guestOccList [data-occ]')].map(x=>x.__photoPromise||Promise.resolve())]);
  const name=document.getElementById('gName')?.value?.trim()||'',phone=document.getElementById('gPhone')?.value?.trim()||'',original=id?DB.guests.find(x=>String(x.id)===String(id)):null;
  if(id&&!original){toast('Guest record not found. Refresh and try again.');return;}
- const g=original||{id:'g'+Date.now(),occupants:[],vehicles:[]},oldId=g.id;
- g.name=name;g.phone=phone;g.email=document.getElementById('gEmail')?.value||'';g.idType=document.getElementById('gIdType')?.value||'';g.idNumber=document.getElementById('gIdNumber')?.value||'';if(pendingGuestPhoto)g.idPhoto=pendingGuestPhoto;
- g.occupants=[...document.querySelectorAll('#guestOccList [data-occ]')].map((x,i)=>{const oid=x.dataset.aureliaOccupantId||'',old=(g.occupants||[]).find(o=>oid&&String(o.id)===String(oid))||(g.occupants||[])[i]||{};return {id:old.id||oid||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:x.dataset.aureliaOccupantPhoto||old.idPhoto||''};});
- g.vehicles=[...document.querySelectorAll('#guestVehList [data-veh]')].map((x,i)=>{const old=(g.vehicles||[])[i]||{};return {id:old.id||('v'+Date.now()+Math.random()),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:old.photo||''};});
- const duplicate=findCanonicalGuest(g,oldId);let saved;
- if(duplicate&&String(duplicate.id)!==String(oldId)){const stable=duplicate.id;Object.assign(duplicate,g,{id:stable});saved=duplicate;for(const list of [DB.bookings||[],DB.reservations||[]])for(const rec of list)if(String(rec.guestId||'')===String(oldId))rec.guestId=stable;DB.guests=DB.guests.filter(x=>String(x.id)!==String(oldId));}
- else if(original){Object.assign(original,g,{id:oldId});saved=original;}else{saved=g;DB.guests.push(saved);}
+ const guest=original||{id:'g'+Date.now(),occupants:[],vehicles:[]},stableId=guest.id;
+ guest.name=name;guest.phone=phone;guest.email=document.getElementById('gEmail')?.value||'';guest.idType=document.getElementById('gIdType')?.value||'';guest.idNumber=document.getElementById('gIdNumber')?.value||'';if(pendingGuestPhoto)guest.idPhoto=pendingGuestPhoto;
+ guest.occupants=[...document.querySelectorAll('#guestOccList [data-occ]')].map((x,i)=>{const occupantId=x.dataset.aureliaOccupantId||'',old=(guest.occupants||[]).find(o=>occupantId&&String(o.id)===String(occupantId))||(guest.occupants||[])[i]||{};return {id:old.id||occupantId||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:x.dataset.aureliaOccupantPhoto||old.idPhoto||''};});
+ guest.vehicles=[...document.querySelectorAll('#guestVehList [data-veh]')].map((x,i)=>{const old=(guest.vehicles||[])[i]||{};return {id:old.id||('v'+Date.now()+Math.random()),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:old.photo||''};});
+ const duplicate=findCanonicalGuest(guest,stableId);let saved;
+ if(duplicate&&String(duplicate.id)!==String(stableId)){const survivorId=duplicate.id;Object.assign(duplicate,guest,{id:survivorId});saved=duplicate;for(const rows of [DB.bookings||[],DB.reservations||[]])for(const record of rows)if(String(record.guestId||'')===String(stableId))record.guestId=survivorId;DB.guests=DB.guests.filter(x=>String(x.id)!==String(stableId));}
+ else if(original){Object.assign(original,guest,{id:stableId});saved=original;}
+ else{saved=guest;DB.guests.push(saved);}
  dedupeExistingGuestsInPlace();
- for(const list of [DB.bookings||[],DB.reservations||[]])for(const rec of list){if(String(rec.guestId||'')!==String(saved.id))continue;if('guestName'in rec)rec.guestName=saved.name;if('name'in rec)rec.name=saved.name;if('phone'in rec)rec.phone=saved.phone;if('mobile'in rec)rec.mobile=saved.phone;if('idNumber'in rec)rec.idNumber=saved.idNumber;}
+ for(const rows of [DB.bookings||[],DB.reservations||[]])for(const record of rows){if(String(record.guestId||'')!==String(saved.id))continue;if('guestName'in record)record.guestName=saved.name;if('name'in record)record.name=saved.name;if('phone'in record)record.phone=saved.phone;if('mobile'in record)record.mobile=saved.phone;if('idNumber'in record)record.idNumber=saved.idNumber;}
  audit(id?'Guest edited':'Guest created',saved.name);save();pendingGuestPhoto='';pendingGuestPhotoPromise=Promise.resolve();closeModal();showPage('guests');toast('Guest saved · '+(1+(saved.occupants||[]).length)+' total guest'+(saved.occupants?.length?'s':''));
 }
 function openCharge(bid){
@@ -3379,5 +3381,43 @@ window.upsertGuestAndCascade=function(incoming,existingId){
 window.deduplicateGuestsInPlace=dedupeExistingGuestsInPlace;
 window.getUnifiedGuestExportByName=function(query){dedupeExistingGuestsInPlace();const q=guestCanonicalName(query);return DB.guests.filter(g=>!q||guestCanonicalName(g.name||g.guestName).includes(q)).map(g=>{const stays=(DB.bookings||[]).filter(b=>String(b.guestId)===String(g.id));return Object.assign({},g,{totalStays:stays.length,roomsStayed:[...new Set(stays.map(b=>room(b)?.number).filter(Boolean))].join(', ')});});};
 try{dedupeExistingGuestsInPlace();}catch(e){console.warn('[AURELIA] guest dedup skipped',e);}
+</script>
+
+<script id="aurelia-guest-identity-and-export-fix">
+
+// Conservative canonical matching: stable IDs and ID numbers precede exact name+phone matching.
+function guestCanonicalName(v){return String(v||'').trim().toLowerCase().replace(/\s+/g,' ');}
+function guestCanonicalIdNumber(v){return String(v||'').trim().toUpperCase().replace(/\s+/g,'');}
+function findCanonicalGuest(incoming,existingId){
+ const all=Array.isArray(DB.guests)?DB.guests:[];
+ if(existingId){const hit=all.find(g=>String(g.id)===String(existingId));if(hit)return hit;}
+ if(incoming.id){const hit=all.find(g=>String(g.id)===String(incoming.id));if(hit)return hit;}
+ const number=guestCanonicalIdNumber(incoming.idNumber||incoming.idProofNumber);
+ if(number.length>=4){const hit=all.find(g=>guestCanonicalIdNumber(g.idNumber||g.idProofNumber)===number);if(hit)return hit;}
+ const name=guestCanonicalName(incoming.name||incoming.guestName),phone=String(incoming.phone||incoming.mobile||'').replace(/\D/g,'').slice(-10);
+ if(name&&phone){const hit=all.find(g=>guestCanonicalName(g.name||g.guestName)===name&&String(g.phone||g.mobile||'').replace(/\D/g,'').slice(-10)===phone);if(hit)return hit;}
+ return null;
+}
+function dedupeExistingGuestsInPlace(){
+ if(!Array.isArray(DB.guests))DB.guests=[];
+ const byKey=new Map(),aliases=new Map(),kept=[];
+ for(const g of DB.guests){if(!g)continue;const number=guestCanonicalIdNumber(g.idNumber||g.idProofNumber),name=guestCanonicalName(g.name||g.guestName),phone=String(g.phone||g.mobile||'').replace(/\D/g,'').slice(-10);
+  const key=number.length>=4?'idnum:'+number:(name&&phone?'name-phone:'+name+'|'+phone:'id:'+String(g.id||('unkeyed-'+kept.length))),prior=byKey.get(key);
+  if(!prior){byKey.set(key,g);kept.push(g);continue;}
+  const canonicalId=prior.id||g.id;Object.assign(prior,g,{id:canonicalId,name:g.name||prior.name,phone:g.phone||prior.phone,idNumber:g.idNumber||prior.idNumber,idPhoto:g.idPhoto||prior.idPhoto,occupants:g.occupants?.length?g.occupants:(prior.occupants||[]),vehicles:g.vehicles?.length?g.vehicles:(prior.vehicles||[])});aliases.set(String(g.id),String(canonicalId));
+ }
+ if(aliases.size)for(const rows of [DB.bookings||[],DB.reservations||[]])for(const row of rows){const id=aliases.get(String(row.guestId||''));if(id)row.guestId=id;}
+ DB.guests=kept;return kept;
+}
+window.upsertGuestAndCascade=function(incoming,existingId){
+ const data=Object.assign({},incoming||{}),match=findCanonicalGuest(data,existingId),guest=match||Object.assign({id:data.id||'g'+Date.now(),occupants:[],vehicles:[]},data),oldId=match?.id||existingId||'';
+ if(match)Object.assign(match,data,{id:match.id||data.id||'g'+Date.now()});else DB.guests.push(guest);
+ dedupeExistingGuestsInPlace();
+ for(const rows of [DB.bookings||[],DB.reservations||[]])for(const row of rows){if(String(row.guestId||'')!==String(guest.id)&&(!oldId||String(row.guestId||'')!==String(oldId)))continue;row.guestId=guest.id;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
+ return guest;
+};
+window.deduplicateGuestsInPlace=dedupeExistingGuestsInPlace;
+window.getUnifiedGuestExportByName=function(query){dedupeExistingGuestsInPlace();const name=guestCanonicalName(query);return DB.guests.filter(g=>!name||guestCanonicalName(g.name||g.guestName).includes(name)).map(g=>{const stays=(DB.bookings||[]).filter(b=>String(b.guestId)===String(g.id));return Object.assign({},g,{totalStays:stays.length,roomsStayed:[...new Set(stays.map(b=>room(b)?.number).filter(Boolean))].join(', ')});});};
+try{dedupeExistingGuestsInPlace();}catch(e){console.warn('[AURELIA] dedupe pass skipped',e);}
 </script>
 </body></html>
