@@ -663,7 +663,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         final recognizedLines = <String>[];
         final recognizers = <TextRecognizer>[
           TextRecognizer(script: TextRecognitionScript.latin),
-          TextRecognizer(script: TextRecognitionScript.devanagari),
+          TextRecognizer(script: TextRecognitionScript.devanagiri),
         ];
         try {
           for (final recognizer in recognizers) {
