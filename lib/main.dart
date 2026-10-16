@@ -3,7 +3,6 @@ import 'image_viewer_engine.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:open_filex/open_filex.dart';
@@ -376,18 +375,22 @@ Future<Uint8List> _renderHtmlPdf(String source) async {
       }
       if (const {'h1','h2','h3','h4'}.contains(tag)) {
         final text = node.text.trim();
-        if (text.isNotEmpty) widgets.add(pw.Padding(
-          padding: const pw.EdgeInsets.only(top: 8, bottom: 5),
-          child: pw.Text(text, style: pw.TextStyle(fontSize: tag == 'h1' ? 18 : (tag == 'h2' ? 14 : 11), fontWeight: pw.FontWeight.bold)),
-        ));
+        if (text.isNotEmpty) {
+          widgets.add(pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 8, bottom: 5),
+            child: pw.Text(text, style: pw.TextStyle(fontSize: tag == 'h1' ? 18 : (tag == 'h2' ? 14 : 11), fontWeight: pw.FontWeight.bold)),
+          ));
+        }
         return;
       }
       if (tag == 'p') {
         final text = node.text.trim();
-        if (text.isNotEmpty) widgets.add(pw.Padding(
-          padding: const pw.EdgeInsets.only(bottom: 5),
-          child: pw.Text(text, style: const pw.TextStyle(fontSize: 9)),
-        ));
+        if (text.isNotEmpty) {
+          widgets.add(pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 5),
+            child: pw.Text(text, style: const pw.TextStyle(fontSize: 9)),
+          ));
+        }
         return;
       }
       for (final child in node.nodes) {
