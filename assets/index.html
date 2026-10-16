@@ -1109,7 +1109,7 @@ async function saveBookingForm(id){
  if(isNew)DB.guests.push(guest);
  for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const row of rows){if(String(row.guestId||'')!==String(guestId))continue;if('guestName'in row)row.guestName=guest.name;if('name'in row)row.name=guest.name;if('phone'in row)row.phone=guest.phone;if('mobile'in row)row.mobile=guest.phone;if('idNumber'in row)row.idNumber=guest.idNumber;}
  if(typeof dedupeExistingGuestsInPlace==='function')dedupeExistingGuestsInPlace(guestId);
- audit(id?'Booking edited':'Booking created',id||DB.bookings[0].sr);save();closeModal();pendingBookingIdPhoto='';pendingBookingPhotoPromise=Promise.resolve();showPage('bookings');toast('Booking saved · '+(1+occ.length)+' guest'+(occ.length?'s':'')+' · '+money(base)+' room charges');
+ audit(id?'Booking edited':'Booking created',id||DB.bookings[0].sr);save();try{await window.aureliaWaitForSecureSave?.();}catch(error){toast('Secure save failed. Keep this form open and retry.');return;}closeModal();pendingBookingIdPhoto='';pendingBookingPhotoPromise=Promise.resolve();showPage('bookings');toast('Booking saved · '+(1+occ.length)+' guest'+(occ.length?'s':'')+' · '+money(base)+' room charges');
 }
 function openGuest(id){
  const g=id?DB.guests.find(x=>x.id===id):null;
@@ -1155,7 +1155,7 @@ async function saveGuest(id){
  else{saved=guest;DB.guests.push(saved);}
  dedupeExistingGuestsInPlace(saved.id);
  for(const rows of [DB.bookings||[],DB.reservations||[],DB.folios||[],DB.invoices||[],DB.restaurantSales||[]])for(const record of rows){if(String(record.guestId||'')!==String(saved.id))continue;if('guestName'in record)record.guestName=saved.name;if('name'in record)record.name=saved.name;if('phone'in record)record.phone=saved.phone;if('mobile'in record)record.mobile=saved.phone;if('idNumber'in record)record.idNumber=saved.idNumber;}
- audit(id?'Guest edited':'Guest created',saved.name);save();pendingGuestPhoto='';pendingGuestPhotoPromise=Promise.resolve();closeModal();showPage('guests');toast('Guest saved · '+(1+(saved.occupants||[]).length)+' total guest'+(saved.occupants?.length?'s':''));
+ audit(id?'Guest edited':'Guest created',saved.name);save();try{await window.aureliaWaitForSecureSave?.();}catch(error){toast('Secure save failed. Keep this form open and retry.');return;}pendingGuestPhoto='';pendingGuestPhotoPromise=Promise.resolve();closeModal();showPage('guests');toast('Guest saved · '+(1+(saved.occupants||[]).length)+' total guest'+(saved.occupants?.length?'s':''));
 }
 function openCharge(bid){
  openModal('Add folio charge',`<div class="form-grid">${field('Item / product','chItem','')}${field('Quantity','chQty',1)}${field('Unit price','chRate',0)}<div class="field"><label>Source</label><select id="chSource"><option>POS</option><option>Food</option><option>Room service</option><option>Other</option></select></div></div>`,
