@@ -609,6 +609,13 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         );
         return;
       }
+      if (value['type'] == 'reloadSecurePms') {
+        if (requestId == null) throw const FormatException('Missing secure reload request id');
+        // Reload from the encrypted native store, never via WebView location.reload().
+        await _loadLocalPms();
+        if (mounted) setState(() { _pmsLoaded = true; _loading = false; });
+        return;
+      }
       if (value['type'] == 'restoreEncryptedBackup') {
         final envelopeValue = value['envelope'];
         final passphrase = value['passphrase'];
