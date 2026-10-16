@@ -185,4 +185,47 @@
     return supported;
   };
   document.addEventListener('DOMContentLoaded', window.aureliaCheckDeviceAuthenticationSupport);
+
+  // Last-line validation for room billing: only an active stay and active menu
+  // items at their configured selling prices may be posted to a room folio.
+  if (typeof window.commitRestaurant === 'function' && !window.__aureliaRoomBillingGuardInstalled) {
+    const originalCommitRestaurant = window.commitRestaurant;
+    window.commitRestaurant = function (mode) {
+      const db = (typeof DB !== 'undefined' && DB) || window.DB;
+      if (!db || !Array.isArray(db.restaurantCart) || !Array.isArray(db.madeFoods)) {
+        if (typeof window.toast === 'function') window.toast('Restaurant data is not ready.');
+        return;
+      }
+      if (mode !== 'room' && mode !== 'walkin') {
+        if (typeof window.toast === 'function') window.toast('Unsupported restaurant billing mode.');
+        return;
+      }
+      if (mode === 'room') {
+        const booking = (db.bookings || []).find(function (item) { return item.id === window.restaurantSelectedBooking || item.id === (typeof restaurantSelectedBooking !== 'undefined' ? restaurantSelectedBooking : ''); });
+        const room = booking && (db.rooms || []).find(function (item) { return item.id === booking.roomId; });
+        if (!booking || String(booking.status || '').toLowerCase() !== 'active' || !room) {
+          if (typeof window.toast === 'function') window.toast('Room billing requires an active checked-in guest with a valid room.');
+          return;
+        }
+      }
+      if (!db.restaurantCart.length) {
+        if (typeof window.toast === 'function') window.toast('Add food first.');
+        return;
+      }
+      const canonical = [];
+      for (const line of db.restaurantCart) {
+        const menuItem = db.madeFoods.find(function (item) { return item.id === line.itemId && item.active !== false; });
+        const qty = Number(line.qty);
+        const price = Number(menuItem && menuItem.sell);
+        if (!menuItem || !Number.isFinite(qty) || !Number.isInteger(qty) || qty < 1 || qty > 1000 || !Number.isFinite(price) || price <= 0) {
+          if (typeof window.toast === 'function') window.toast('Only active restaurant menu items with valid quantities and prices can be billed.');
+          return;
+        }
+        canonical.push({ itemId: menuItem.id, name: String(menuItem.name), unit: String(menuItem.unit || 'plate'), price: price, qty: qty });
+      }
+      db.restaurantCart.splice(0, db.restaurantCart.length, ...canonical);
+      return originalCommitRestaurant(mode);
+    };
+    window.__aureliaRoomBillingGuardInstalled = true;
+  }
 })();
