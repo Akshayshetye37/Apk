@@ -45,6 +45,15 @@ if 'NOT encrypted' not in backup or 'exportEncryptedBackup' not in backup: error
 if not (root / 'tests/backup_import.test.js').is_file(): errors.append('Backup import regression tests are missing.')
 if not (root / 'test/backup_crypto_test.dart').is_file(): errors.append('Portable backup cryptography regression tests are missing.')
 if "replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')" not in main: errors.append('Native filename sanitization missing.')
+# Booking identity photos must survive editing and be included in record exports.
+if "data-id-photo" not in html or "idPhoto:x.dataset.idPhoto||''" not in html:
+ errors.append('Booking and guest occupant ID photos must persist from the edit form into saved records.')
+if "pendingBookingIdPhoto=g?.idPhoto||''" not in html or "src=\"\u0024{esc(g?.idPhoto||'')}\"" not in html:
+ errors.append('Existing primary guest ID photos must reload when editing a booking.')
+if "function bookingExportPayload(id)" not in html or "Occupants & identity photos" not in html or "ID Photo Included in JSON/PDF" not in html:
+ errors.append('Booking exports must include primary guest and occupant identity records/photos.')
+if "cdn.jsdelivr.net/npm/tesseract" in html or "type:'recognizeIdImage'" not in html:
+ errors.append('ID OCR must use the local native bridge rather than a remote CDN dependency.')
 if errors:
  print('STATIC SECURITY CHECK FAILED:'); [print('- '+e) for e in errors]; sys.exit(1)
 print('Static security guardrails passed. Not a full audit or device test.')
