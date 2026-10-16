@@ -164,7 +164,7 @@ test('room billing canonicalizes prices and rejects non-menu items', () => {
   appDb.restaurantCart[0].itemId = 'hotel-room-charge';
   app.commitRestaurant('room');
   assert.equal(commitCount, 1);
-  assert.match(app.messages.at(-1), /Only active restaurant menu items/);
+  assert.match(app.messages.at(-1), /Only valid active menu or saleable stock items/);
 });
 
 test('Android plaintext restore reboots through secure native storage instead of WebView reload', async () => {
