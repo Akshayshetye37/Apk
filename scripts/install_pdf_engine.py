@@ -134,49 +134,54 @@ object PdfEnginePlugin {
 '''.replace("__PACKAGE__", package_name)
 (plugin_dir / "PdfEnginePlugin.kt").write_text(plugin, encoding="utf-8")
 if "PdfEnginePlugin.register(flutterEngine)" not in source:
-    # The Flutter template has changed its Kotlin formatting across releases.
-    # Only replace a generated, empty MainActivity; fail closed on custom methods.
-    lines = source.splitlines()
-    class_index = next((i for i, line in enumerate(lines)
-                        if re.search(r"\bclass\s+MainActivity\b", line)
-                        and re.search(r"Flutter(?:Fragment)?Activity", line)), None)
-    if class_index is None:
-        raise SystemExit("Could not find a MainActivity extending FlutterActivity. Found declarations: " +
-                         repr([line for line in lines if "MainActivity" in line or "FlutterActivity" in line]))
-    declaration = lines[class_index].strip()
-    base_match = re.search(r"Flutter(?:Fragment)?Activity", declaration)
-    activity_base = base_match.group(0) if base_match else "FlutterActivity"
-    if not re.match(r"^class\s+MainActivity\s*:\s*Flutter(?:Fragment)?Activity\b", declaration):
-        raise SystemExit("Unexpected MainActivity declaration: " + repr(declaration))
-    # Permit an empty class body (including a separate closing-brace line).
-    remainder = lines[class_index + 1:]
-    if declaration.endswith("{"):
-        while remainder and not remainder[0].strip():
-            remainder.pop(0)
-        if remainder and remainder[0].strip() == "}":
-            remainder.pop(0)
+    # Register safely even if Flutter's generated activity template contains
+    # harmless annotations/comments or an existing configureFlutterEngine method.
+    declaration_match = re.search(
+        r"(?m)^\\s*class\\s+MainActivity\\s*:\\s*(Flutter(?:Fragment)?Activity)\\s*\\(\\s*\\)\\s*\\{",
+        source,
+    )
+    if not declaration_match:
+        raise SystemExit("Could not find a supported MainActivity class declaration.")
+    if "override fun configureFlutterEngine(" in source:
+        method_match = re.search(
+            r"(override\\s+fun\\s+configureFlutterEngine\\s*\\(\\s*flutterEngine\\s*:\\s*FlutterEngine\\s*\\)\\s*\\{)([\\s\\S]*?)(\\n\\s*\\})",
+            source,
+        )
+        if method_match:
+            body = method_match.group(2)
+            if "super.configureFlutterEngine(flutterEngine)" not in body:
+                body = "\\n        super.configureFlutterEngine(flutterEngine)" + body
+            body += "\\n        PdfEnginePlugin.register(flutterEngine)"
+            source = source[:method_match.start(2)] + body + source[method_match.end(2):]
         else:
-            raise SystemExit("MainActivity contains custom code; refusing automatic patch.")
-    elif declaration.endswith("{}") or re.fullmatch(r"class\s+MainActivity\s*:\s*Flutter(?:Fragment)?Activity\s*(?:\(\s*\))?\s*", declaration):
-        pass
+            raise SystemExit("Found a custom configureFlutterEngine method that cannot be safely patched.")
     else:
-        raise SystemExit("MainActivity contains custom code; refusing automatic patch: " + repr(declaration))
-    if any(line.strip() for line in remainder):
-        raise SystemExit("MainActivity contains custom code; refusing automatic patch.")
-    lines = lines[:class_index] + [
-        f"class MainActivity : {activity_base}() {{" ,
-        "    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {",
-        "        super.configureFlutterEngine(flutterEngine)",
-        "        PdfEnginePlugin.register(flutterEngine)",
-        "    }",
-        "}",
-    ]
-    source = "\n".join(lines)
+        # Insert the standard registration override before the activity's final brace.
+        class_open = declaration_match.end() - 1
+        depth = 0
+        class_close = None
+        for index in range(class_open, len(source)):
+            if source[index] == "{":
+                depth += 1
+            elif source[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    class_close = index
+                    break
+        if class_close is None:
+            raise SystemExit("MainActivity class has no matching closing brace.")
+        method = (
+            "\\n    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {\\n"
+            "        super.configureFlutterEngine(flutterEngine)\\n"
+            "        PdfEnginePlugin.register(flutterEngine)\\n"
+            "    }\\n"
+        )
+        source = source[:class_close] + method + source[class_close:]
     if "import io.flutter.embedding.engine.FlutterEngine" not in source:
-        package_line = re.search(r"(?m)^package\s+[^\n]+", source)
+        package_line = re.search(r"(?m)^package\\s+[^\\n]+", source)
         if package_line:
-            source = source[:package_line.end()] + "\n\nimport io.flutter.embedding.engine.FlutterEngine" + source[package_line.end():]
+            source = source[:package_line.end()] + "\\n\\nimport io.flutter.embedding.engine.FlutterEngine" + source[package_line.end():]
         else:
             raise SystemExit("Could not safely add FlutterEngine import.")
-    main.write_text(source.rstrip() + "\n", encoding="utf-8")
+    main.write_text(source.rstrip() + "\\n", encoding="utf-8")
 print("Installed serialized PdfRenderer method channel and registered it with FlutterEngine.")
