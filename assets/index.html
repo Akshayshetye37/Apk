@@ -460,7 +460,7 @@ function exportStructuredSpreadsheet(scope,id){
   rows.push([],['VEHICLES'],['Registration','Type']);(g?.vehicles||[]).forEach(v=>rows.push([v.reg,v.type]));
   rows.push([],['BOOKINGS'],['SR','Room','Check In','Check Out','Status','Total','Paid','Due']);
   (data?.bookings||[]).forEach(x=>rows.push([x.booking.sr,x.room?.number||'',x.booking.checkIn,x.booking.checkOut,x.booking.status,x.total,x.paid,x.due]));
- }else if(scope==='booking'||scope==='folio'){const b=Array.isArray(data)?data:[data];rows.push(['SR','Guest','Room','Status','Check In','Check Out','Total','Paid','Due']);b.forEach(x=>rows.push([x.sr,guest(x)?.name||'',room(x)?.number||'',x.status,x.checkIn,x.checkOut,total(x),x.paid,due(x)]))}
+ }else if(scope==='booking'||scope==='folio'){const b=Array.isArray(data)?data:[data];rows.push(['BOOKING SUMMARY'],['SR','Guest','Room','Status','Check In','Check Out','Total','Paid','Due']);b.forEach(x=>rows.push([x.sr,guest(x)?.name||'',room(x)?.number||'',x.status,x.checkIn,x.checkOut,total(x),x.paid,due(x)]));const x=b[0],g=x&&guest(x);if(g){rows.push([],['PRIMARY GUEST'],['Name',g.name||''],['Phone',g.phone||''],['ID Type',g.idType||''],['ID Number',g.idNumber||''],['ID Photo Included in JSON/PDF',g.idPhoto?'Yes':'No'],[],['OCCUPANTS'],['Name','DOB','Relation','Phone','ID Type','ID Number','ID Photo Included in JSON/PDF']);(g.occupants||[]).forEach(o=>rows.push([o.name||'',o.dob||'',o.relation||'',o.phone||'',o.idType||'',o.idNumber||'',o.idPhoto?'Yes':'No']));}}
  else if(scope==='room'){const r=Array.isArray(data)?data:[data];rows.push(['Room','Type','Rate','Status']);r.forEach(x=>rows.push([x.number,x.type,x.rate,x.status]))}
  else {rows.push(['Section','JSON']);rows.push(['AURELIA PMS',JSON.stringify(data)])}
  const table=`<table><tbody>${rows.map((row,ri)=>`<tr>${row.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
@@ -1003,11 +1003,12 @@ function openGuest(id){
  `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveGuest('${id||''}')">Save guest</button>`);
 }
 let pendingGuestPhoto='';
-function previewGuestPhoto(e){const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{pendingGuestPhoto=r.result;const p=document.getElementById('gPhotoPreview');if(p){p.src=r.result;p.style.display='block'}};r.readAsDataURL(f)}
+async function previewGuestPhoto(e){const f=e?.target?.files?.[0];if(!f)return;try{pendingGuestPhoto=await imageFileToDataUrl(f);const p=document.getElementById('gPhotoPreview');if(p){p.src=pendingGuestPhoto;p.style.display='block'}const status=document.getElementById('guestOcrStatus');if(status)status.textContent='ID photo selected and compressed. Save the guest to keep it.';}catch(err){const status=document.getElementById('guestOcrStatus');if(status)status.textContent=err.message||'Could not read the ID photo.';e.target.value='';}}
 function updateGuestOccupantCount(){const c=document.querySelectorAll('#guestOccList [data-occ]').length;const el=document.getElementById('guestOccCount');if(el)el.textContent=c}
 function addGuestOccupant(){const c=document.getElementById('guestOccList');c.insertAdjacentHTML('beforeend',occupantHTML({},c.querySelectorAll('[data-occ]').length));updateGuestOccupantCount()}
 function addGuestVehicle(){const c=document.getElementById('guestVehList');c.insertAdjacentHTML('beforeend',vehicleHTML({},c.querySelectorAll('[data-veh]').length))}
-function saveGuest(id){
+async function saveGuest(id){
+ await Promise.all([...document.querySelectorAll('#guestOccList [data-occ]')].map(x=>x.__photoPromise||Promise.resolve()));
  const name=document.getElementById('gName').value.trim(), phone=document.getElementById('gPhone').value.trim();
  let g=id?DB.guests.find(x=>x.id===id):{id:'g'+Date.now(),occupants:[],vehicles:[]};if(!g)return;
  g.name=name;g.phone=phone;g.email=document.getElementById('gEmail').value;g.idType=document.getElementById('gIdType').value;g.idNumber=document.getElementById('gIdNumber').value;if(pendingGuestPhoto)g.idPhoto=pendingGuestPhoto;
