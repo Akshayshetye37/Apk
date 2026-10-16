@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'image_viewer_engine.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
@@ -724,9 +725,18 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           );
           if (savedPath == null) throw const FormatException('Save cancelled');
         } else if (value['type'] == 'openFile') {
-          final result = await OpenFilex.open(file.path, type: mime);
-          if (result.type != ResultType.done) {
-            throw StateError('No compatible external app could open this file: ${result.message}');
+          if (mime == 'image/jpeg' || mime == 'image/png' || mime == 'image/webp' ||
+              mime == 'image/gif' || mime == 'image/bmp') {
+            final navigator = aureliaNavigatorKey.currentState;
+            if (navigator == null) throw StateError('The in-app image viewer is not available.');
+            unawaited(navigator.push(MaterialPageRoute<void>(
+              builder: (_) => AdvancedImageViewerRoute(filePath: file.path, documentTitle: safeName),
+            )));
+          } else {
+            final result = await OpenFilex.open(file.path, type: mime);
+            if (result.type != ResultType.done) {
+              throw StateError('No compatible external app could open this file: ${result.message}');
+            }
           }
         } else {
           await Share.shareXFiles([XFile(file.path, mimeType: mime, name: safeName)], subject: safeName);
