@@ -16,6 +16,7 @@ import 'pms_access_gate.dart';
 import 'pdf_viewer_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:path_provider/path_provider.dart';
@@ -707,9 +708,46 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       }
       if (value['type'] == 'setBiometricEnabled') {
         final enabled = value['enabled'];
-        if (requestId == null || enabled is! bool) throw const FormatException('Biometric preference must be true or false.');
-        await AureliaSecureVault.writeSecret('aurelia_pms_biometric_enabled_v1', enabled ? 'true' : 'false');
-        await _controller.runJavaScript('window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},true,null);');
+        if (requestId == null || enabled is! bool) {
+          throw const FormatException('Biometric preference must be true or false.');
+        }
+        if (enabled && !await LocalAuthentication().isDeviceSupported()) {
+          throw StateError('This device does not support secure device authentication.');
+        }
+        await AureliaSecureVault.writeSecret(
+          'aurelia_pms_biometric_enabled_v1',
+          enabled ? 'true' : 'false',
+        );
+        // Never leave the user without an available unlock method when device
+        // authentication is switched off.
+        if (!enabled) {
+          await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', 'true');
+        }
+        await _controller.runJavaScript(
+          'window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},true,null);',
+        );
+        return;
+      }
+      if (value['type'] == 'setPinEntryEnabled') {
+        final enabled = value['enabled'];
+        if (requestId == null || enabled is! bool) {
+          throw const FormatException('PIN-entry preference must be true or false.');
+        }
+        if (!enabled) {
+          final biometricEnabled =
+              await AureliaSecureVault.readSecret('aurelia_pms_biometric_enabled_v1') == 'true';
+          final deviceSupported = await LocalAuthentication().isDeviceSupported();
+          if (!biometricEnabled || !deviceSupported) {
+            throw StateError('Enable supported device authentication before disabling PIN entry.');
+          }
+        }
+        await AureliaSecureVault.writeSecret(
+          'aurelia_pms_pin_entry_enabled_v1',
+          enabled ? 'true' : 'false',
+        );
+        await _controller.runJavaScript(
+          'window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},true,null);',
+        );
         return;
       }
       if (value['type'] == 'setAppProtection') {
@@ -883,7 +921,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       debugPrint('Aurelia native bridge rejected request: $error');
       if (requestId != null) {
         try {
-          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
+          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
         } catch (_) {}
       }
     }
