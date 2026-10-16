@@ -167,15 +167,19 @@
       pages.importExport = function () {
         let html = originalImportExport.apply(this, arguments);
         if (html.includes('aureliaLocalBackupCard')) return html;
+        const nativeSecure = !!(window.AureliaNative &&
+          typeof window.AureliaNative.postMessage === 'function' &&
+          window.__AURELIA_SECURE_DB_READY);
         html += '<section class="card" id="aureliaLocalBackupCard" style="margin-top:16px">' +
-          '<div class="section-title"><h2>Encrypted backups</h2><span class="status reserved">Device only</span></div>' +
-          '<p class="muted">Portable exports are encrypted with your passphrase. Automatic snapshots stay encrypted on this device. Cloud backup is unavailable.</p>' +
-          '<label style="display:flex;gap:10px;align-items:center;margin:10px 0"><input id="aureliaAutoBackupToggle" type="checkbox" ' +
+          '<div class="section-title"><h2>Backups</h2><span class="status reserved">' +
+          (nativeSecure ? 'Encrypted on device' : 'Browser preview') + '</span></div>' +
+          '<p class="muted">Android portable backups use your passphrase. Browser preview exports are plaintext and warn before download. Automatic encrypted snapshots are Android-only; cloud backup is unavailable.</p>' +
+          (nativeSecure ? '<label style="display:flex;gap:10px;align-items:center;margin:10px 0"><input id="aureliaAutoBackupToggle" type="checkbox" ' +
           ((typeof DB !== 'undefined' && DB.settings && DB.settings.autoBackupEnabled === true) ? 'checked' : '') +
-          ' onchange="aureliaSetAutoBackup(this.checked)"> Backup Auto</label>' +
-          '<div class="actions"><button class="btn primary" type="button" onclick="aureliaBackupNow()">Export encrypted backup</button>' +
-          '<button class="btn" type="button" onclick="aureliaCreateLocalSnapshot()">Save device snapshot</button></div>' +
-          '<div id="aureliaBackupStatus" class="muted" role="status" style="margin-top:8px"></div></section>';
+          ' onchange="aureliaSetAutoBackup(this.checked)"> Automatic encrypted snapshots</label>' : '') +
+          '<div class="actions"><button class="btn primary" type="button" onclick="aureliaBackupNow()">Export backup</button>' +
+          (nativeSecure ? '<button class="btn" type="button" onclick="aureliaCreateLocalSnapshot()">Save encrypted device snapshot</button>' : '') +
+          '</div><div id="aureliaBackupStatus" class="muted" role="status" style="margin-top:8px"></div></section>';
         return html;
       };
     }
@@ -207,6 +211,10 @@
     if (status) status.textContent = ok ? 'Security preference saved.' : 'Could not save security preference: ' + String(error || 'Unknown error');
   };
   window.aureliaSetAutoBackup = function (enabled) {
+    if (!window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function' || !window.__AURELIA_SECURE_DB_READY) {
+      notifyBackup('Automatic encrypted snapshots are available only in the installed Android app.');
+      return;
+    }
     if (typeof DB === 'undefined' || !DB.settings) return;
     DB.settings.autoBackupEnabled = !!enabled;
     if (typeof window.save === 'function') window.save();
@@ -218,7 +226,7 @@
     if (status) status.textContent = ok ? 'Encrypted device snapshot saved.' : 'Backup failed: ' + String(error || 'Unknown error');
   };
   window.aureliaCreateLocalSnapshot = function () {
-    if (!window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function') { notifyBackup('Install the Android app to create device snapshots.'); return; }
+    if (!window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function' || !window.__AURELIA_SECURE_DB_READY) { notifyBackup('Install the secure Android app to create encrypted device snapshots.'); return; }
     window.AureliaNative.postMessage(JSON.stringify({type:'createLocalBackup',requestId:'local_backup_' + Date.now()}));
     notifyBackup('Saving encrypted device snapshot…');
   };
