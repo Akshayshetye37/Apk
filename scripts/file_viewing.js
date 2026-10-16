@@ -189,6 +189,25 @@
       };
     }
   } catch (error) { console.warn('Could not add Drive target field:', error); }
+  window.aureliaSetAppProtection = function (enabled) {
+    if (typeof DB !== 'undefined' && DB.settings) {
+      DB.settings.appProtectionEnabled = !!enabled;
+      if (typeof window.save === 'function') window.save();
+    }
+    const status = document.getElementById('aureliaProtectionStatus');
+    if (!window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function') {
+      if (status) status.textContent = 'This setting is applied only in the installed Android app.';
+      return;
+    }
+    window.AureliaNative.postMessage(JSON.stringify({
+      type:'setAppProtection', requestId:'protection_' + Date.now(), enabled:!!enabled
+    }));
+    if (status) status.textContent = enabled ? 'Protection enabled. PIN setup may be required on next unlock.' : 'Protection disabled. The app will open without an unlock prompt.';
+  };
+  window.aureliaNativeProtectionResult = function (requestId, ok, error) {
+    const status = document.getElementById('aureliaProtectionStatus');
+    if (status) status.textContent = ok ? 'Security preference saved.' : 'Could not save security preference: ' + String(error || 'Unknown error');
+  };
   window.aureliaSetAutoBackup = function (enabled) {
     if (typeof DB === 'undefined' || !DB.settings) return;
     DB.settings.autoBackupEnabled = !!enabled;
@@ -383,6 +402,14 @@
       pages.settings = function () {
         let html = previousSettings.apply(this, arguments);
         html = html.replace(/<div class="field full" style="margin-top:12px"><label for="upiQrFile">UPI payment QR image[\s\S]*?Remove QR<\/button><\/div><\/div>/, '');
+        if (!html.includes('aureliaProtectionCard')) {
+          const enabled = !(typeof DB !== 'undefined' && DB.settings && DB.settings.appProtectionEnabled === false);
+          html += '<section class="card" id="aureliaProtectionCard" style="margin-top:16px"><div class="section-title"><h2>App security</h2></div>' +
+            '<p class="muted">When enabled, Aurelia asks for your PIN or supported device authentication when opening or resuming the app. Disabling this removes the unlock gate; your database remains encrypted on this device.</p>' +
+            '<label style="display:flex;align-items:center;gap:10px;margin:12px 0"><input type="checkbox" id="aureliaProtectionToggle" ' +
+            (enabled ? 'checked' : '') + ' onchange="aureliaSetAppProtection(this.checked)"> Require PIN / device authentication</label>' +
+            '<div id="aureliaProtectionStatus" class="muted" role="status"></div></section>';
+        }
         return html;
       };
     }
