@@ -145,9 +145,10 @@ test('room billing requires an active stay and valid room', () => {
 test('room billing canonicalizes prices and rejects non-menu items', () => {
   let committedMode = '';
   let committedCart = null;
+  let commitCount = 0;
   const app = createHarness({
     selectedBooking: 'b1',
-    commitRestaurant: mode => { committedMode = mode; committedCart = JSON.parse(JSON.stringify(appDb.restaurantCart)); },
+    commitRestaurant: mode => { commitCount += 1; committedMode = mode; committedCart = JSON.parse(JSON.stringify(appDb.restaurantCart)); },
     db: {
       restaurantCart: [{ itemId: 'food1', name: 'Forged name', price: 1, qty: 2 }],
       madeFoods: [{ id: 'food1', name: 'Chicken Curry', sell: 180, unit: 'plate', active: true }],
@@ -158,9 +159,10 @@ test('room billing canonicalizes prices and rejects non-menu items', () => {
   const appDb = app.window.DB;
   app.commitRestaurant('room');
   assert.equal(committedMode, 'room');
+  assert.equal(commitCount, 1);
   assert.deepEqual(committedCart, [{ itemId: 'food1', name: 'Chicken Curry', unit: 'plate', price: 180, qty: 2 }]);
   appDb.restaurantCart[0].itemId = 'hotel-room-charge';
   app.commitRestaurant('room');
-  assert.equal(committedMode, 'room');
+  assert.equal(commitCount, 1);
   assert.match(app.messages.at(-1), /Only active restaurant menu items/);
 });
