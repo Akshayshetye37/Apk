@@ -991,20 +991,28 @@ async function aureliaPreprocessIdImage(file){
 }
 async function runImageOCR(file,statusEl){
   if(!file){ if(statusEl) statusEl.textContent='Select a government ID image first.'; return null; }
-  if(!/^image\//.test(file.type)){ if(statusEl) statusEl.textContent='Please select an image file.'; return null; }
-  if(file.size>12*1024*1024){ if(statusEl) statusEl.textContent='Image is too large. Please use an image under 12 MB.'; return null; }
+  if(!/^image\\//.test(file.type)){ if(statusEl) statusEl.textContent='Please select an image file.'; return null; }
+  if(file.size>8*1024*1024){ if(statusEl) statusEl.textContent='Image is too large. Please use an image under 8 MB.'; return null; }
   if(ocrBusy){ if(statusEl) statusEl.textContent='OCR is already running. Please wait.'; return null; }
   ocrBusy=true;
-  if(statusEl) statusEl.textContent='OCR is reading the ID image…';
+  if(statusEl) statusEl.textContent='Reading ID locally on this device…';
   try{
-    if(window.__AURELIA_SECURE_DB_READY&&!window.Tesseract){
-      if(statusEl)statusEl.textContent='OCR is disabled in the secure Android build until its engine is bundled locally.';
-      return null;
-  }
-  if(!window.Tesseract){
-      if(statusEl)statusEl.textContent='OCR engine is unavailable in this browser preview. The image can still be saved; use the installed Android app for on-device OCR.';
-      return null;
+    if(window.AureliaNative&&typeof window.AureliaNative.postMessage==='function'&&window.__AURELIA_SECURE_DB_READY){
+      const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onerror=()=>reject(new Error('Could not read selected image'));reader.onload=()=>resolve(String(reader.result||''));reader.readAsDataURL(file);});
+      const imageBase64=dataUrl.includes(',')?dataUrl.slice(dataUrl.indexOf(',')+1):'';
+      if(!imageBase64)throw new Error('Selected image could not be encoded.');
+      const requestId='ocr_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+      const textResult=await new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>{delete window.__aureliaOcrPending[requestId];reject(new Error('On-device OCR timed out. Please try again.'));},30000);
+        window.__aureliaOcrPending[requestId]={resolve:(value)=>{clearTimeout(timer);delete window.__aureliaOcrPending[requestId];resolve(value);},reject:(error)=>{clearTimeout(timer);delete window.__aureliaOcrPending[requestId];reject(error);}};
+        window.AureliaNative.postMessage(JSON.stringify({type:'recognizeIdImage',requestId,imageBase64}));
+      });
+      return String(textResult||'').replace(/\\r/g,'\\n').replace(/[ \\t]+/g,' ').replace(/\\n{2,}/g,'\\n').trim();
     }
+    if(statusEl)statusEl.textContent='Offline OCR works in the installed Android app. This browser preview has no bundled OCR engine; no remote library will be downloaded.';
+    return null;
+  }catch(err){if(statusEl)statusEl.textContent='On-device OCR failed: '+(err&&err.message?err.message:'unknown error');return null;}finally{ocrBusy=false;}
+}
     const logger=m=>{if(statusEl&&m.status)statusEl.textContent=`OCR: ${m.status}${m.progress!=null?' · '+Math.round(m.progress*100)+'%':''}`;};
     const first=await Tesseract.recognize(file,'eng',{logger});
     let text=(first?.data?.text||'').replace(/\r/g,'\n').replace(/[ \t]+/g,' ').replace(/\n{2,}/g,'\n').trim();
@@ -1020,6 +1028,8 @@ async function runImageOCR(file,statusEl){
     return null;
   }finally{ocrBusy=false;}
 }
+window.__aureliaOcrPending=window.__aureliaOcrPending||{};
+window.aureliaNativeOcrResult=function(requestId,text,error){const p=window.__aureliaOcrPending[String(requestId)];if(!p)return;if(error)p.reject(new Error(String(error)));else p.resolve(String(text||''));};
 function parseIdText(text){
  const raw=String(text||'').replace(/\r/g,'\n'); if(!raw.trim())return {};
  const t=raw.replace(/[ \t]+/g,' ').trim();
