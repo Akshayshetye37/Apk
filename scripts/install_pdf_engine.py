@@ -130,9 +130,9 @@ object PdfEnginePlugin {
 (plugin_dir / "PdfEnginePlugin.kt").write_text(plugin, encoding="utf-8")
 if "PdfEnginePlugin.register(flutterEngine)" not in source:
     source = source.rstrip()
-    if re.search(r"class\s+MainActivity\s*:\s*FlutterActivity\s*\(\s*\)\s*\{\s*\}\s*$", source):
+    if re.search(r"class\s+MainActivity\s*:\s*FlutterActivity\s*(?:\(\s*\))?\s*(?:\{\s*\})?\s*$", source):
         source = re.sub(
-            r"class\s+MainActivity\s*:\s*FlutterActivity\s*\(\s*\)\s*\{\s*\}\s*$",
+            r"class\s+MainActivity\s*:\s*FlutterActivity\s*(?:\(\s*\))?\s*(?:\{\s*\})?\s*$",
             "class MainActivity : FlutterActivity() {\n"
             "    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {\n"
             "        super.configureFlutterEngine(flutterEngine)\n"
@@ -141,7 +141,10 @@ if "PdfEnginePlugin.register(flutterEngine)" not in source:
             source,
         )
         source = source.replace("import io.flutter.embedding.android.FlutterActivity",
-                                "import io.flutter.embedding.android.FlutterActivity\nimport io.flutter.embedding.engine.FlutterEngine")
+                                "import io.flutter.embedding.android.FlutterActivity")
+        if "import io.flutter.embedding.engine.FlutterEngine" not in source:
+            source = source.replace("import io.flutter.embedding.android.FlutterActivity",
+                                    "import io.flutter.embedding.android.FlutterActivity\nimport io.flutter.embedding.engine.FlutterEngine")
     else:
         raise SystemExit("Unexpected MainActivity template; refusing unsafe automatic patch.")
     main.write_text(source + "\n", encoding="utf-8")
