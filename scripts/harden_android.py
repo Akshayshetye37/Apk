@@ -178,4 +178,26 @@ if wrapper_count != 1:
     raise SystemExit("ERROR: could not safely update Gradle wrapper distributionUrl")
 wrapper.write_text(wrapper_source, encoding="utf-8")
 
+
+# Protect sensitive PMS screens from screenshots and Android recent-app previews.
+# Locate the generated activity rather than assuming Flutter's package name.
+activity_files = list((android / "app/src/main/kotlin").rglob("MainActivity.kt"))
+if not activity_files:
+    raise SystemExit("ERROR: generated MainActivity.kt not found; cannot enable FLAG_SECURE")
+for activity_file in activity_files:
+    activity_source = activity_file.read_text(encoding="utf-8")
+    if "FLAG_SECURE" not in activity_source:
+        if "import android.view.WindowManager" not in activity_source:
+            package_match = re.search(r"(?m)^package .*?$", activity_source)
+            if not package_match:
+                raise SystemExit(f"ERROR: cannot safely locate Kotlin package declaration in {activity_file}")
+            activity_source = activity_source[:package_match.end()] + "\\n\\nimport android.view.WindowManager" + activity_source[package_match.end():]
+        class_match = re.search(r"(?m)^(\\s*)class\\s+MainActivity\\s*:\\s*[^\\n{]+\\{", activity_source)
+        if not class_match:
+            raise SystemExit(f"ERROR: cannot safely locate MainActivity class in {activity_file}")
+        insert_at = class_match.end()
+        secure_method = "\\n    override fun onCreate(savedInstanceState: android.os.Bundle?) {\\n        window.setFlags(\\n            WindowManager.LayoutParams.FLAG_SECURE,\\n            WindowManager.LayoutParams.FLAG_SECURE\\n        )\\n        super.onCreate(savedInstanceState)\\n    }\\n"
+        activity_source = activity_source[:insert_at] + secure_method + activity_source[insert_at:]
+        activity_file.write_text(activity_source, encoding="utf-8")
+
 print("Applied: HTTPS-only network policy, Android backup restrictions, R8 shrinking, and fail-closed production release signing.")
