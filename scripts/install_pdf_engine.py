@@ -134,18 +134,34 @@ object PdfEnginePlugin {
 '''.replace("__PACKAGE__", package_name)
 (plugin_dir / "PdfEnginePlugin.kt").write_text(plugin, encoding="utf-8")
 if "PdfEnginePlugin.register(flutterEngine)" not in source:
-    # Flutter's generated Kotlin template varies between empty class, class body,
-    # and whitespace formatting. Match the declaration line only; never rely on
-    # a whole-file regex or silently overwrite custom MainActivity code.
+    # The Flutter template has changed its Kotlin formatting across releases.
+    # Only replace a generated, empty MainActivity; fail closed on custom methods.
     lines = source.splitlines()
     class_index = next((i for i, line in enumerate(lines)
-                        if re.match(r"^\\s*class\\s+MainActivity\\s*:\\s*FlutterActivity\\b", line)), None)
+                        if re.search(r"\\bclass\\s+MainActivity\\b", line)
+                        and "FlutterActivity" in line), None)
     if class_index is None:
-        raise SystemExit("Unexpected MainActivity template; refusing unsafe automatic patch.")
+        raise SystemExit("Could not find a MainActivity extending FlutterActivity. Found declarations: " +
+                         repr([line for line in lines if "MainActivity" in line or "FlutterActivity" in line]))
     declaration = lines[class_index].strip()
-    if not re.fullmatch(r"class\\s+MainActivity\\s*:\\s*FlutterActivity\\s*(?:\\(\\s*\\))?\\s*\\{?\\s*\\}?", declaration):
-        raise SystemExit("MainActivity contains custom code; refusing unsafe automatic patch.")
-    lines[class_index:class_index + 1] = [
+    if not re.match(r"^class\\s+MainActivity\\s*:\\s*FlutterActivity\\b", declaration):
+        raise SystemExit("Unexpected MainActivity declaration: " + repr(declaration))
+    # Permit an empty class body (including a separate closing-brace line).
+    remainder = lines[class_index + 1:]
+    if declaration.endswith("{"):
+        while remainder and not remainder[0].strip():
+            remainder.pop(0)
+        if remainder and remainder[0].strip() == "}":
+            remainder.pop(0)
+        else:
+            raise SystemExit("MainActivity contains custom code; refusing automatic patch.")
+    elif declaration.endswith("{}") or re.fullmatch(r"class\\s+MainActivity\\s*:\\s*FlutterActivity\\s*(?:\\(\\s*\\))?\\s*", declaration):
+        pass
+    else:
+        raise SystemExit("MainActivity contains custom code; refusing automatic patch: " + repr(declaration))
+    if any(line.strip() for line in remainder):
+        raise SystemExit("MainActivity contains custom code; refusing automatic patch.")
+    lines = lines[:class_index] + [
         "class MainActivity : FlutterActivity() {",
         "    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {",
         "        super.configureFlutterEngine(flutterEngine)",
