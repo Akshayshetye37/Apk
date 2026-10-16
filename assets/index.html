@@ -502,7 +502,7 @@ function refreshExportRecords(){
 function exportCenter(){
  const scope=document.getElementById('exportScope').value,format=document.getElementById('exportFormat').value,id=document.getElementById('exportRecord').value;
  if((scope!=='all')&&!id){toast('Select a record first');return}
- if(format==='json'){let data=scope==='all'?DB:scope==='guest'?guestExportPayload(id):scope==='booking'?(()=>{const booking=DB.bookings.find(x=>String(x.id)===String(id));if(!booking)return null;const primaryGuest=guest(booking)||{};return {booking,primaryGuest,room:room(booking)||null,occupants:primaryGuest.occupants||[],vehicles:primaryGuest.vehicles||[],exportedAt:new Date().toISOString()}})():scope==='room'?DB.rooms.find(x=>x.id===id):DB.bookings.find(x=>x.id===id);downloadBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),`aurelia-${scope}.json`);return}
+ if(format==='json'){let data=scope==='all'?DB:scope==='guest'?guestExportPayload(id):scope==='booking'?(()=>{const booking=(DB.bookings||[]).find(x=>String(x.id)===String(id));if(!booking)return null;const primaryGuest=guest(booking)||{};const occupants=Array.isArray(primaryGuest.occupants)?primaryGuest.occupants:[];return {exportFormat:'aurelia_booking_bundle_v1',exportedAt:new Date().toISOString(),booking:{...booking},room:room(booking)||null,primaryGuest:{...primaryGuest},primaryGuestIdPhoto:primaryGuest.idPhoto||'',occupants:occupants.map((o,i)=>({...o,occupantNumber:i+1,idPhoto:o.idPhoto||''})),vehicles:Array.isArray(primaryGuest.vehicles)?primaryGuest.vehicles.map(v=>({...v})):[]}})():scope==='room'?DB.rooms.find(x=>x.id===id):DB.bookings.find(x=>x.id===id);downloadBlob(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),`aurelia-${scope}.json`);return}
  if(['csv','xlsx'].includes(format)){exportStructuredSpreadsheet(scope,id);return}
  if(['pdf','handwriting'].includes(format)){exportPrintDocument(scope,id,format);return}
  if(['jpg','png'].includes(format)){exportImageDocument(scope,id,format);return}
@@ -1093,8 +1093,13 @@ function demoOCR(btn){ return runGenericOcr(null,btn); }
 
 function saveBookingForm(id){
  const name=document.getElementById('bkGuest')?.value?.trim()||'Guest', phone=document.getElementById('bkPhone')?.value?.trim()||'';
- let g=DB.guests.find(x=>x.name.toLowerCase()===name.toLowerCase()&&x.phone===phone);
+ // On edit, resolve the existing guest by the booking's immutable guestId first.
+ // Name/phone are editable attributes, never the identity key.
+ const editingBooking=id?(DB.bookings||[]).find(x=>String(x.id)===String(id)):null;
+ let g=(editingBooking?.guestId!=null?(DB.guests||[]).find(x=>String(x.id)===String(editingBooking.guestId)):null)
+   ||(DB.guests||[]).find(x=>String(x.name||'').trim().toLowerCase()===name.toLowerCase()&&String(x.phone||'').trim()===phone);
  if(!g){g={id:'g'+Date.now(),name,phone,email:'',idType:'',idNumber:'',idPhoto:'',occupants:[],vehicles:[]};DB.guests.push(g)}
+ g.name=name;g.phone=phone;
  g.idType=document.getElementById('bkIdType')?.value?.trim()||g.idType||'';g.idNumber=document.getElementById('bkIdNumber')?.value?.trim()||g.idNumber||'';
 if(pendingBookingIdPhoto) g.idPhoto=pendingBookingIdPhoto;
 
