@@ -2918,7 +2918,7 @@ function aureliaSaveGoogleClientId(){
  const id=String(input?.value||'').trim();
  DB.settings.googleClientId=id;save();return id;
 }
-function aureliaConnectDrive(){aureliaDriveStatus('Choose “Save encrypted backup” to open Android’s share sheet, then select Google Drive. This app does not run background cloud sync.');}
+function aureliaConnectDrive(){aureliaDriveStatus('Choose “Save encrypted backup” to open Android’s save-location picker, then select Google Drive or device storage. This app does not run background cloud sync.');}
 async function aureliaUploadDriveBackup(){
  const passphrase=String(document.getElementById('aureliaDrivePassphrase')?.value||'');
  if(passphrase.length<12){aureliaDriveStatus('Choose a backup passphrase of at least 12 characters.');toast('Backup passphrase is too short');return;}
