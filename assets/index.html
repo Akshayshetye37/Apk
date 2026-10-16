@@ -484,7 +484,7 @@ function getExportRecords(scope){
  if(scope==='guest')return [...(DB.guests||[])].filter(g=>g&&g.id!=null).sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))).map(g=>({id:String(g.id),label:`${g.name||'Unnamed guest'} · ${g.phone||'No phone'} · ${String(g.id).slice(-6)}`}));
  if(scope==='booking'){
   const unique=new Map();
-  for(const b of (DB.bookings||[])){if(!b||b.id==null)continue;const key=String(b.id);const prior=unique.get(key);if(!prior||String(b.updatedAt||b.createdAt||'')>=String(prior.updatedAt||prior.createdAt||''))unique.set(key,b);}
+  for(const b of (DB.bookings||[])){if(!b||b.id==null)continue;const key=String(b.sr||b.id);const prior=unique.get(key);if(!prior||String(b.updatedAt||b.createdAt||'')>=String(prior.updatedAt||prior.createdAt||''))unique.set(key,b);}
   return [...unique.values()].map(b=>({id:String(b.id),label:`${b.sr||b.id} · ${guest(b)?.name||'Guest'}`})).sort((x,y)=>x.label.localeCompare(y.label));
  }
  if(scope==='room')return DB.rooms.map(r=>({id:r.id,label:`Room ${r.number}`}));
@@ -522,7 +522,7 @@ function guestExportPayload(id){
  const uniqueBookings=new Map();
  for(const b of (DB.bookings||[])){
   if(!b||String(b.guestId)!==String(id))continue;
-  const key=String(b.id||b.sr||[b.roomId,b.checkIn,b.checkOut].join('|'));
+  const key=String(b.sr||b.id||[b.roomId,b.checkIn,b.checkOut].join('|'));
   const prev=uniqueBookings.get(key);
   if(!prev||String(b.updatedAt||'')>=String(prev.updatedAt||''))uniqueBookings.set(key,b);
  }
