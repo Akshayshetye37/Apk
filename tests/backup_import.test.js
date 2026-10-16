@@ -182,3 +182,24 @@ test('Android plaintext restore reboots through secure native storage instead of
   assert.equal(app.reloads, 0);
   assert.equal(app.saves, 1);
 });
+
+test('room billing preserves ready-made stock items at canonical inventory prices', () => {
+  let committedCart = null;
+  const app = createHarness({
+    selectedBooking: 'b1',
+    commitRestaurant: () => { committedCart = JSON.parse(JSON.stringify(appDb.restaurantCart)); },
+    db: {
+      restaurantCart: [{ itemId: 'water1', sourceType: 'stock', name: 'Forged water', price: 1, qty: 2 }],
+      madeFoods: [{ id: 'food1', name: 'Chicken Curry', sell: 180, unit: 'plate', active: true }],
+      inventory: [{ id: 'water1', name: 'Bottled Water', sell: 35, unit: 'bottle', stock: 20 }],
+      bookings: [{ id: 'b1', roomId: 'r1', status: 'active' }],
+      rooms: [{ id: 'r1', number: '101', status: 'occupied' }]
+    }
+  });
+  const appDb = app.window.DB;
+  app.commitRestaurant('room');
+  assert.deepEqual(committedCart, [{
+    itemId: 'water1', sourceType: 'stock', name: 'Bottled Water',
+    unit: 'bottle', price: 35, qty: 2
+  }]);
+});
