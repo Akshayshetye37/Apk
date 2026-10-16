@@ -137,21 +137,21 @@ if "PdfEnginePlugin.register(flutterEngine)" not in source:
     # Register safely even if Flutter's generated activity template contains
     # harmless annotations/comments or an existing configureFlutterEngine method.
     declaration_match = re.search(
-        r"(?m)^\\s*class\\s+MainActivity\\s*:\\s*(Flutter(?:Fragment)?Activity)\\s*\\(\\s*\\)\\s*\\{",
+        r"(?m)^\s*class\s+MainActivity\s*:\s*(Flutter(?:Fragment)?Activity)\s*\(\s*\)\s*\{",
         source,
     )
     if not declaration_match:
         raise SystemExit("Could not find a supported MainActivity class declaration.")
     if "override fun configureFlutterEngine(" in source:
         method_match = re.search(
-            r"(override\\s+fun\\s+configureFlutterEngine\\s*\\(\\s*flutterEngine\\s*:\\s*FlutterEngine\\s*\\)\\s*\\{)([\\s\\S]*?)(\\n\\s*\\})",
+            r"(override\s+fun\s+configureFlutterEngine\s*\(\s*flutterEngine\s*:\s*FlutterEngine\s*\)\s*\{)([\s\S]*?)(\n\s*\})",
             source,
         )
         if method_match:
             body = method_match.group(2)
             if "super.configureFlutterEngine(flutterEngine)" not in body:
-                body = "\\n        super.configureFlutterEngine(flutterEngine)" + body
-            body += "\\n        PdfEnginePlugin.register(flutterEngine)"
+                body = "\n        super.configureFlutterEngine(flutterEngine)" + body
+            body += "\n        PdfEnginePlugin.register(flutterEngine)"
             source = source[:method_match.start(2)] + body + source[method_match.end(2):]
         else:
             raise SystemExit("Found a custom configureFlutterEngine method that cannot be safely patched.")
@@ -171,17 +171,17 @@ if "PdfEnginePlugin.register(flutterEngine)" not in source:
         if class_close is None:
             raise SystemExit("MainActivity class has no matching closing brace.")
         method = (
-            "\\n    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {\\n"
-            "        super.configureFlutterEngine(flutterEngine)\\n"
-            "        PdfEnginePlugin.register(flutterEngine)\\n"
-            "    }\\n"
+            "\n    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {\n"
+            "        super.configureFlutterEngine(flutterEngine)\n"
+            "        PdfEnginePlugin.register(flutterEngine)\n"
+            "    }\n"
         )
         source = source[:class_close] + method + source[class_close:]
     if "import io.flutter.embedding.engine.FlutterEngine" not in source:
-        package_line = re.search(r"(?m)^package\\s+[^\\n]+", source)
+        package_line = re.search(r"(?m)^package\s+[^\n]+", source)
         if package_line:
-            source = source[:package_line.end()] + "\\n\\nimport io.flutter.embedding.engine.FlutterEngine" + source[package_line.end():]
+            source = source[:package_line.end()] + "\n\nimport io.flutter.embedding.engine.FlutterEngine" + source[package_line.end():]
         else:
             raise SystemExit("Could not safely add FlutterEngine import.")
-    main.write_text(source.rstrip() + "\\n", encoding="utf-8")
+    main.write_text(source.rstrip() + "\n", encoding="utf-8")
 print("Installed serialized PdfRenderer method channel and registered it with FlutterEngine.")
