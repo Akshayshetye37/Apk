@@ -602,7 +602,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         final file = File('${temp.path}/aurelia-pms-backup-${DateTime.now().toUtc().toIso8601String().replaceAll(':', '-')}.aurelia');
         await file.writeAsString(envelope, flush: true);
         final savedPath = await FilePicker.platform.saveFile(
-          dialogTitle: 'Save encrypted Aurelia PMS backup — choose Google Drive or device storage',
+          dialogTitle: 'Save local encrypted Aurelia PMS archive',
           fileName: 'aurelia-pms-encrypted-backup.aurelia',
           type: FileType.custom,
           allowedExtensions: const ['aurelia'],
