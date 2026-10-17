@@ -59,3 +59,5 @@ jobs:
 
       - name: Run guest identity regression tests
         run: node --test tests/guest_identity.test.js
+      - name: Run bundled PMS UI regression tests
+        run: node --test tests/pms_ui.test.js
