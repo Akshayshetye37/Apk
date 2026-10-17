@@ -15,6 +15,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:cryptography/cryptography.dart';
 import 'pms_access_gate.dart';
 import 'pdf_viewer_engine.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -467,7 +468,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _controller = WebViewController()
+    _controller = WebViewController();
+    if (kDebugMode && _controller.platform is AndroidWebViewController) {
+      AndroidWebViewController.enableDebugging(true);
+    }
+    _controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel('AureliaNative', onMessageReceived: (message) { unawaited(_handleNativeMessage(message.message)); })
       ..setBackgroundColor(const Color(0xFFFFFCF6))
