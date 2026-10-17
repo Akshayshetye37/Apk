@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
@@ -518,6 +519,23 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
               final lower = type.toLowerCase();
               return lower.contains('json') || lower.contains('aurelia');
             });
+            // WebView's capture attribute must open a camera that writes to
+            // app cache, not a public DCIM/Pictures destination. This avoids
+            // leaving duplicate guest-ID photos in the user's gallery.
+            if (imageOnly && params.isCaptureEnabled) {
+              final capture = await ImagePicker().pickImage(
+                source: ImageSource.camera,
+                imageQuality: 92,
+                maxWidth: 2200,
+                maxHeight: 3000,
+              );
+              if (capture == null) return <String>[];
+              final captured = File(capture.path);
+              if (!await captured.exists() || await captured.length() == 0) {
+                return <String>[];
+              }
+              return <String>[captured.path];
+            }
             final picked = await FilePicker.platform.pickFiles(
               type: imageOnly ? FileType.image : FileType.any,
               allowMultiple: params.mode == FileSelectorMode.openMultiple,
