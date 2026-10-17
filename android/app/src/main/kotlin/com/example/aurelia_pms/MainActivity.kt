@@ -37,7 +37,7 @@ class MainActivity : FlutterFragmentActivity() {
                                 else {
                                     val raf = RandomAccessFile(file, "r")
                                     try {
-                                        val renderer = PdfRenderer(raf.fd)
+                                        val renderer = PdfRenderer(android.os.ParcelFileDescriptor.dup(raf.fd))
                                         pdfFile = raf
                                         pdfRenderer = renderer
                                         result.success(renderer.pageCount)
