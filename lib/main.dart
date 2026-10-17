@@ -660,61 +660,70 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         if (raw.isEmpty || raw.length > 8 * 1024 * 1024) throw const FormatException('ID image exceeds the 8 MiB limit.');
         final decoded = img.decodeImage(raw);
         if (decoded == null) throw const FormatException('Could not decode this ID image.');
-        // Improve low-contrast scans before OCR. Keep dimensions bounded to avoid
-        // excessive memory use on older phones; never overwrite the original image.
-        final resized = decoded.width > 2400
-            ? img.copyResize(decoded, width: 2400)
-            : decoded;
+        // Run several bounded preprocessing passes: original colour, grayscale,
+        // and stronger contrast. OCR cannot guarantee exact recovery from a blurry
+        // or unreadable image, so return the strongest result for the user to verify.
+        final targetWidth = decoded.width < 1200 ? 1200 : (decoded.width > 2400 ? 2400 : decoded.width);
+        final resized = decoded.width == targetWidth ? decoded : img.copyResize(decoded, width: targetWidth);
         final gray = img.grayscale(resized);
-        final enhanced = img.adjustColor(gray, contrast: 1.35, brightness: 0.04);
+        final variants = <img.Image>[
+          resized,
+          gray,
+          img.adjustColor(gray, contrast: 1.45, brightness: 0.03),
+          img.adjustColor(gray, contrast: 1.9, brightness: -0.03),
+        ];
         final temp = await getTemporaryDirectory();
-        final ocrFile = File('${temp.path}/aurelia_ocr_${DateTime.now().microsecondsSinceEpoch}.jpg');
-        await ocrFile.writeAsBytes(img.encodeJpg(enhanced, quality: 94), flush: true);
-        final inputImage = InputImage.fromFilePath(ocrFile.path);
-        final recognized = <({double top, double left, String text})>[];
+        final tempFiles = <File>[];
         final recognizers = <TextRecognizer>[
           TextRecognizer(script: TextRecognitionScript.latin),
           TextRecognizer(script: TextRecognitionScript.devanagiri),
         ];
+        var bestText = '';
+        var bestScore = -1;
         try {
-          for (final recognizer in recognizers) {
-            final result = await recognizer.processImage(inputImage);
-            for (final block in result.blocks) {
-              for (final line in block.lines) {
-                final value = line.text.trim();
-                if (value.isEmpty) continue;
-                recognized.add((top: line.boundingBox.top.toDouble(),
-                  left: line.boundingBox.left.toDouble(), text: value));
+          for (var variantIndex = 0; variantIndex < variants.length; variantIndex++) {
+            final ocrFile = File('${temp.path}/aurelia_ocr_${DateTime.now().microsecondsSinceEpoch}_${variantIndex}.jpg');
+            tempFiles.add(ocrFile);
+            await ocrFile.writeAsBytes(img.encodeJpg(variants[variantIndex], quality: 96), flush: true);
+            final inputImage = InputImage.fromFilePath(ocrFile.path);
+            final recognized = <({double top, double left, String text})>[];
+            for (final recognizer in recognizers) {
+              final result = await recognizer.processImage(inputImage);
+              for (final block in result.blocks) {
+                for (final line in block.lines) {
+                  final lineText = line.text.trim();
+                  if (lineText.isEmpty) continue;
+                  recognized.add((top: line.boundingBox.top.toDouble(),
+                    left: line.boundingBox.left.toDouble(), text: lineText));
+                }
               }
             }
-          }
-          // Sort by actual pixel coordinates (compareTo() returns only -1/0/1).
-          // Merge Latin and Devanagari lines in spatial reading order.
-          recognized.sort((a, b) => a.top.compareTo(b.top));
-          final rows = <List<({double top, double left, String text})>>[];
-          for (final line in recognized) {
-            if (rows.isEmpty || (line.top - rows.last.first.top).abs() > 12) {
-              rows.add(<({double top, double left, String text})>[line]);
-            } else {
-              rows.last.add(line);
+            recognized.sort((a, b) {
+              final vertical = a.top.compareTo(b.top);
+              return vertical != 0 ? vertical : a.left.compareTo(b.left);
+            });
+            final lines = <String>[];
+            final seen = <String>{};
+            for (final line in recognized) {
+              final key = line.text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+              if (key.isNotEmpty && seen.add(key)) lines.add(line.text);
+            }
+            final candidate = lines.join('\n').trim();
+            final alphanumericCount = RegExp(r'[A-Za-z0-9]').allMatches(candidate).length;
+            final score = lines.length * 20 + alphanumericCount;
+            if (score > bestScore) {
+              bestScore = score;
+              bestText = candidate;
             }
           }
-          final recognizedLines = <String>[];
-          final seen = <String>{};
-          for (final row in rows) {
-            row.sort((a, b) => a.left.compareTo(b.left));
-            for (final line in row) {
-              final key = line.text.toUpperCase().replaceAll(RegExp(r'\s+'), '');
-              if (seen.add(key)) recognizedLines.add(line.text);
-            }
-          }
-          final text = recognizedLines.join('\n').trim();
-          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},${jsonEncode(text)},null);');
+          await _controller.runJavaScript('window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},${jsonEncode(bestText)},null);');
         } finally {
           for (final recognizer in recognizers) {
             await recognizer.close();
           }
-          try { await ocrFile.delete(); } catch (_) {}
+          for (final ocrFile in tempFiles) {
+            try { await ocrFile.delete(); } catch (_) {}
+          }
         }
         return;
       }
