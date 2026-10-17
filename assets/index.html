@@ -110,7 +110,7 @@ if(fn==='markFolioPaid'&&folio){if(!confirm('Only continue if you independently 
 });
 ['guestSearch','bookingSearch'].forEach(id=>$(id).addEventListener('input',render));
 window.saveAuthPreference=(type,id)=>{request(type,{enabled:$(id).checked});note('Preference request sent to Android.');};
-window.aureliaNativePinEntrySettingResult=(id,ok,error)=>note(ok?'PIN preference saved.':error||'PIN preference failed.',!ok);
+window.aureliaNativeAuthPreferencesResult=(id,pin,bio,error)=>{if(error){note(error,true);return}$('pinToggle').checked=pin===true;$('bioToggle').checked=bio===true};\nwindow.aureliaNativePinEntrySettingResult=(id,ok,error)=>note(ok?'PIN preference saved.':error||'PIN preference failed.',!ok);
 window.aureliaNativeBiometricSettingResult=(id,ok,error)=>note(ok?'Biometric preference saved.':error||'Biometric preference failed.',!ok);
 window.createLocalSnapshot=()=>{request('createLocalBackup');note('Creating encrypted local snapshot…')};
 window.aureliaNativeLocalBackupResult=(id,ok,error)=>note(ok?'Encrypted local snapshot created.':error||'Local snapshot failed.',!ok);
@@ -119,7 +119,7 @@ window.exportGuestsCsv=()=>downloadCsv('guests.csv',['name','phone','email','idT
 function downloadCsv(name,keys,rows){const csv=[keys.join(','),...rows.map(r=>keys.map(k=>'"'+String(r[k]??'').replace(/"/g,'""')+'"').join(','))].join('\r\n');const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});if(window.aureliaSaveBlob)window.aureliaSaveBlob(blob,name,'text/csv');else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();URL.revokeObjectURL(a.href)}}
 $('backupImport').addEventListener('change',e=>{const file=e.target.files?.[0];if(file&&window.aureliaImportBackupFile)window.aureliaImportBackupFile(file);e.target.value=''});
 function bootstrap(){const seed=window.__AURELIA_SECURE_DB_BOOTSTRAP;if(seed&&typeof seed==='object')DB=seed;else if(!nativeSecure){try{const old=JSON.parse(localStorage.getItem('aureliaPmsBrowserData')||'null');if(old&&typeof old==='object')DB=old}catch(_){}}
-for(const key of ['guests','rooms','bookings','reservations','folios','invoices','payments','inventory','expenses','audit','inventoryLedger','restaurantSales','paymentSignals'])if(!Array.isArray(DB[key]))DB[key]=[];if(!DB.settings||typeof DB.settings!=='object')DB.settings={};window.DB=DB;render();$('saveStatus').textContent=nativeSecure?'Encrypted storage ready':'Browser-only mode';note(nativeSecure?'Encrypted property data loaded.':'Browser mode: records are not protected by Android encrypted storage.');if(!window.__AURELIA_SECURE_DB_EXISTS&&nativeSecure)save()}
+for(const key of ['guests','rooms','bookings','reservations','folios','invoices','payments','inventory','expenses','audit','inventoryLedger','restaurantSales','paymentSignals'])if(!Array.isArray(DB[key]))DB[key]=[];if(!DB.settings||typeof DB.settings!=='object')DB.settings={};window.DB=DB;render();$('saveStatus').textContent=nativeSecure?'Encrypted storage ready':'Browser-only mode';note(nativeSecure?'Encrypted property data loaded.':'Browser mode: records are not protected by Android encrypted storage.');if(nativeSecure)request('getAuthPreferences');if(!window.__AURELIA_SECURE_DB_EXISTS&&nativeSecure)save()}
 if(nativeSecure){bootstrap()}else{bootstrap()}
 })();
 </script>
