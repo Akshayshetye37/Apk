@@ -28,7 +28,7 @@ test('guest and occupant identity images are retained in records and booking exp
 });
 
 test('folio QR explicitly keeps payment pending until independent verification', () => {
-  assert.match(html, /Payment remains pending until independently verified/);
+  assert.match(html, /Payment remains pending until a trusted gateway webhook is verified/);
   assert.match(html, /Pending gateway verification/);
   assert.doesNotMatch(html, /markFolioPaid|manual_external_check|folio\.status\s*=\s*['\"]Paid['\"]/);
   assert.doesNotMatch(html, /NotificationListenerService|READ_SMS|READ_NOTIFICATION/);
