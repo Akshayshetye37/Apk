@@ -1354,15 +1354,45 @@ function invoiceImage(id,format){
 }
 
 function printInvoice(id){
- const b=DB.bookings.find(x=>x.id===id); if(!b){toast('Booking not found');return}
- const g=guest(b),r=room(b);
- const rows=b.charges.map(c=>`<tr><td>${esc(c.item)} × ${c.qty}</td><td>${money(c.amount)}</td></tr>`).join('');
- const qrText=`upi://pay?pa=${DB.settings.upi||''}&pn=${DB.settings.hotelName||''}&am=${Math.max(0,due(b)).toFixed(2)}&cu=INR&tn=${b.sr}`;
- const qr=DB.settings.upiQr||((window.__aureliaQrCache||{})[qrText]);if(!qr){aureliaRequestLocalQr(qrText,data=>{if(data)printInvoice(id)});return;}
- const html=`<!doctype html><html><head><meta charset="utf-8"><title>${esc(b.sr)}</title><style>body{font-family:Arial;padding:28px;max-width:760px;margin:auto;color:#123842}h1{font-family:Georgia;font-style:italic}table{width:100%;border-collapse:collapse}td{padding:10px;border-bottom:1px solid #ddd}.due{font-size:24px;font-weight:800}.qr{text-align:center;margin-top:20px}.qr img{width:300px;height:300px}</style></head><body>${DB.settings.logo?`<div style="margin-bottom:10px"><img src="${DB.settings.logo}" alt="Hotel logo" style="max-width:150px;max-height:90px;object-fit:contain"></div>`:""}<h1>${esc(DB.settings.hotelName)}</h1><div>${esc(DB.settings.address)}<br>${esc(DB.settings.phone)}</div><h2>INVOICE · ${esc(b.sr)}</h2><p><b>${esc(g?.name||'')}</b> · Room ${esc(r?.number||'')}</p><table>${rows}</table><p>Total: <b>${money(total(b))}</b><br>Paid: <b>${money(b.paid)}</b><br><span class="due">Amount due: ${money(due(b))}</span></p><div class="qr"><b>PAYMENT QR</b><br><img src="${qr}"><div>${esc(DB.settings.upi||'')}</div></div><p>${esc(DB.settings.checkoutMessage||'')}</p></body></html>`;
- const w=window.open('','_blank'); if(!w){toast('Allow popups to print the invoice');return}
- w.document.open();w.document.write(html);w.document.close(); setTimeout(()=>w.print(),300);
+ const b=(DB.bookings||[]).find(x=>String(x.id)===String(id));if(!b){toast('Booking not found');return}
+ const g=guest(b)||{},r=room(b)||{},settings=DB.settings||{};
+ const brand=settings.hotelLogoBase64||settings.logo||'';
+ const qrText=`upi://pay?pa=${settings.upi||''}&pn=${settings.hotelName||''}&am=${Math.max(0,due(b)).toFixed(2)}&cu=INR&tn=${b.sr||''}`;
+ const qr=settings.qrCodeBase64||settings.upiQr||((window.__aureliaQrCache||{})[qrText])||'';
+ const charges=Array.isArray(b.charges)?b.charges:[];
+ const rows=charges.map((c,i)=>`<tr><td class="index">${String(i+1).padStart(2,'0')}</td><td><strong>${esc(c.item||'Room / service charge')}</strong><small>Qty ${esc(c.qty??1)}</small></td><td class="amount">${money(c.amount||0)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">No individual charges recorded</td></tr>';
+ const paid=Number(b.paid||0),grand=Number(total(b)||0),balance=Math.max(0,Number(due(b)||0));
+ const status=balance<=0?'PAID':paid>0?'PARTIALLY PAID':'PAYMENT DUE';
+ const date=v=>{try{return v?new Date(v).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric'}):'—'}catch(_){return v||'—'}};
+ const html=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Invoice ${esc(b.sr||'')}</title><style>
+ :root{--ink:#18333a;--muted:#6c7c80;--line:#dce6e4;--teal:#124e50;--gold:#c59a56;--pale:#f2f7f5}
+ *{box-sizing:border-box}body{margin:0;background:#edf2f0;color:var(--ink);font:14px/1.5 Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .sheet{max-width:820px;margin:28px auto;background:#fff;box-shadow:0 12px 42px #163c3b18;overflow:hidden}
+ .top{height:9px;background:linear-gradient(90deg,var(--teal) 0 72%,var(--gold) 72% 100%)}
+ .pad{padding:38px 44px}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;border-bottom:1px solid var(--line);padding-bottom:24px}
+ .brand{display:flex;gap:16px;align-items:center;min-width:0}.logo{width:76px;height:76px;object-fit:contain}.hotel{font:700 23px Georgia,serif;letter-spacing:.4px;margin:0 0 5px}.muted{color:var(--muted);font-size:12px}
+ .invoiceTag{text-align:right;flex-shrink:0}.invoiceTag .label{font-size:11px;letter-spacing:2.6px;color:var(--gold);font-weight:700}.invoiceTag h2{font:700 30px Georgia,serif;margin:4px 0}.pill{display:inline-block;background:${balance<=0?'#e3f4eb':paid>0?'#fff1d9':'#fce9e6'};color:${balance<=0?'#216849':paid>0?'#865b13':'#a03e32'};padding:5px 10px;border-radius:99px;font-size:10px;font-weight:800;letter-spacing:1px}
+ .meta{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:12px;margin:24px 0}.metaCard{padding:14px;background:var(--pale);border-radius:8px}.cap{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:5px}.value{font-weight:700;overflow-wrap:anywhere}
+ .section{margin-top:28px}.sectionTitle{font-size:11px;text-transform:uppercase;letter-spacing:1.6px;color:var(--teal);font-weight:800;margin:0 0 12px}
+ table{width:100%;border-collapse:collapse}thead{background:var(--teal);color:#fff}th{font-size:10px;letter-spacing:.8px;text-transform:uppercase;text-align:left;padding:12px 10px}td{padding:14px 10px;border-bottom:1px solid var(--line);vertical-align:top}.index{width:48px;color:var(--gold);font-weight:800}.amount{text-align:right;white-space:nowrap;font-weight:700}.empty{text-align:center;color:var(--muted);padding:22px}
+ small{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+ .bottom{display:grid;grid-template-columns:1fr 270px;gap:28px;margin-top:24px}.note{background:#fbfaf6;border-left:3px solid var(--gold);padding:14px;font-size:12px;color:#52666a}
+ .totals{border:1px solid var(--line);border-radius:8px;padding:16px}.totalRow{display:flex;justify-content:space-between;gap:16px;padding:7px 0;color:var(--muted)}.totalRow strong{color:var(--ink)}.dueRow{border-top:1px solid var(--line);margin-top:8px;padding-top:14px;font-size:15px;color:var(--teal);font-weight:800}.dueRow strong{font-size:21px;color:var(--teal)}
+ .pay{display:flex;gap:18px;align-items:center;background:var(--pale);padding:18px;border-radius:10px}.pay img{width:112px;height:112px;object-fit:contain;background:#fff;padding:5px;border:1px solid var(--line);border-radius:5px}.payTitle{font-weight:800;margin-bottom:5px}.upi{font-size:12px;overflow-wrap:anywhere}
+ .footer{margin-top:30px;border-top:1px solid var(--line);padding-top:16px;display:flex;justify-content:space-between;gap:12px;color:var(--muted);font-size:10px}.thanks{font:italic 15px Georgia,serif;color:var(--teal);margin-top:18px}
+ @page{size:A4;margin:12mm}@media print{body{background:#fff}.sheet{margin:0;max-width:none;box-shadow:none}.pad{padding:22px 24px}.section,.bottom,.meta,.pay{break-inside:avoid}.noPrint{display:none!important}}@media(max-width:600px){.pad{padding:24px 18px}.head{gap:12px}.hotel{font-size:18px}.invoiceTag h2{font-size:24px}.logo{width:52px;height:52px}.meta{grid-template-columns:1fr 1fr}.metaCard:first-child{grid-column:1/-1}.bottom{grid-template-columns:1fr}.pay{align-items:flex-start}}
+ </style></head><body><main class="sheet"><div class="top"></div><div class="pad">
+ <header class="head"><div class="brand">${brand?`<img class="logo" src="${esc(brand)}" alt="Hotel logo">`:''}<div><h1 class="hotel">${esc(settings.hotelName||'AURELIA HOTEL')}</h1><div class="muted">${esc(settings.address||'')}</div><div class="muted">${esc(settings.phone||'')}${settings.gst?' · GSTIN: '+esc(settings.gst):''}</div></div></div><div class="invoiceTag"><div class="label">GUEST BILLING</div><h2>INVOICE</h2><div class="pill">${status}</div></div></header>
+ <section class="meta"><div class="metaCard"><div class="cap">Bill to</div><div class="value">${esc(g.name||'Guest')}</div><small>${esc(g.phone||'Phone not provided')}</small></div><div class="metaCard"><div class="cap">Invoice reference</div><div class="value">${esc(b.sr||b.id||'—')}</div><small>Issued ${esc(date(new Date().toISOString()))}</small></div><div class="metaCard"><div class="cap">Room / stay</div><div class="value">Room ${esc(r.number||'—')}</div><small>${esc(date(b.checkIn))} – ${esc(date(b.checkOut))}</small></div></section>
+ <section class="section"><h3 class="sectionTitle">01 / Itemized charges</h3><table><thead><tr><th style="width:48px">No.</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead><tbody>${rows}</tbody></table></section>
+ <section class="bottom"><div><h3 class="sectionTitle">02 / Payment details</h3><div class="note">${esc(settings.checkoutMessage||'Thank you for choosing us. We look forward to welcoming you again.')}</div>${qr?`<div class="pay" style="margin-top:14px"><img src="${esc(qr)}" alt="UPI payment QR"><div><div class="payTitle">Pay securely via UPI</div><div class="muted">Scan the QR code with your preferred UPI app.</div><div class="upi">${esc(settings.upi||'UPI details not configured')}</div></div></div>`:''}</div><div class="totals"><div class="cap">Invoice summary</div><div class="totalRow"><span>Subtotal / total</span><strong>${money(grand)}</strong></div><div class="totalRow"><span>Amount received</span><strong>${money(paid)}</strong></div><div class="totalRow dueRow"><span>${balance<=0?'Balance': 'Amount due'}</span><strong>${money(balance)}</strong></div></div></section>
+ <footer class="footer"><span>${esc(settings.hotelName||'AURELIA HOTEL')} · Thank you for your stay</span><span>Generated ${esc(date(new Date().toISOString()))}</span></footer><div class="thanks">We appreciate your visit.</div></div></main><div class="noPrint" style="text-align:center;padding:12px"><button onclick="window.print()" style="padding:10px 20px;background:#124e50;color:white;border:0;border-radius:6px;font-weight:bold">Print / Save as PDF</button></div></body></html>`;
+ const w=window.open('','_blank');if(!w){toast('Allow popups to print the invoice');return}
+ w.document.open();w.document.write(html);w.document.close();
+ const printWhenReady=()=>{try{w.focus();w.print()}catch(error){toast('Invoice opened. Use Print / Save as PDF from the invoice window.')}};
+ setTimeout(printWhenReady,700);
 }
+
 function exportJSON(){dedupeExistingGuestsInPlace();downloadBlob(new Blob([JSON.stringify(DB,null,2)],{type:'application/json'}),`${DB.settings.hotelName||'hotel'}-backup.json`)}
 function exportCSV(){
  const rows=[['SR','Guest','Room','Status','Check In','Check Out','Total','Paid','Due']];
