@@ -12,10 +12,18 @@ dependencies:
   webview_flutter: 4.10.0
   webview_flutter_android: 4.3.0
   file_picker: 8.1.7
+  image_picker: 1.1.2
+  open_filex: 4.7.0
+  html: 0.15.5
+  pdf: 3.11.3
   flutter_secure_storage: 9.2.4
+  cryptography: 2.7.0
+  local_auth: 2.3.0
   path_provider: 2.1.5
   qr: 3.0.2
   share_plus: 10.1.4
+  google_mlkit_text_recognition: 0.15.0
+  image: 4.5.4
 
 dev_dependencies:
   flutter_test:

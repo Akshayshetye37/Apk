@@ -64,6 +64,7 @@
 - [ ] All major features are tested on a real device.
 - [ ] Saved data survives app restarts; data retention after reinstall is documented and tested separately.
 - [ ] Local storage, backup/export, and sensitive PMS data handling are reviewed.
+- [x] Screenshot protection is intentionally disabled; users accept that visible PMS data can be captured.
 
 ## 7. If an error occurs
 
@@ -98,7 +99,14 @@ When a build fails, copy the first meaningful error from the GitHub Actions log 
 - [ ] Native bridge rejects oversized payloads, invalid MIME types, path traversal filenames, and unsupported message types.
 - [ ] Unauthorized access and incorrect PIN attempts tested against the actual APK; client-side PIN checks are not server authentication.
 - [ ] Permission denial tested on device.
-- [ ] Tampered backups and malformed/oversized imports rejected without corrupting existing records.
+- [x] Node regression tests cover incomplete backups, unsafe property names, full database replacement, and save-failure rollback.
+- [x] Node regression tests cover encrypted backup export and native restore dispatch.
+- [x] Dart tests cover portable backup encryption, wrong passphrases, tamper detection, invalid schemas, and short passphrases.
+- [ ] AES-GCM database migration, legacy plaintext cleanup, and encrypted recovery verified on a physical device.
+- [ ] Wrong-passphrase, tampered, malformed, and oversized encrypted imports verified against the actual APK without corrupting existing records.
 - [ ] Offline dashboard, bookings, reports, and exports tested on device.
-- [ ] Local storage threat model reviewed; PMS records are not encrypted merely by native secure storage.
-- [ ] Production data approved only after authentication and at-rest protections are implemented and tested.
+- [ ] Local storage threat model and migration reviewed on device; native Android storage and portable backup encryption are implemented in the remediation branch but are not yet device-verified.
+- [ ] Production data approved only after encrypted storage migration, PIN/device-authentication gate, encrypted backup restore, and CSP restrictions pass physical-device testing.
+- [ ] Verify bundled ML Kit Latin/Devanagari OCR on physical Android devices in airplane mode with fictional ID samples; confirm model initialization, field accuracy, and no network dependency.
+- [ ] Bundle and verify the PDF JavaScript library locally before re-enabling dynamic jsPDF on Android.
+- [ ] Implement and test encrypted Google Drive upload/restore before re-enabling cloud sync.
