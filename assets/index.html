@@ -383,7 +383,7 @@ function save(){
      aureliaStorage.setItem('aurelia_pms_v3_autobackup_time',new Date().toISOString());
    }
  }catch(e){ /* storage quota/privacy mode: primary save remains authoritative */ }
- try{if(!window.__AURELIA_MIGRATE_LEGACY&&typeof aureliaQueueDriveBackup==='function')aureliaQueueDriveBackup()}catch(_){}
+ /* No cloud-sync queue is configured; encrypted backups are manual and local. */
 }
 if(window.__AURELIA_MIGRATE_LEGACY)save();
 function money(n){return `${DB.settings.currency||'₹'}${Number(n||0).toLocaleString('en-IN')}`}
@@ -954,7 +954,7 @@ function syncBookingGuestCount(){
 }
 function openBooking(id){
  const b=id?DB.bookings.find(x=>x.id===id):null; const g=b&&guest(b), r=b&&room(b);
- pendingBookingIdPhoto=g?.idPhoto||'';pendingBookingPhotoPromise=Promise.resolve();bookingPhotoGeneration++;
+ pendingBookingIdPhoto=g?.idImageBase64||g?.idPhoto||'';pendingBookingPhotoPromise=Promise.resolve();bookingPhotoGeneration++;
  let occ=(g?.occupants||[]).map((o,i)=>occupantHTML(o,i)).join('');
  let veh=(g?.vehicles||[]).map((v,i)=>vehicleHTML(v,i)).join('');
  const checkIn=b?.checkIn||aureliaDateTimeISO(new Date()), checkOut=b?.checkOut||aureliaDateTimeISO(new Date(Date.now()+86400000));
@@ -1102,7 +1102,7 @@ async function saveBookingForm(id){
  let guest=priorGuest;if(!guest&&idNumber)guest=DB.guests.find(x=>normId(x.idNumber||x.idProofNumber)===normId(idNumber));if(!guest)guest=DB.guests.find(x=>normName(x.name||x.guestName)===normName(name)&&normName(x.phone||x.mobile)===normName(phone));
  const isNew=!guest;if(!guest)guest={id:'g'+Date.now(),occupants:[],vehicles:[]};const guestId=guest.id;
  guest.name=name;guest.phone=phone;guest.dob=document.getElementById('bkDob')?.value?.trim()||guest.dob||'';guest.idType=document.getElementById('bkIdType')?.value?.trim()||guest.idType||'';guest.idNumber=idNumber||guest.idNumber||'';if(pendingBookingIdPhoto){guest.idPhoto=pendingBookingIdPhoto;guest.idImageBase64=pendingBookingIdPhoto;}
- const occ=[...document.querySelectorAll('#occList [data-occ]')].map((x,i)=>{const oid=x.dataset.aureliaOccupantId||'',old=(guest.occupants||[]).find(o=>oid&&String(o.id)===String(oid))||(guest.occupants||[])[i]||{},photo=x.dataset.aureliaOccupantPhoto||x.querySelector('[data-occ-preview]')?.getAttribute('src')||old.idPhoto||'';return {id:old.id||oid||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:photo,idImageBase64:photo};});
+ const occ=[...document.querySelectorAll('#occList [data-occ]')].map((x,i)=>{const oid=x.dataset.aureliaOccupantId||'',old=(guest.occupants||[]).find(o=>oid&&String(o.id)===String(oid))||(guest.occupants||[])[i]||{},photo=x.dataset.aureliaOccupantPhoto||x.querySelector('[data-occ-preview]')?.getAttribute('src')||old.idImageBase64||old.idPhoto||'';return {id:old.id||oid||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:photo,idImageBase64:photo};});
  const vehicles=[...document.querySelectorAll('#vehList [data-veh]')].map((x,i)=>{const old=(guest.vehicles||[])[i]||{};return {id:old.id||('v'+Date.now()+Math.random()),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:old.photo||''};});
  guest.occupants=occ;guest.vehicles=vehicles;const data={guestId,roomId,checkIn,checkOut,guests:1+occ.length,base,discount,paid,notes:document.getElementById('bkNotes')?.value||''};
  if(existing){Object.assign(existing,data);existing.guestId=guestId;existing.charges=existing.charges||[];const charge=existing.charges.find(c=>c.item==='Room charges');if(charge){charge.qty=nightsBetween(checkIn,checkOut);charge.rate=r.rate;charge.amount=base;charge.at=checkIn;}else existing.charges.unshift({id:'c'+Date.now(),item:'Room charges',qty:nightsBetween(checkIn,checkOut),rate:r.rate,amount:base,at:checkIn});}
@@ -1134,7 +1134,7 @@ async function saveGuest(id){
  const name=document.getElementById('gName')?.value?.trim()||'',phone=document.getElementById('gPhone')?.value?.trim()||'',original=id?DB.guests.find(x=>String(x.id)===String(id)):null;
  if(id&&!original){toast('Guest record not found. Refresh and try again.');return;}
  const guest=original||{id:'g'+Date.now(),occupants:[],vehicles:[]},stableId=guest.id;
- guest.name=name;guest.phone=phone;guest.dob=document.getElementById('gDob')?.value||'';guest.email=document.getElementById('gEmail')?.value||'';guest.idType=document.getElementById('gIdType')?.value||'';guest.idNumber=document.getElementById('gIdNumber')?.value||'';if(pendingGuestPhoto)guest.idPhoto=pendingGuestPhoto;
+ guest.name=name;guest.phone=phone;guest.dob=document.getElementById('gDob')?.value||'';guest.email=document.getElementById('gEmail')?.value||'';guest.idType=document.getElementById('gIdType')?.value||'';guest.idNumber=document.getElementById('gIdNumber')?.value||'';if(pendingGuestPhoto){guest.idPhoto=pendingGuestPhoto;guest.idImageBase64=pendingGuestPhoto;}
  guest.occupants=[...document.querySelectorAll('#guestOccList [data-occ]')].map((x,i)=>{const occupantId=x.dataset.aureliaOccupantId||'',old=(guest.occupants||[]).find(o=>occupantId&&String(o.id)===String(occupantId))||(guest.occupants||[])[i]||{};return {id:old.id||occupantId||('o'+Date.now()+Math.random()),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:x.dataset.aureliaOccupantPhoto||old.idImageBase64||old.idPhoto||'',idImageBase64:x.dataset.aureliaOccupantPhoto||old.idImageBase64||old.idPhoto||''};});
  guest.vehicles=[...document.querySelectorAll('#guestVehList [data-veh]')].map((x,i)=>{const old=(guest.vehicles||[])[i]||{};return {id:old.id||('v'+Date.now()+Math.random()),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:old.photo||''};});
  const incomingId=guestCanonicalIdNumber(guest.idNumber||guest.idProofNumber),incomingName=guestCanonicalName(guest.name||guest.guestName),incomingPhone=String(guest.phone||guest.mobile||'').replace(/\D/g,'').slice(-10);const duplicate=(DB.guests||[]).find(candidate=>{if(!candidate||String(candidate.id)===String(stableId))return false;const candidateId=guestCanonicalIdNumber(candidate.idNumber||candidate.idProofNumber);if(incomingId&&candidateId&&incomingId!==candidateId)return false;if(incomingId.length>=8&&candidateId.length>=8)return candidateId===incomingId;return !!incomingName&&!!incomingPhone&&incomingName===guestCanonicalName(candidate.name||candidate.guestName)&&incomingPhone===String(candidate.phone||candidate.mobile||'').replace(/\D/g,'').slice(-10);});let saved;
@@ -1799,7 +1799,7 @@ function pagesSettingsNew(){
     <section class="card" id="aureliaLocalArchiveCard"><div class="section-title"><h2>Data Management &amp; Storage</h2></div>
       <p class="muted">Manage your local encrypted archives directly on this device. No data is sent to external servers.</p>
       <div class="field full"><label for="aureliaDrivePassphrase">Archive passphrase (12+ characters)</label><input id="aureliaDrivePassphrase" type="password" minlength="12" autocomplete="new-password" placeholder="Use a strong, unique passphrase"></div>
-      <div class="actions" style="margin-top:14px"><button type="button" class="btn primary" onclick="triggerLocalExportArchive()">Local Encrypted Archive (Manual Export)</button><button type="button" class="btn" onclick="triggerLocalRestoreArchive()">Local Encrypted Archive (Manual Restore)</button><input id="aureliaDriveRestoreFile" type="file" accept=".aurelia,.json,application/json" hidden onchange="aureliaRestoreDriveBackup(event)"></div>
+      <div class="actions" style="margin-top:14px"><button type="button" class="btn primary" onclick="triggerLocalExportArchive()">Local Encrypted Archive (Manual Export)</button><button type="button" class="btn" onclick="triggerLocalRestoreArchive()">Local Encrypted Archive (Manual Restore)</button><input id="aureliaDriveRestoreFile" type="file" accept=".aurelia,.json,application/json" hidden onchange="aureliaRestoreLocalArchive(event)"></div>
       <div id="aureliaEncryptedBackupNote" class="muted" role="status" style="margin-top:10px">Archives remain local unless you manually move the exported file.</div>
       <p class="muted">Keep the passphrase separately. It cannot be recovered by the app. Restore validates the encrypted archive before replacing local records.</p>
     </section>
@@ -2942,7 +2942,7 @@ async function aureliaUploadDriveBackup(){
  try{dedupeExistingGuestsInPlace();aureliaDriveStatus('Encrypting PMS data before opening Android save-location picker…');window.AureliaNative.postMessage(JSON.stringify({type:'exportEncryptedBackup',requestId,data:JSON.stringify(DB),passphrase}));}
  catch(error){aureliaDriveStatus('Could not start encrypted backup: '+(error?.message||'unknown error'));}
 }
-async function aureliaRestoreDriveBackup(event){
+async function aureliaRestoreLocalArchive(event){
  const file=event?.target?.files?.[0];if(!file)return;
  const passphrase=String(document.getElementById('aureliaDrivePassphrase')?.value||'');
  if(passphrase.length<12){aureliaDriveStatus('Enter the backup passphrase (12+ characters) before restoring.');event.target.value='';return;}
