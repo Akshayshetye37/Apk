@@ -368,11 +368,6 @@ DB.settings.hotelLogoBase64=DB.settings.hotelLogoBase64||DB.settings.logo||null;
 DB.settings.qrCodeBase64=DB.settings.qrCodeBase64||DB.settings.upiQr||null;
 if(DB.settings.hotelLogoBase64&&!DB.settings.logo)DB.settings.logo=DB.settings.hotelLogoBase64;
 if(DB.settings.qrCodeBase64&&!DB.settings.upiQr)DB.settings.upiQr=DB.settings.qrCodeBase64;
-// Canonical branding keys with legacy aliases retained for existing installations.
-DB.settings.hotelLogoBase64=DB.settings.hotelLogoBase64||DB.settings.logo||null;
-DB.settings.qrCodeBase64=DB.settings.qrCodeBase64||DB.settings.upiQr||null;
-if(DB.settings.hotelLogoBase64&&!DB.settings.logo)DB.settings.logo=DB.settings.hotelLogoBase64;
-if(DB.settings.qrCodeBase64&&!DB.settings.upiQr)DB.settings.upiQr=DB.settings.qrCodeBase64;
 DB.settings.features=DB.settings.features&&typeof DB.settings.features==='object'&&!Array.isArray(DB.settings.features)?DB.settings.features:{};
 ['rooms','guests','bookings','reservations','inventory','expenses','audit','invoices','inventoryLedger','restaurantSales','paymentSignals'].forEach(key=>{if(!Array.isArray(DB[key])) DB[key]=[];});
 DB.seq=DB.seq&&typeof DB.seq==='object'?DB.seq:{booking:1000,reservation:0,invoice:1,expense:1};
