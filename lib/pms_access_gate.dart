@@ -34,9 +34,12 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
   static const String _hashKey = 'aurelia_pms_pin_hash_v1';
   static const String _attemptsKey = 'aurelia_pms_pin_attempts_v1';
   static const String _lockUntilKey = 'aurelia_pms_pin_lock_until_v1';
+  static const String _recoverySaltKey = 'aurelia_pms_recovery_salt_v1';
+  static const String _recoveryHashKey = 'aurelia_pms_recovery_hash_v1';
 
   final TextEditingController _pin = TextEditingController();
   final TextEditingController _confirm = TextEditingController();
+  final TextEditingController _recoveryCode = TextEditingController();
   final LocalAuthentication _localAuth = LocalAuthentication();
   final Pbkdf2 _kdf = Pbkdf2(
     macAlgorithm: Hmac.sha256(),
@@ -49,7 +52,8 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
   bool _busy = false;
   bool _deviceAuthAvailable = false;
   bool _biometricEnabled = false;
-  bool _pinEntryEnabled = true;
+  bool _pinEntryEnabled = false;
+  bool _recoveryMode = false;
   int _failedAttempts = 0;
   DateTime? _lockUntil;
   String? _error;
@@ -123,6 +127,68 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
     return difference == 0;
   }
 
+  Future<String?> _ensureRecoveryCode() async {
+    final existingSalt = await widget.readSecret(_recoverySaltKey);
+    final existingHash = await widget.readSecret(_recoveryHashKey);
+    if (existingSalt != null && existingHash != null) return null;
+    if ((existingSalt == null) != (existingHash == null)) {
+      throw StateError('Recovery configuration is incomplete. Existing PMS data has not been changed.');
+    }
+    final random = math.Random.secure();
+    final code = List<int>.generate(16, (_) => random.nextInt(256))
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0')).join().toUpperCase();
+    final salt = List<int>.generate(16, (_) => random.nextInt(256));
+    final hash = await _deriveHash(code, salt);
+    await widget.writeSecret(_recoverySaltKey, base64Encode(salt));
+    await widget.writeSecret(_recoveryHashKey, base64Encode(hash));
+    return code;
+  }
+
+  Future<void> _showRecoveryCodeIfCreated(String? code) async {
+    if (code == null || !mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Save your recovery code'),
+        content: SelectableText('$code\n\nKeep this code private and separate from this device. It is shown only once and can reset your PMS PIN.'),
+        actions: [
+          TextButton(onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: code));
+            if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Recovery code copied')));
+          }, child: const Text('Copy code')),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('I saved it')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _verifyRecoveryCode() async {
+    setState(() { _busy = true; _error = null; });
+    try {
+      final saltValue = await widget.readSecret(_recoverySaltKey);
+      final hashValue = await widget.readSecret(_recoveryHashKey);
+      if (saltValue == null || hashValue == null) throw StateError('No recovery code is configured. If you still have access, unlock with your PIN to create one.');
+      final value = _recoveryCode.text.trim().replaceAll(RegExp(r'\s+'), '').toUpperCase();
+      if (value.length != 32 || !RegExp(r'^[0-9A-F]{32}$').hasMatch(value)) {
+        setState(() => _error = 'Enter the 32-character recovery code exactly as saved.');
+        return;
+      }
+      final candidate = await _deriveHash(value, base64Decode(saltValue));
+      if (!_constantTimeEquals(candidate, base64Decode(hashValue))) {
+        setState(() => _error = 'Recovery code is incorrect. Your data has not been changed.');
+        return;
+      }
+      _recoveryCode.clear();
+      if (!mounted) return;
+      setState(() { _recoveryMode = false; _configured = false; _error = null; });
+    } catch (error) {
+      if (mounted) setState(() => _error = 'Could not verify the recovery code. $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Future<void> _configurePin() async {
     final value = _pin.text;
     if (!RegExp(r'^[0-9]{6,12}$').hasMatch(value)) {
@@ -145,9 +211,11 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
       await widget.writeSecret(_hashKey, base64Encode(hash));
       await widget.writeSecret(_attemptsKey, '0');
       await widget.deleteSecret(_lockUntilKey);
+      final recoveryCode = await _ensureRecoveryCode();
       if (!mounted) return;
       _pin.clear();
       _confirm.clear();
+      await _showRecoveryCodeIfCreated(recoveryCode);
       await widget.onUnlocked();
     } catch (error) {
       try {
@@ -193,6 +261,8 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         _failedAttempts = 0;
         _lockUntil = null;
         _pin.clear();
+        final recoveryCode = await _ensureRecoveryCode();
+        await _showRecoveryCodeIfCreated(recoveryCode);
         await widget.onUnlocked();
         return;
       }
@@ -276,6 +346,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
     _lockoutTimer?.cancel();
     _pin.dispose();
     _confirm.dispose();
+    _recoveryCode.dispose();
     super.dispose();
   }
 
@@ -326,7 +397,11 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                   ),
                   if (!_loading && _error == null) ...[
                     const SizedBox(height: 16),
-                    if (_pinEntryEnabled) ...[
+                    if (_recoveryMode) ...[
+                      TextField(controller: _recoveryCode, textCapitalization: TextCapitalization.characters, autocorrect: false, enableSuggestions: false, maxLength: 32, enabled: !_busy, decoration: const InputDecoration(labelText: 'Recovery code', border: OutlineInputBorder()), onSubmitted: (_) => _verifyRecoveryCode()),
+                      SizedBox(width: double.infinity, child: FilledButton(onPressed: _busy ? null : _verifyRecoveryCode, child: Text(_busy ? 'Verifying…' : 'Verify recovery code'))),
+                      TextButton(onPressed: _busy ? null : () => setState(() { _recoveryMode = false; _recoveryCode.clear(); _error = null; }), child: const Text('Back to unlock')),
+                    ] else if (_pinEntryEnabled) ...[
                     TextField(
                       controller: _pin,
                       keyboardType: TextInputType.number,
@@ -375,6 +450,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                       padding: EdgeInsets.only(top: 12),
                       child: Text('PIN entry is disabled. Use Android device authentication to unlock.'),
                     ),
+                    if (_configured && _pinEntryEnabled && !_recoveryMode) TextButton(onPressed: _busy ? null : () => setState(() { _recoveryMode = true; _recoveryCode.clear(); _error = null; }), child: const Text('Forgot PIN? Use recovery code')),
                     if (_deviceAuthAvailable && _biometricEnabled) ...[
                       const SizedBox(height: 8),
                       SizedBox(
