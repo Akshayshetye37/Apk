@@ -1385,7 +1385,6 @@ function refreshBrand(){document.getElementById('brandName').textContent=DB.sett
 window.hydrateBrandingAssets=function(){refreshBrand();};
 document.addEventListener('DOMContentLoaded',()=>{try{window.hydrateBrandingAssets();}catch(_){} });
 async function saveSettings(){
- if(document.getElementById('aureliaGoogleClientId'))DB.settings.googleClientId=document.getElementById('aureliaGoogleClientId').value.trim();
  document.querySelectorAll('[data-setting]').forEach(el=>{if(Object.prototype.hasOwnProperty.call(DB.settings,el.dataset.setting))DB.settings[el.dataset.setting]=el.value});
  document.querySelectorAll('[data-setting-check]').forEach(el=>DB.settings[el.dataset.settingCheck]=el.checked);
  save();refreshBrand();audit('Settings updated','Hotel identity / master features');save();
@@ -1843,13 +1842,13 @@ function pagesSettingsNew(){
     </div>
   </section>
 <section class="card" style="margin-top:16px"><div class="section-title"><h2>Device biometrics</h2><span class="muted">Android system authentication</span></div>
-<p class="muted">Control whether the app offers fingerprint, face, or device-screen-lock authentication on the native unlock screen. Your PIN remains available as a fallback. This setting does not disable app protection.</p>
+<p class="muted">Optional. Enable this to offer Android biometric or device-screen-lock authentication. It can be used independently of PIN entry; disable it any time in Settings.</p>
 <label class="check" style="padding:12px 0"><input id="aureliaBiometricEnabled" type="checkbox" ${DB.settings.biometricUnlock===true?"checked":""} onchange="aureliaSetBiometricEnabled(this.checked)"><span><b>Enable biometric / device authentication</b><small class="muted" style="display:block">Turn off to hide the biometric unlock button. Device support is checked by Android.</small></span></label>
 <div id="aureliaBiometricNote" class="muted" role="status">Biometric unlock is ${DB.settings.biometricUnlock===true?"enabled":"disabled"}.</div></section>
 <section class="card" style="margin-top:16px"><div class="section-title"><h2>PIN entry</h2><span class="muted">Unlock policy</span></div>
-<p class="muted">PIN entry is enabled by default. You may hide PIN entry only when Android device authentication is enabled and supported; this does not disable app protection. Keep a device screen lock configured to avoid losing access.</p>
-<label class="check" style="padding:12px 0"><input id="aureliaPinEntryEnabled" type="checkbox" ${DB.settings.pinEntryEnabled!==false?"checked":""} ${DB.settings.biometricUnlock===true?"":"disabled"} onchange="aureliaSetPinEntryEnabled(this.checked)"><span><b>Enable PIN entry at unlock</b><small class="muted" style="display:block">Turn off only if device authentication is enabled. First-run PIN setup is always required.</small></span></label>
-<div id="aureliaPinEntryNote" class="muted" role="status">PIN entry is ${DB.settings.pinEntryEnabled===false?"disabled":"enabled"}.</div></section>
+<p class="muted">Optional. PIN entry is independent of biometric authentication. If both options are off, the app opens without an unlock prompt. Store your data and backups securely.</p>
+<label class="check" style="padding:12px 0"><input id="aureliaPinEntryEnabled" type="checkbox" ${DB.settings.pinEntryEnabled===true?"checked":""} onchange="aureliaSetPinEntryEnabled(this.checked)"><span><b>Enable PIN entry at unlock</b><small class="muted" style="display:block">When enabled, create a PIN on next unlock if you have not already configured one.</small></span></label>
+<div id="aureliaPinEntryNote" class="muted" role="status">PIN entry is ${DB.settings.pinEntryEnabled===true?"enabled":"disabled"}.</div></section>
 <section class="card" style="margin-top:16px"><div class="section-title"><h2>Import / Export</h2></div><div class="actions"><button class="btn primary" onclick="showPage('importExport')">Open Center</button><button class="btn" onclick="exportJSON()">Full JSON backup</button></div></section>`;
 }
 pages.settings=pagesSettingsNew;
@@ -2903,8 +2902,6 @@ async function runImageOCR(file,statusEl){
 }
 
 /* AURELIA reliability additions: export, backup, security controls, and browser navigation. */
-let aureliaDriveAccessToken=null;
-let aureliaDriveUploadTimer=null;
 let aureliaBiometricRequest=0;
 function aureliaSetBiometricEnabled(enabled){
  const box=document.getElementById('aureliaBiometricEnabled'),note=document.getElementById('aureliaBiometricNote');
@@ -2917,7 +2914,7 @@ function aureliaSetBiometricEnabled(enabled){
  window.aureliaNativeBiometricSettingResult=function(id,ok,error){
   if(String(id)!==requestId)return;
   if(box)box.disabled=false;
-  if(ok){DB.settings.biometricUnlock=!!enabled;if(!enabled)DB.settings.pinEntryEnabled=true;save();const pinBox=document.getElementById('aureliaPinEntryEnabled');if(pinBox){pinBox.checked=DB.settings.pinEntryEnabled!==false;pinBox.disabled=!enabled;}const pinNote=document.getElementById('aureliaPinEntryNote');if(pinNote)pinNote.textContent='PIN entry is '+(DB.settings.pinEntryEnabled===false?'disabled':'enabled')+'.';if(note)note.textContent='Biometric unlock '+(enabled?'enabled':'disabled')+'.';}
+  if(ok){DB.settings.biometricUnlock=!!enabled;save();if(note)note.textContent='Biometric unlock '+(enabled?'enabled':'disabled')+'.';}
   else{if(box)box.checked=DB.settings.biometricUnlock===true;if(note)note.textContent=error||'Could not update biometric preference.';}
  };
  try{window.AureliaNative.postMessage(JSON.stringify({type:'setBiometricEnabled',requestId,enabled:!!enabled}));}
@@ -2926,23 +2923,16 @@ function aureliaSetBiometricEnabled(enabled){
 let aureliaPinEntryRequest=0;
 function aureliaSetPinEntryEnabled(enabled){
  const box=document.getElementById('aureliaPinEntryEnabled'),note=document.getElementById('aureliaPinEntryNote');
- if(!enabled&&DB.settings.biometricUnlock!==true){if(box)box.checked=true;if(note)note.textContent='Enable biometric / device authentication first.';return;}
  if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){if(box)box.checked=DB.settings.pinEntryEnabled!==false;if(note)note.textContent='PIN entry policy is available only in the installed Android app.';return;}
  if(box)box.disabled=true;
  const requestId='pinentry_'+Date.now()+'_'+(++aureliaPinEntryRequest);
- window.aureliaNativePinEntrySettingResult=function(id,ok,error){if(String(id)!==requestId)return;if(box){box.disabled=false;box.checked=ok?!!enabled:DB.settings.pinEntryEnabled!==false;box.disabled=DB.settings.biometricUnlock!==true;}if(ok){DB.settings.pinEntryEnabled=!!enabled;save();if(note)note.textContent='PIN entry '+(enabled?'enabled':'disabled')+'.';}else if(note)note.textContent=error||'Could not update PIN entry policy.';};
+ window.aureliaNativePinEntrySettingResult=function(id,ok,error){if(String(id)!==requestId)return;if(box){box.disabled=false;box.checked=ok?!!enabled:DB.settings.pinEntryEnabled===true;}if(ok){DB.settings.pinEntryEnabled=!!enabled;save();if(note)note.textContent='PIN entry '+(enabled?'enabled':'disabled')+'.';}else if(note)note.textContent=error||'Could not update PIN entry policy.';};
  try{window.AureliaNative.postMessage(JSON.stringify({type:'setPinEntryEnabled',requestId,enabled:!!enabled}));}
  catch(error){if(box){box.disabled=false;box.checked=DB.settings.pinEntryEnabled!==false;}if(note)note.textContent='Could not contact Android authentication settings.';}
 }
 function aureliaDriveStatus(message){
  const n=document.getElementById('aureliaEncryptedBackupNote');if(n)n.textContent=message;
 }
-function aureliaSaveGoogleClientId(){
- const input=document.getElementById('aureliaGoogleClientId');
- const id=String(input?.value||'').trim();
- DB.settings.googleClientId=id;save();return id;
-}
-function aureliaConnectDrive(){aureliaDriveStatus('Export creates a local encrypted archive using Android’s save-location picker. Choose a device-local folder for offline storage.');}
 async function aureliaUploadDriveBackup(){
  const passphrase=String(document.getElementById('aureliaDrivePassphrase')?.value||'');
  if(passphrase.length<12){aureliaDriveStatus('Choose a backup passphrase of at least 12 characters.');toast('Backup passphrase is too short');return;}
