@@ -89,15 +89,33 @@ if "isMinifyEnabled = true" not in source:
 # Always configure release signing with the supplied production key. There is no debug fallback.
 signing_block = '''    signingConfigs {
         create("release") {
+            val releaseTaskRequested = gradle.startParameter.taskNames.any {
+                it.contains("release", ignoreCase = true)
+            }
             val releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")
-                ?: throw GradleException("ANDROID_KEYSTORE_PATH is required for release signing")
-            storeFile = file(releaseStore)
-            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                ?: throw GradleException("ANDROID_KEYSTORE_PASSWORD is required for release signing")
-            keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                ?: throw GradleException("ANDROID_KEY_ALIAS is required for release signing")
-            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-                ?: throw GradleException("ANDROID_KEY_PASSWORD is required for release signing")
+            val releaseStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            val releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS")
+            val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            val credentialsPresent = !releaseStore.isNullOrBlank() &&
+                !releaseStorePassword.isNullOrBlank() &&
+                !releaseKeyAlias.isNullOrBlank() &&
+                !releaseKeyPassword.isNullOrBlank()
+            if (releaseTaskRequested && !credentialsPresent) {
+                throw GradleException("Production release signing secrets are required.")
+            }
+            if (credentialsPresent) {
+                storeFile = file(releaseStore!!)
+                storePassword = releaseStorePassword!!
+                keyAlias = releaseKeyAlias!!
+                keyPassword = releaseKeyPassword!!
+            } else {
+                // Permit unsigned debug builds for PR validation, but release tasks
+                // fail closed above and can never silently use the debug key.
+                storeFile = file("missing-release-keystore.jks")
+                storePassword = "missing"
+                keyAlias = "missing"
+                keyPassword = "missing"
+            }
         }
     }
 '''
@@ -159,5 +177,6 @@ wrapper_source, wrapper_count = re.subn(
 if wrapper_count != 1:
     raise SystemExit("ERROR: could not safely update Gradle wrapper distributionUrl")
 wrapper.write_text(wrapper_source, encoding="utf-8")
+
 
 print("Applied: HTTPS-only network policy, Android backup restrictions, R8 shrinking, and fail-closed production release signing.")

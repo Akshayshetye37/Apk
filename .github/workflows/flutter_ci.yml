@@ -1,0 +1,63 @@
+name: Aurelia PMS CI Verification
+
+on:
+  push:
+    branches: ["main", "fix/*"]
+  pull_request:
+    branches: ["main"]
+
+# CI validates untrusted pull-request code but never needs repository write access.
+permissions:
+  contents: read
+
+concurrency:
+  group: aurelia-flutter-ci-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # For pull requests, checkout the merge ref from the base repository.
+          # This avoids running fork-controlled workflow code with a write token.
+          persist-credentials: false
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.5"
+          cache: true
+
+      - name: Resolve and validate Flutter dependency lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -s pubspec.lock ]]; then
+            echo "::warning::pubspec.lock is empty; resolving dependencies to allow analysis and regression tests to run. Commit the generated lockfile to make future builds reproducible."
+            flutter pub get
+          fi
+          test -s pubspec.lock
+          flutter pub get --enforce-lockfile
+          echo "Dependency lockfile is internally consistent."
+
+      - name: Analyze Flutter source
+        run: flutter analyze --fatal-infos
+
+      - name: Run Flutter tests
+        run: flutter test
+
+      - name: Run static security checks
+        run: python3 scripts/security_static_check.py
+
+      - name: Run backup import regression tests
+        run: node --test tests/backup_import.test.js
+      - name: Run Indian ID OCR parser regression tests
+        run: node --test tests/identity_parser.test.js
+
+      - name: Run guest identity regression tests
+        run: node --test tests/guest_identity.test.js
+      - name: Run bundled PMS UI regression tests
+        run: node --test tests/pms_ui.test.js
