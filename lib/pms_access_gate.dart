@@ -66,7 +66,11 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
       final protection = await widget.readSecret('aurelia_pms_auth_enabled_v1');
       final biometricPreference = await widget.readSecret('aurelia_pms_biometric_enabled_v1');
       final pinEntryPreference = await widget.readSecret('aurelia_pms_pin_entry_enabled_v1');
-      if (protection == 'false') {
+      // Authentication is opt-in. If neither method is enabled, do not
+      // force first-run PIN creation; users can enable either method in Settings.
+      // An explicit legacy "false" protection value also remains a bypass.
+      if (protection == 'false' ||
+          (pinEntryPreference != 'true' && biometricPreference != 'true')) {
         if (!mounted) return;
         setState(() { _loading = false; _configured = false; });
         await widget.onUnlocked();
@@ -89,8 +93,8 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         _failedAttempts = int.tryParse(attempts ?? '') ?? 0;
         _lockUntil = lock == null ? null : DateTime.tryParse(lock);
         _deviceAuthAvailable = deviceAuth;
-        _biometricEnabled = biometricPreference == 'true';
-        _pinEntryEnabled = pinEntryPreference != 'false' || biometricPreference != 'true' || !deviceAuth;
+        _biometricEnabled = biometricPreference == 'true' && deviceAuth;
+        _pinEntryEnabled = pinEntryPreference == 'true';
         _loading = false;
       });
       _startLockoutTicker();
@@ -297,7 +301,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                   const Icon(Icons.lock_outline, size: 48),
                   const SizedBox(height: 12),
                   Text(
-                    _loading ? 'Securing Aurelia PMS' : (_configured ? 'Unlock Aurelia PMS' : 'Create your PMS PIN'),
+                    _loading ? 'Securing Aurelia PMS' : (_configured || !_pinEntryEnabled ? 'Unlock Aurelia PMS' : 'Create your PMS PIN'),
                     style: Theme.of(context).textTheme.headlineSmall,
                     textAlign: TextAlign.center,
                   ),
@@ -314,7 +318,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                     padding: const EdgeInsets.only(top: 12),
                     child: Text(_error!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
                   ),
-                  if (!_loading && !_configured && _error == null) const Padding(
+                  if (!_loading && !_configured && _pinEntryEnabled && _error == null) const Padding(
                     padding: EdgeInsets.only(top: 8),
                     child: Text(
                       'Choose 6–12 digits. This PIN is not recoverable by the developer; store it safely.',
@@ -323,7 +327,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                   ),
                   if (!_loading && _error == null) ...[
                     const SizedBox(height: 16),
-                    if (!_configured || _pinEntryEnabled) ...[
+                    if (_pinEntryEnabled && (!_configured || _pinEntryEnabled)) ...[
                     TextField(
                       controller: _pin,
                       keyboardType: TextInputType.number,
@@ -368,11 +372,11 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                       ),
                     ),
                     ],
-                    if (_configured && !_pinEntryEnabled) const Padding(
+                    if (_pinEntryEnabled == false && !_biometricEnabled) const Padding(
                       padding: EdgeInsets.only(top: 12),
                       child: Text('PIN entry is disabled. Use Android device authentication to unlock.'),
                     ),
-                    if (_configured && _deviceAuthAvailable && _biometricEnabled) ...[
+                    if (_deviceAuthAvailable && _biometricEnabled) ...[
                       const SizedBox(height: 8),
                       SizedBox(
                         width: double.infinity,
