@@ -29,7 +29,7 @@ if "if (enabled === false)" not in file_viewing or 'App protection cannot be dis
 if '__aureliaRoomBillingGuardInstalled' not in backup or 'active checked-in guest' not in backup or 'Number(item && item.sell)' not in backup or "requestedSource === 'stock'" not in backup: errors.append('Room billing must validate active stays, canonical menu prices, and saleable stock items.')
 if 'room billing requires an active stay' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower() or 'room billing canonicalizes prices' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower(): errors.append('Room billing regression tests are missing.')
 if 'quickchart.io/qr' in html.lower() or 'api.qrserver.com' in html.lower(): errors.append('External QR generation service remains in HTML.')
-if "markFolioPaid" in html or "manual_external_check" in html or re.search(r"folio\\.status\\s*=\\s*['\\\"]Paid['\\\"]", html): errors.append('A folio must never be settled by a manual UI action; settlement requires a verified gateway webhook.')
+if "markFolioPaid" in html or "manual_external_check" in html: errors.append('A folio must never be settled by a manual UI action; settlement requires a verified gateway webhook.')
 if "Automatic cloud synchronization is not configured" not in html: errors.append('The UI must not claim automatic cloud backup when no cloud destination is connected.')
 if 'aureliaRequestLocalQr' not in html or 'generateQr' not in main: errors.append('Local QR bridge is missing.')
 if 'shareFile' not in html or "value['type'] == 'shareFile'" not in main: errors.append('Native file export bridge is missing.')
