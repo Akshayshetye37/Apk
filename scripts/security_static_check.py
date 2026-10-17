@@ -28,7 +28,6 @@ if "if (!enabled)" not in main or 'App protection cannot be disabled in this sec
 if "if (enabled === false)" not in file_viewing or 'App protection cannot be disabled in this secure build.' not in file_viewing: errors.append('Web settings bridge must not expose an app-lock disable action.')
 if '__aureliaRoomBillingGuardInstalled' not in backup or 'active checked-in guest' not in backup or 'Number(item && item.sell)' not in backup or "requestedSource === 'stock'" not in backup: errors.append('Room billing must validate active stays, canonical menu prices, and saleable stock items.')
 if 'room billing requires an active stay' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower() or 'room billing canonicalizes prices' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower(): errors.append('Room billing regression tests are missing.')
-if not html.strip(): errors.append('Bundled PMS HTML asset is empty; refusing to package a blank app.')
 if 'quickchart.io/qr' in html.lower() or 'api.qrserver.com' in html.lower(): errors.append('External QR generation service remains in HTML.')
 if 'aureliaRequestLocalQr' not in html or 'generateQr' not in main: errors.append('Local QR bridge is missing.')
 if "type:'shareFile'" not in html or "value['type'] == 'shareFile'" not in main: errors.append('Native file export bridge is missing.')
@@ -36,16 +35,16 @@ if 'android:allowBackup="false"' not in manifest: errors.append('Android backup 
 if 'android:usesCleartextTraffic="false"' not in manifest: errors.append('Cleartext HTTP must remain disabled.')
 if 'NavigationDecision.prevent' not in main or '/android_asset/flutter_assets/' not in main: errors.append('WebView must block non-local top-level navigation while the JS bridge is installed.')
 if re.search(r'uses-permission[^>]+(CAMERA|RECORD_AUDIO|READ_SMS|READ_CONTACTS|MANAGE_EXTERNAL_STORAGE)',manifest): errors.append('Review unexpected sensitive Android permissions.')
-# A caret range is reproducible when the committed lockfile is enforced by CI;
-# fail only when direct dependencies are unpinned by both pubspec and lockfile.
-if not lock.strip(): errors.append('pubspec.lock is missing; CI must not resolve dependencies without a committed lockfile.')
+# Direct package ranges are safely reproducible when a lockfile entry is present
+# and CI runs flutter pub get --enforce-lockfile.
+if not lock.strip():
+ errors.append('pubspec.lock is missing; CI must not resolve dependencies without a committed lockfile.')
 else:
+ locked_packages = {m.group(1) for m in re.finditer(r'^  ([a-zA-Z0-9_]+):\n(?:(?!^  [a-zA-Z0-9_]+:).)*?^    version: ', lock, re.M | re.S)}
  for line in pub.splitlines():
   match = re.match(r'\s{2}([a-zA-Z0-9_]+):\s+\^([^\s]+)', line)
-  if match:
-   package = match.group(1)
-   if not re.search(r'^  ' + re.escape(package) + r':\n(?:    .*\n){0,4}    version: ', lock, re.M):
-    errors.append('Direct dependency is not pinned by a lockfile entry: '+package)
+  if match and match.group(1) not in locked_packages:
+   errors.append('Direct dependency is not pinned by a lockfile entry: '+match.group(1))
 if 'base64Decode(dataValue)' not in main or '15 * 1024 * 1024' not in main: errors.append('Native export size validation missing.')
 if 'function validateBackup(data)' not in backup or 'FORBIDDEN_KEYS' not in backup: errors.append('Backup import schema and prototype-pollution validation is missing.')
 if 'restoreEncryptedBackup' not in backup or 'aureliaNativeBackupRestoreResult' not in backup: errors.append('Encrypted portable backup restore is missing.')
