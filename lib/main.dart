@@ -752,9 +752,14 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       if (value['type'] == 'setAppProtection') {
         final enabled = value['enabled'];
         if (enabled is! bool) throw const FormatException('Protection setting must be true or false.');
-        // Keep the native gate available but let users decide whether PIN and/or
-        // device authentication is enabled; the gate itself handles both-off.
-        await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', enabled ? 'true' : 'false');
+        if (!enabled) {
+          // App protection itself stays fail-closed in secure builds. The
+          // PIN and biometric methods remain independent optional preferences.
+          await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', 'true');
+          await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},false,${jsonEncode('App protection cannot be disabled in this secure build.')});');
+          return;
+        }
+        await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', 'true');
         await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
