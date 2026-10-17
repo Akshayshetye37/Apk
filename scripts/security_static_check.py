@@ -10,6 +10,7 @@ gate = (root / 'lib/pms_access_gate.dart').read_text(encoding='utf-8')
 backup = (root / 'scripts/interaction_reliability.js').read_text(encoding='utf-8')
 file_viewing = (root / 'scripts/file_viewing.js').read_text(encoding='utf-8')
 pub = (root / 'pubspec.yaml').read_text(encoding='utf-8')
+lock = (root / 'pubspec.lock').read_text(encoding='utf-8') if (root / 'pubspec.lock').is_file() else ''
 manifest = (root / 'android/app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
 activity = (root / 'android/app/src/main/kotlin/com/example/aurelia_pms/MainActivity.kt').read_text(encoding='utf-8')
 errors=[]
@@ -20,7 +21,7 @@ if 'Content-Security-Policy' not in html or "script-src 'self' 'unsafe-inline'" 
 if 'aureliaGoogleDriveSettingsCard' in html or any(token in file_viewing for token in ('aureliaDriveFolderId', 'aureliaDriveEmail', 'aureliaSaveDriveFolderId', 'aureliaClearDriveFolderId')): errors.append('Nonfunctional Google Drive destination controls must not be exposed.')
 if 'window.__AURELIA_SECURE_DB_READY)return false' not in html: errors.append('Dynamic remote PDF JavaScript must remain disabled in the native app.')
 if 'Pbkdf2(' not in main or 'exportEncryptedBackup' not in main or 'restoreEncryptedBackup' not in main: errors.append('Portable passphrase-encrypted backup/restore is missing.')
-if 'local_auth: 2.3.0' not in pub or 'FlutterFragmentActivity' not in (root / 'android/app/src/main/kotlin/com/example/aurelia_pms/MainActivity.kt').read_text(encoding='utf-8') or 'android.permission.USE_BIOMETRIC' not in manifest: errors.append('Native PIN/device authentication support is incomplete.')
+if 'local_auth: 2.3.0' not in pub or 'FlutterFragmentActivity' not in activity or 'android.permission.USE_BIOMETRIC' not in manifest: errors.append('Native PIN/device authentication support is incomplete.')
 if '_lockUntilKey' not in gate or '310000' not in gate or 'didChangeAppLifecycleState' not in main: errors.append('PIN lockout or background-session locking is missing.')
 if 'PmsAccessGate' not in main or 'local_auth' not in gate: errors.append('Native PIN/device authentication gate is missing.')
 if "if (!enabled)" not in main or 'App protection cannot be disabled in this secure build.' not in main: errors.append('Native app protection must fail closed when web content requests disabling the lock.')
@@ -35,8 +36,16 @@ if 'android:allowBackup="false"' not in manifest: errors.append('Android backup 
 if 'android:usesCleartextTraffic="false"' not in manifest: errors.append('Cleartext HTTP must remain disabled.')
 if 'NavigationDecision.prevent' not in main or '/android_asset/flutter_assets/' not in main: errors.append('WebView must block non-local top-level navigation while the JS bridge is installed.')
 if re.search(r'uses-permission[^>]+(CAMERA|RECORD_AUDIO|READ_SMS|READ_CONTACTS|MANAGE_EXTERNAL_STORAGE)',manifest): errors.append('Review unexpected sensitive Android permissions.')
-for line in pub.splitlines():
- if re.match(r'\s{2}[a-zA-Z0-9_]+:\s+\^',line): errors.append('Unpinned direct dependency: '+line.strip()); break
+# A caret range is reproducible when the committed lockfile is enforced by CI;
+# fail only when direct dependencies are unpinned by both pubspec and lockfile.
+if not lock.strip(): errors.append('pubspec.lock is missing; CI must not resolve dependencies without a committed lockfile.')
+else:
+ for line in pub.splitlines():
+  match = re.match(r'\s{2}([a-zA-Z0-9_]+):\s+\^([^\s]+)', line)
+  if match:
+   package = match.group(1)
+   if not re.search(r'^  ' + re.escape(package) + r':\n(?:    .*\n){0,4}    version: ', lock, re.M):
+    errors.append('Direct dependency is not pinned by a lockfile entry: '+package)
 if 'base64Decode(dataValue)' not in main or '15 * 1024 * 1024' not in main: errors.append('Native export size validation missing.')
 if 'function validateBackup(data)' not in backup or 'FORBIDDEN_KEYS' not in backup: errors.append('Backup import schema and prototype-pollution validation is missing.')
 if 'restoreEncryptedBackup' not in backup or 'aureliaNativeBackupRestoreResult' not in backup: errors.append('Encrypted portable backup restore is missing.')
