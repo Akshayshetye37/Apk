@@ -705,7 +705,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
             final lines = <String>[];
             final seen = <String>{};
             for (final line in recognized) {
-              final key = line.text.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+              final key = line.text.toUpperCase().replaceAll(RegExp(r'\s+'), '');
               if (key.isNotEmpty && seen.add(key)) lines.add(line.text);
             }
             final candidate = lines.join('\n').trim();
