@@ -1,0 +1,41 @@
+name: Repair dependency lockfile (one-time)
+on:
+  push:
+    branches:
+      - fix/secure-storage-release-check
+permissions:
+  contents: write
+  actions: read
+jobs:
+  repair-and-verify:
+    if: github.event.head_commit.message != 'chore: restore reproducible pub lockfile [skip ci]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          token: ${{ github.token }}
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Commit lockfile and remove one-time workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pubspec.lock
+          git rm .github/workflows/repair-lockfile.yml
+          git commit -m "chore: restore reproducible pub lockfile [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
+      - name: Verify lockfile is reproducible
+        run: |
+          flutter pub get
+          git diff --exit-code -- pubspec.lock
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Build Android debug APK
+        run: flutter build apk --debug
