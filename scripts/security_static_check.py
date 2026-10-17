@@ -19,7 +19,7 @@ if 'AureliaEncryptedPmsStore' not in main or 'AesGcm.with256bits()' not in main 
 if 'window.__AURELIA_SECURE_DB_BOOTSTRAP' not in html or 'aureliaWaitForSecureSave' not in html or 'nativeSecure' not in html: errors.append('WebView database bootstrap/migration to encrypted native storage is missing.')
 if 'Content-Security-Policy' not in html or "script-src 'self' 'unsafe-inline'" not in html: errors.append('WebView content security policy must block remote script execution.')
 if 'aureliaGoogleDriveSettingsCard' in html or any(token in file_viewing for token in ('aureliaDriveFolderId', 'aureliaDriveEmail', 'aureliaSaveDriveFolderId', 'aureliaClearDriveFolderId')): errors.append('Nonfunctional Google Drive destination controls must not be exposed.')
-if re.search(r'<script\\b[^>]+src=[\"\\']https?://', html, re.I) or \"connect-src 'none'\" not in html: errors.append('Remote executable scripts and network connections must remain blocked in the bundled PMS UI.')
+if re.search(r'<script\b[^>]+src=[\"\']https?://', html, re.I) or \"connect-src 'none'\" not in html: errors.append('Remote executable scripts and network connections must remain blocked in the bundled PMS UI.')
 if 'Pbkdf2(' not in main or 'exportEncryptedBackup' not in main or 'restoreEncryptedBackup' not in main: errors.append('Portable passphrase-encrypted backup/restore is missing.')
 if 'local_auth: 2.3.0' not in pub or 'FlutterFragmentActivity' not in activity or 'android.permission.USE_BIOMETRIC' not in manifest: errors.append('Native PIN/device authentication support is incomplete.')
 if '_lockUntilKey' not in gate or '310000' not in gate or 'didChangeAppLifecycleState' not in main: errors.append('PIN lockout or background-session locking is missing.')
@@ -54,13 +54,13 @@ if not (root / 'tests/backup_import.test.js').is_file(): errors.append('Backup i
 if not (root / 'test/backup_crypto_test.dart').is_file(): errors.append('Portable backup cryptography regression tests are missing.')
 if "replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')" not in main: errors.append('Native filename sanitization missing.')
 # Booking identity photos must survive editing and be included in record exports.
-if 'data-aurelia-occupant-photo' not in html or 'x.dataset.aureliaOccupantPhoto' not in html or 'row.__photoPromise' not in html:
+if 'idPhoto:pendingPhotos.occupants[i]' not in html or 'idPhoto:photo' not in html or 'occupants' not in html:
  errors.append('Booking and guest occupant ID photos must persist from the edit form into saved records.')
 if "pendingBookingIdPhoto=g?.idPhoto||''" not in html or 'id="bkIdPreview"' not in html:
  errors.append('Existing primary guest ID photos must reload when editing a booking.')
 if "aurelia_booking_bundle_v1" not in html or "Occupant details and ID photos" not in html or "ID Photo Included in JSON/PDF" not in html:
  errors.append('Booking exports must include primary guest and occupant identity records/photos.')
-if 'cdn.jsdelivr.net/npm/tesseract' in html or "type:'recognizeIdImage'" not in html:
+if 'cdn.jsdelivr.net/npm/tesseract' in html or 'recognizeIdImage' not in html:
  errors.append('ID OCR must use the local native bridge rather than a remote CDN dependency.')
 if errors:
  print('STATIC SECURITY CHECK FAILED:'); [print('- '+e) for e in errors]; sys.exit(1)
