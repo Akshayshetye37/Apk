@@ -726,23 +726,16 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           throw const FormatException('This device does not support Android device authentication.');
         }
         await AureliaSecureVault.writeSecret('aurelia_pms_biometric_enabled_v1', enabled ? 'true' : 'false');
-        if (!enabled) {
-          // Never strand the user outside the app when biometric/device auth is disabled.
-          await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', 'true');
-        }
+        // PIN and biometric preferences are independent user choices. Disabling
+        // biometrics must not silently turn PIN entry on or alter its setting.
         await _controller.runJavaScript('window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
       if (value['type'] == 'setPinEntryEnabled') {
         final enabled = value['enabled'];
         if (requestId == null || enabled is! bool) throw const FormatException('PIN entry preference must be true or false.');
-        if (!enabled) {
-          final biometricEnabled = await AureliaSecureVault.readSecret('aurelia_pms_biometric_enabled_v1');
-          final deviceSupported = await LocalAuthentication().isDeviceSupported();
-          if (biometricEnabled != 'true' || !deviceSupported) {
-            throw const FormatException('Enable supported Android device authentication before disabling PIN entry.');
-          }
-        }
+        // PIN entry is independently optional. The access gate bypasses
+        // authentication only when both preferences are disabled.
         await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', enabled ? 'true' : 'false');
         await _controller.runJavaScript('window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},true,null);');
         return;
@@ -750,14 +743,9 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       if (value['type'] == 'setAppProtection') {
         final enabled = value['enabled'];
         if (enabled is! bool) throw const FormatException('Protection setting must be true or false.');
-        if (!enabled) {
-          // Fail closed: do not allow WebView JavaScript to persistently disable
-          // the native lock that protects guest and payment data.
-          await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', 'true');
-          await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},false,${jsonEncode('App protection cannot be disabled in this secure build.')});');
-          return;
-        }
-        await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', 'true');
+        // Keep the native gate available but let users decide whether PIN and/or
+        // device authentication is enabled; the gate itself handles both-off.
+        await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', enabled ? 'true' : 'false');
         await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
