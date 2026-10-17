@@ -2930,35 +2930,35 @@ function aureliaSetPinEntryEnabled(enabled){
  try{window.AureliaNative.postMessage(JSON.stringify({type:'setPinEntryEnabled',requestId,enabled:!!enabled}));}
  catch(error){if(box){box.disabled=false;box.checked=DB.settings.pinEntryEnabled!==false;}if(note)note.textContent='Could not contact Android authentication settings.';}
 }
-function aureliaDriveStatus(message){
+function aureliaArchiveStatus(message){
  const n=document.getElementById('aureliaEncryptedBackupNote');if(n)n.textContent=message;
 }
-async function aureliaUploadDriveBackup(){
+async function aureliaExportLocalArchive(){
  const passphrase=String(document.getElementById('aureliaDrivePassphrase')?.value||'');
- if(passphrase.length<12){aureliaDriveStatus('Choose a backup passphrase of at least 12 characters.');toast('Backup passphrase is too short');return;}
- if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){aureliaDriveStatus('Encrypted backup sharing is available only in the installed Android app.');return;}
+ if(passphrase.length<12){aureliaArchiveStatus('Choose a backup passphrase of at least 12 characters.');toast('Backup passphrase is too short');return;}
+ if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){aureliaArchiveStatus('Encrypted backup sharing is available only in the installed Android app.');return;}
  const requestId='backup_'+Date.now()+'_'+Math.random().toString(36).slice(2);
  window.aureliaNativeBackupExportResult=function(id,ok,error){if(String(id)!==requestId)return;const note=document.getElementById('aureliaEncryptedBackupNote');if(ok){if(note)note.textContent='Local encrypted archive exported. Verify the file exists in the selected local destination.';const secretInput=document.getElementById('aureliaDrivePassphrase');if(secretInput)secretInput.value='';toast('Encrypted backup saved; verify destination');}else{if(note)note.textContent=error==='Backup save cancelled.'?'Backup save cancelled; no file was written.':'Encrypted backup could not be saved: '+(error||'unknown error');if(error!=='Backup save cancelled.')toast('Backup save failed');}};
- try{dedupeExistingGuestsInPlace();aureliaDriveStatus('Encrypting PMS data before opening Android save-location picker…');window.AureliaNative.postMessage(JSON.stringify({type:'exportEncryptedBackup',requestId,data:JSON.stringify(DB),passphrase}));}
- catch(error){aureliaDriveStatus('Could not start encrypted backup: '+(error?.message||'unknown error'));}
+ try{dedupeExistingGuestsInPlace();aureliaArchiveStatus('Encrypting PMS data before opening Android save-location picker…');window.AureliaNative.postMessage(JSON.stringify({type:'exportEncryptedBackup',requestId,data:JSON.stringify(DB),passphrase}));}
+ catch(error){aureliaArchiveStatus('Could not start encrypted backup: '+(error?.message||'unknown error'));}
 }
 async function aureliaRestoreLocalArchive(event){
  const file=event?.target?.files?.[0];if(!file)return;
  const passphrase=String(document.getElementById('aureliaDrivePassphrase')?.value||'');
- if(passphrase.length<12){aureliaDriveStatus('Enter the backup passphrase (12+ characters) before restoring.');event.target.value='';return;}
- if(file.size>30*1024*1024){aureliaDriveStatus('Backup file is too large (maximum 30 MiB).');event.target.value='';return;}
+ if(passphrase.length<12){aureliaArchiveStatus('Enter the backup passphrase (12+ characters) before restoring.');event.target.value='';return;}
+ if(file.size>30*1024*1024){aureliaArchiveStatus('Backup file is too large (maximum 30 MiB).');event.target.value='';return;}
  try{
   const text=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('Could not read the selected backup file.'));reader.readAsText(file);});
   const envelope=JSON.parse(text);
   if(!envelope||envelope.app!=='AURELIA PMS ENCRYPTED BACKUP'||envelope.formatVersion!==1)throw new Error('This is not a supported Aurelia encrypted backup.');
   const requestId='restore_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-  aureliaDriveStatus('Validating and restoring encrypted backup…');
+  aureliaArchiveStatus('Validating and restoring encrypted backup…');
   window.AureliaNative.postMessage(JSON.stringify({type:'restoreEncryptedBackup',requestId,envelope,passphrase}));
- }catch(error){aureliaDriveStatus('Restore failed: '+(error?.message||'unknown error'));event.target.value='';}
+ }catch(error){aureliaArchiveStatus('Restore failed: '+(error?.message||'unknown error'));event.target.value='';}
 }
-window.aureliaNativeBackupRestoreResult=function(id,ok,error){if(ok){toast('Encrypted backup restored. Review the imported records before continuing.');}else{aureliaDriveStatus('Restore failed: '+(error||'unknown error'));toast('Encrypted backup restore failed');}};
+window.aureliaNativeBackupRestoreResult=function(id,ok,error){if(ok){toast('Encrypted backup restored. Review the imported records before continuing.');}else{aureliaArchiveStatus('Restore failed: '+(error||'unknown error'));toast('Encrypted backup restore failed');}};
 function aureliaQueueDriveBackup(){ /* Intentionally local-only: no network sync or upload. */ }
-function triggerLocalExportArchive(){return aureliaUploadDriveBackup();}
+function triggerLocalExportArchive(){return aureliaExportLocalArchive();}
 function triggerLocalRestoreArchive(){document.getElementById('aureliaDriveRestoreFile')?.click();}
 function aureliaSetBackupDestination(value){
  DB.settings.backupDestination='local';save();
