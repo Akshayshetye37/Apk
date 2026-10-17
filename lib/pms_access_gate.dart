@@ -63,14 +63,12 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
 
   Future<void> _initialize() async {
     try {
-      final protection = await widget.readSecret('aurelia_pms_auth_enabled_v1');
       final biometricPreference = await widget.readSecret('aurelia_pms_biometric_enabled_v1');
       final pinEntryPreference = await widget.readSecret('aurelia_pms_pin_entry_enabled_v1');
       // Authentication is opt-in. If neither method is enabled, do not
       // force first-run PIN creation; users can enable either method in Settings.
       // An explicit legacy "false" protection value also remains a bypass.
-      if (protection == 'false' ||
-          (pinEntryPreference != 'true' && biometricPreference != 'true')) {
+      if (pinEntryPreference != 'true' && biometricPreference != 'true') {
         if (!mounted) return;
         setState(() { _loading = false; _configured = false; });
         await widget.onUnlocked();
@@ -94,7 +92,8 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         _lockUntil = lock == null ? null : DateTime.tryParse(lock);
         _deviceAuthAvailable = deviceAuth;
         _biometricEnabled = biometricPreference == 'true' && deviceAuth;
-        _pinEntryEnabled = pinEntryPreference == 'true';
+        _pinEntryEnabled = pinEntryPreference == 'true' ||
+            (biometricPreference == 'true' && !deviceAuth);
         _loading = false;
       });
       _startLockoutTicker();
@@ -327,7 +326,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
                   ),
                   if (!_loading && _error == null) ...[
                     const SizedBox(height: 16),
-                    if (_pinEntryEnabled && (!_configured || _pinEntryEnabled)) ...[
+                    if (_pinEntryEnabled) ...[
                     TextField(
                       controller: _pin,
                       keyboardType: TextInputType.number,
