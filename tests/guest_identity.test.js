@@ -88,7 +88,7 @@ test('same name and phone with conflicting short ID numbers are not merged', () 
 
   runDedupe(database);
   assert.equal(database.guests.length, 2);
-  assert.deepEqual(database.guests.map(g => g.id), ['guest-a', 'guest-b']);
+  assert.deepEqual(JSON.parse(JSON.stringify(database.guests.map(g => g.id))), ['guest-a', 'guest-b']);
 });
 
 test('same-name guests with different phone numbers are not merged', () => {
