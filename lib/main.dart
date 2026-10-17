@@ -682,7 +682,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         var bestScore = -1;
         try {
           for (var variantIndex = 0; variantIndex < variants.length; variantIndex++) {
-            final ocrFile = File('${temp.path}/aurelia_ocr_${DateTime.now().microsecondsSinceEpoch}_${variantIndex}.jpg');
+            final ocrFile = File('${temp.path}/aurelia_ocr_${DateTime.now().microsecondsSinceEpoch}_$variantIndex.jpg');
             tempFiles.add(ocrFile);
             await ocrFile.writeAsBytes(img.encodeJpg(variants[variantIndex], quality: 96), flush: true);
             final inputImage = InputImage.fromFilePath(ocrFile.path);
