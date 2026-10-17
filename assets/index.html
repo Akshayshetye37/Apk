@@ -157,5 +157,72 @@ for(const key of ['guests','rooms','bookings','reservations','folios','invoices'
 if(nativeSecure){bootstrap()}else{bootstrap()}
 })();
 </script>
+
+<script>
+(function () {
+  'use strict';
+  // Native-only OCR UI. No CDN, worker, srcdoc, or remote script loader.
+  function addOcrControl(input) {
+    if (!input || input.dataset.aureliaNativeOcrReady === 'true') return;
+    input.dataset.aureliaNativeOcrReady = 'true';
+    const field = input.closest('.field') || input.parentElement;
+    if (!field) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'secondary';
+    button.textContent = 'Extract ID text (on-device)';
+    button.style.marginTop = '8px';
+    const output = document.createElement('textarea');
+    output.rows = 4;
+    output.readOnly = false;
+    output.placeholder = 'Extracted text appears here for review. Verify it before copying into guest details.';
+    output.setAttribute('aria-label', 'Extracted ID text for review');
+    output.style.cssText = 'display:block;width:100%;margin-top:8px;box-sizing:border-box;';
+    button.addEventListener('click', async function () {
+      const files = Array.from(input.files || []).filter(function (file) {
+        return file && /^image\//i.test(file.type) && file.size > 0 && file.size <= 8 * 1024 * 1024;
+      });
+      if (!files.length) {
+        output.value = 'Choose an image no larger than 8 MiB first.';
+        return;
+      }
+      if (typeof window.aureliaRequestIdOcr !== 'function' ||
+          !window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function') {
+        output.value = 'On-device OCR is available only in the installed Android app.';
+        return;
+      }
+      button.disabled = true;
+      button.textContent = 'Extracting…';
+      output.value = '';
+      try {
+        const results = [];
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const text = await new Promise(function (resolve, reject) {
+            const timeout = setTimeout(function () { reject(new Error('Android OCR did not respond. Try again.')); }, 60000);
+            window.aureliaRequestIdOcr(file, function (recognized, error) {
+              clearTimeout(timeout);
+              if (error) reject(new Error(String(error)));
+              else resolve(String(recognized || ''));
+            });
+          });
+          results.push((files.length > 1 ? file.name + '\n' : '') + (text || '[No text recognized]'));
+        }
+        output.value = results.join('\n\n--------------------\n\n');
+        if (typeof window.toast === 'function') window.toast('Text extracted on-device. Review it carefully.');
+      } catch (error) {
+        output.value = 'OCR failed: ' + (error && error.message ? error.message : String(error));
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Extract ID text (on-device)';
+      }
+    });
+    field.appendChild(button);
+    field.appendChild(output);
+  }
+  addOcrControl(document.getElementById('guestIdPhoto'));
+  addOcrControl(document.getElementById('occupantPhotos'));
+})();
+</script>
 </body>
 </html>
