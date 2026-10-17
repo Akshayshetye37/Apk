@@ -38,16 +38,35 @@ class _ProductionPdfViewerRouteState extends State<ProductionPdfViewerRoute> {
   }
 
   Future<void> _load() async {
+    final loadRequest = ++_request;
+    _debounce?.cancel();
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+        _bytes = null;
+        _pageCount = 0;
+        _page = 0;
+        _zoom = 1;
+      });
+    }
     try {
+      // A failed native open can leave a partially initialized renderer. Close it
+      // before retrying so the platform channel starts from a clean state.
+      await _channel.invokeMethod<void>('closePdf');
       final count = await _channel.invokeMethod<int>('loadPdf', {'path': widget.filePath});
-      if (!mounted) return;
+      if (!mounted || loadRequest != _request) return;
       if (count == null || count < 1) throw StateError('The PDF contains no readable pages.');
       setState(() { _pageCount = count; _loading = false; });
       _render(0, 1);
     } on PlatformException catch (e) {
-      if (mounted) setState(() { _error = e.message ?? 'Could not open PDF.'; _loading = false; });
+      if (mounted && loadRequest == _request) {
+        setState(() { _error = e.message ?? 'Could not open PDF.'; _loading = false; });
+      }
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted && loadRequest == _request) {
+        setState(() { _error = e.toString(); _loading = false; });
+      }
     }
   }
 
