@@ -1,0 +1,50 @@
+name: Commit Flutter dependency lockfile
+
+on:
+  push:
+    branches:
+      - fix/secure-storage-release-check
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aurelia-lockfile-maintenance
+  cancel-in-progress: false
+
+jobs:
+  commit-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/secure-storage-release-check
+          persist-credentials: true
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.5"
+          cache: true
+
+      - name: Generate lockfile
+        run: flutter pub get
+
+      - name: Commit lockfile if it changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -s pubspec.lock ]]; then
+            echo "::error::Flutter did not generate pubspec.lock."
+            exit 1
+          fi
+          if git diff --quiet -- pubspec.lock; then
+            echo "pubspec.lock is already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pubspec.lock
+          git commit -m "Commit reproducible Flutter dependency lockfile"
+          git push origin HEAD:fix/secure-storage-release-check
