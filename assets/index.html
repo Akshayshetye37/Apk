@@ -55,6 +55,36 @@ const nativeSecure=!!(window.__AURELIA_SECURE_DB_READY&&window.AureliaNative&&ty
 let DB={guests:[],rooms:[],bookings:[],reservations:[],folios:[],invoices:[],payments:[],settings:{},inventory:[],expenses:[],audit:[],inventoryLedger:[],restaurantSales:[],paymentSignals:[]};
 let saveTimer=null, saving=false, dirty=false, pendingPhotos={guest:'',occupants:[]};
 window.DB=DB;
+function parseIdText(text){
+  const source=String(text||'').replace(/\r/g,'\n').replace(/[：]/g,':');
+  const lines=source.split(/\n+/).map(line=>line.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const upper=source.toUpperCase();
+  let idType='',idNumber='',name='';
+  const pan=(source.match(/\b[A-Z]{5}\d{4}[A-Z]\b/i)||[])[0];
+  const aadhaar=(source.match(/\b\d{4}[ -]?\d{4}[ -]?\d{4}\b/)||[])[0];
+  const dl=(source.match(/\b(?:[A-Z]{2}[- ]?\d{2}[- ]?\d{4}[- ]?\d{7}|[A-Z]{2}\d{13})\b/i)||[])[0];
+  const voter=(source.match(/\b[A-Z]{3}\d{7}\b/i)||[])[0];
+  const mrz=lines.find(line=>/^P</i.test(line));
+  if(pan){idType='PAN Card';idNumber=pan.toUpperCase();}
+  else if(aadhaar){idType='Aadhaar Card';idNumber=aadhaar.replace(/[ -]/g,' ').replace(/\s+/g,' ').trim();}
+  else if(mrz||/PASSPORT/.test(upper)){idType='Passport';if(mrz){const m=mrz.match(/^P<[A-Z]{3}([A-Z0-9]{7,9})/i);if(m)idNumber=m[1];}}
+  else if(dl||/DRIVING LICEN[CS]E/.test(upper)){idType='Driving Licence';if(dl)idNumber=dl.replace(/[ -]/g,'');}
+  else if(voter||/ELECTION COMMISSION/.test(upper)){idType='Voter ID';if(voter)idNumber=voter.toUpperCase();}
+  if(idType==='Passport'&&!idNumber){const m=source.match(/\b[A-Z]\d{7,8}\b/i);if(m)idNumber=m[0].toUpperCase();}
+  const labelled=source.match(/(?:^|\n)\s*(?:Name|姓名)\s*:\s*([^\n]+)/i);
+  if(labelled)name=labelled[1].trim().replace(/\s+/g,' ');
+  if(!name&&idType==='Passport'&&mrz){
+    const nameLine=lines.find(line=>/^[A-Z]+<<[A-Z<]+$/i.test(line));
+    if(nameLine){const parts=nameLine.split('<<');const surname=(parts[0]||'').replace(/</g,'').trim();const given=(parts[1]||'').split('<')[0].trim();name=[given,surname].filter(Boolean).join(' ').toLowerCase().replace(/(^|\s)\S/g,c=>c.toUpperCase());}
+  }
+  if(!name){
+    const excluded=/GOVERNMENT OF INDIA|UNIQUE IDENTIFICATION|INCOME TAX|PERMANENT ACCOUNT|AADHAAR|ELECTION COMMISSION|DRIVING LICEN[CS]E|PASSPORT|DATE OF BIRTH|\bDOB\b|MALE|FEMALE|INDIA|REPUBLIC OF/i;
+    const candidate=lines.find(line=>line.length>=4&&line.length<=60&&/[A-Za-z]/.test(line)&&!excluded.test(line)&&!/^\d/.test(line)&&!/[<>]/.test(line)&&!/\b(?:\d{2}[/-]){2}\d{2,4}\b/.test(line));
+    if(candidate)name=candidate.toLowerCase().replace(/(^|\s)\S/g,c=>c.toUpperCase());
+  }
+  return {idType,idNumber,name};
+}
+let pendingBookingIdPhoto = '';
 function note(message,error=false){$('notice').textContent=message;$('notice').className='notice'+(error?' error':'');}
 function uuid(){return uid('rec');}
 function request(type,payload={}){const requestId=uid('req');window.AureliaNative.postMessage(JSON.stringify({type,requestId,...payload}));return requestId;}
