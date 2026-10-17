@@ -954,7 +954,7 @@ function syncBookingGuestCount(){
 }
 function openBooking(id){
  const b=id?DB.bookings.find(x=>x.id===id):null; const g=b&&guest(b), r=b&&room(b);
- pendingBookingIdPhoto=g?.idImageBase64||g?.idPhoto||'';pendingBookingPhotoPromise=Promise.resolve();bookingPhotoGeneration++;
+ pendingBookingIdPhoto=g?.idPhoto||'';if(!pendingBookingIdPhoto)pendingBookingIdPhoto=g?.idImageBase64||'';pendingBookingPhotoPromise=Promise.resolve();bookingPhotoGeneration++;
  let occ=(g?.occupants||[]).map((o,i)=>occupantHTML(o,i)).join('');
  let veh=(g?.vehicles||[]).map((v,i)=>vehicleHTML(v,i)).join('');
  const checkIn=b?.checkIn||aureliaDateTimeISO(new Date()), checkOut=b?.checkOut||aureliaDateTimeISO(new Date(Date.now()+86400000));
