@@ -1380,7 +1380,7 @@ function guestHistory(id){
 }
 function callGuest(phone){if(!phone){toast('No phone number');return}location.href=`tel:${String(phone).replace(/\D/g,'')}`}
 function msgGuest(phone){if(!phone){toast('No WhatsApp number');return}window.open(`https://wa.me/${String(phone).replace(/\D/g,'')}`,'_blank','noopener')}
-function setLogo(e){const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{DB.settings.logo=r.result;save();refreshBrand();showPage('settings');toast('Logo saved')};r.readAsDataURL(f)}
+function setLogo(e){const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{DB.settings.logo=r.result;DB.settings.hotelLogoBase64=r.result;save();refreshBrand();showPage('settings');toast('Logo saved locally')};r.readAsDataURL(f)}
 function refreshBrand(){document.getElementById('brandName').textContent=DB.settings.hotelName||'AURELIA 5★';const logo=DB.settings.hotelLogoBase64||DB.settings.logo||'';const img=document.getElementById('brandLogo');img.src=logo;img.style.display=logo?'block':'none';const qr=DB.settings.qrCodeBase64||DB.settings.upiQr||'';const preview=document.getElementById('upiQrPreview');if(preview&&qr){preview.src=qr;preview.style.display='block';}document.querySelectorAll('.qr-box img').forEach(el=>{if(qr)el.src=qr;});}
 window.hydrateBrandingAssets=function(){refreshBrand();};
 document.addEventListener('DOMContentLoaded',()=>{try{window.hydrateBrandingAssets();}catch(_){} });
@@ -2640,7 +2640,7 @@ function setUPIQR(ev){
     ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.imageSmoothingEnabled=false;ctx.drawImage(img,0,0,canvas.width,canvas.height);
     const data=canvas.toDataURL('image/png');
-    DB.settings.upiQr=data;save();
+    DB.settings.upiQr=data;DB.settings.qrCodeBase64=data;save();
     const preview=document.getElementById('upiQrPreview');
     if(preview){preview.src=data;preview.style.display='block';preview.alt='Uploaded UPI payment QR';}
     const invoiceImages=document.querySelectorAll('.qr-box img');
