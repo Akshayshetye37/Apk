@@ -6,8 +6,32 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'">
 <title>Aurelia PMS</title>
 <style>
-:root{color-scheme:light;--ink:#172b4d;--muted:#63718a;--line:#dbe3ed;--paper:#f4f7fb;--white:#fff;--blue:#17365d;--teal:#147d75;--red:#b42318}
+:root{color-scheme:light;--ink:#30231d;--muted:#89796c;--line:#e5d8c6;--paper:#f5f0e8;--white:#fffdf9;--blue:#38251d;--teal:#c5a15b;--red:#963f43}
 *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}button,input,select,textarea{font:inherit}button{cursor:pointer;border:0;border-radius:10px;padding:10px 14px;background:var(--blue);color:white;font-weight:650}button.secondary{background:#e7edf5;color:var(--ink)}button.danger{background:#b42318}.shell{max-width:1180px;margin:auto;padding:16px}.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--white);padding:16px;border:1px solid var(--line);border-radius:16px}.brand{width:48px;height:48px;object-fit:contain;border-radius:10px;background:#edf2f8}.brand-fallback{width:48px;height:48px;display:grid;place-items:center;background:var(--blue);color:white;border-radius:10px;font-weight:800}.grow{flex:1;min-width:180px}.muted{color:var(--muted)}.status{font-size:12px;padding:5px 9px;border-radius:99px;background:#e3f5ee;color:#12634e}.nav{display:flex;gap:8px;overflow:auto;padding:14px 0}.nav button{white-space:nowrap}.nav button.active{background:var(--teal)}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:8px 0 16px}.stat,.panel{background:white;border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}.stat strong{display:block;font-size:26px}.panel h2{margin:0 0 12px;font-size:19px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:5px;margin:10px 0}.field label{font-size:13px;font-weight:650;color:#35445e}.field input,.field select,.field textarea{width:100%;border:1px solid #bdc9d8;border-radius:9px;padding:10px;background:#fff;color:var(--ink)}.field textarea{min-height:76px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top}th{background:#f2f5f9;white-space:nowrap}.empty{padding:20px;color:var(--muted);text-align:center}.view{display:none}.view.active{display:block}.notice{margin:10px 0;padding:10px 12px;border-radius:10px;background:#eaf2ff;color:#193e70}.notice.error{background:#fff0ee;color:var(--red)}.preview{max-width:140px;max-height:100px;object-fit:contain;border:1px solid var(--line);border-radius:8px;margin-top:8px}.foot{padding:18px 4px;color:var(--muted);font-size:12px}.qrbox{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}.qrbox img{width:180px;height:180px;object-fit:contain;background:white;border:1px solid var(--line)}@media(max-width:700px){.shell{padding:10px}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.grid{grid-template-columns:1fr}.top{padding:12px}.stat,.panel{padding:12px}}
+
+/* Aurelia luxury visual theme — presentation-only override; preserve all existing workflows. */
+:root{color-scheme:light;--ink:#30231d;--muted:#89796c;--line:#e5d8c6;--paper:#f5f0e8;--white:#fffdf9;--blue:#38251d;--teal:#c5a15b;--red:#963f43}
+body{background:var(--paper);color:var(--ink)}
+button{background:linear-gradient(135deg,#38251d,#5a3b2b);box-shadow:0 3px 10px rgba(56,37,29,.12)}
+button.secondary{background:#efe3d1;color:#38251d;box-shadow:none;border:1px solid #dfc9a9}
+button.danger{background:#963f43}
+.top,.stat,.panel{background:var(--white);border-color:var(--line);box-shadow:0 8px 24px rgba(70,45,30,.045)}
+.brand-fallback{background:linear-gradient(135deg,#38251d,#5a3b2b);color:#e7c982;border:1px solid #c5a15b}
+.status{background:#e8efe5;color:#47684e}
+.nav button.active{background:linear-gradient(135deg,#b9954e,#dfc783);color:#30231d}
+.nav button{border:1px solid transparent}
+.nav button:hover{background:#efe3d1;color:#38251d}
+.field label{color:#5a3b2b}
+.field input,.field select,.field textarea{border-color:#dfcdb7;background:#fffdf9;color:#30231d}
+.field input:focus,.field select:focus,.field textarea:focus{outline:2px solid #c5a15b;outline-offset:1px;border-color:#b9954e}
+th{background:#f1e7d8;color:#5a3b2b}
+td,th{border-bottom-color:#e5d8c6}
+.notice{background:#f1e7d8;color:#5a3b2b;border:1px solid #e5d8c6}
+.notice.error{background:#f8e8e5;color:#963f43;border-color:#edc9c3}
+a{color:#8b682b}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #c5a15b;outline-offset:2px}
+@media(max-width:700px){.top{box-shadow:0 4px 16px rgba(70,45,30,.04)}}
+
 </style>
 </head>
 <body>
