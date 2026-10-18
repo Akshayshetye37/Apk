@@ -196,6 +196,8 @@ if(nativeSecure){bootstrap()}else{bootstrap()}
       output.value = '';
       try {
         const results = [];
+        let guestFieldsFilled = 0;
+        let guestFieldsSkipped = 0;
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
           const text = await new Promise(function (resolve, reject) {
@@ -206,10 +208,50 @@ if(nativeSecure){bootstrap()}else{bootstrap()}
               else resolve(String(recognized || ''));
             });
           });
-          results.push((files.length > 1 ? file.name + '\n' : '') + (text || '[No text recognized]'));
+          const recognizedText = String(text || '').trim();
+          results.push((files.length > 1 ? file.name + '\n' : '') + (recognizedText || '[No text recognized]'));
+
+          // Only auto-fill the primary guest form from its own ID image.
+          // Never replace values the operator has already entered.
+          if (input.id === 'guestIdPhoto' && recognizedText && typeof parseIdText === 'function') {
+            const parsed = parseIdText(recognizedText);
+            const nameField = document.getElementById('guestName');
+            const typeField = document.getElementById('guestIdType');
+            const numberField = document.getElementById('guestIdNumber');
+            const parsedType = ({
+              'Aadhaar Card': 'Aadhaar',
+              'PAN Card': 'PAN',
+              'Passport': 'Passport',
+              'Driving Licence': 'Driving licence',
+              'Voter ID': 'Voter ID'
+            })[parsed.idType] || '';
+
+            if (parsed.name && nameField) {
+              if (!nameField.value.trim()) { nameField.value = parsed.name; guestFieldsFilled++; }
+              else guestFieldsSkipped++;
+            }
+            if (parsedType && typeField) {
+              if (!typeField.value) { typeField.value = parsedType; guestFieldsFilled++; }
+              else guestFieldsSkipped++;
+            }
+            if (parsed.idNumber && numberField) {
+              if (!numberField.value.trim()) { numberField.value = parsed.idNumber; guestFieldsFilled++; }
+              else guestFieldsSkipped++;
+            }
+          }
         }
         output.value = results.join('\n\n--------------------\n\n');
-        if (typeof window.toast === 'function') window.toast('Text extracted on-device. Review it carefully.');
+        if (typeof window.toast === 'function') {
+          if (input.id === 'guestIdPhoto' && guestFieldsFilled > 0) {
+            window.toast('OCR text extracted. ' + guestFieldsFilled + ' guest field(s) filled; review before saving.' +
+              (guestFieldsSkipped ? ' Existing values were kept.' : ''));
+          } else if (input.id === 'guestIdPhoto') {
+            window.toast('OCR text extracted, but no guest fields could be filled. Review the text and enter details manually.' +
+              (guestFieldsSkipped ? ' Existing values were kept.' : ''));
+          } else {
+            window.toast('Text extracted on-device. Review it carefully.');
+          }
+        }
       } catch (error) {
         output.value = 'OCR failed: ' + (error && error.message ? error.message : String(error));
       } finally {
