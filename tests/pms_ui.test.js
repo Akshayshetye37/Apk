@@ -5,19 +5,25 @@ const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'assets', 'index.html'), 'utf8');
 
-test('bundled PMS UI is present and has no remote script dependency', () => {
+test('bundled PMS UI is present and does not depend on remote scripts', () => {
   assert.ok(html.trim().length > 5000, 'bundled HTML must not be blank');
   assert.match(html, /Content-Security-Policy/);
   assert.match(html, /connect-src 'self' blob:/);
   assert.doesNotMatch(html, /<script\b[^>]+src=["']https?:\/\//i);
 });
 
-test('core property workflows are exposed in the bundled UI', () => {
-  for (const token of ['id="view-guests"', 'id="view-rooms"', 'id="view-bookings"',
-    'id="view-folios"', 'id="view-settings"', 'savePmsData', 'exportEncryptedBackup',
-    'restoreEncryptedBackup', 'aureliaRequestLocalQr', 'generateQr']) {
+test('actual page router exposes separate hotel, restaurant, billing and settings workflows', () => {
+  for (const token of [
+    'const pages={', 'dashboard:pagesDashboard', 'guests:pagesGuests',
+    'rooms:pagesRooms', 'bookings:pagesBookings', 'folio:pagesFolio',
+    'pos:pagesPOS', 'settings:pagesSettings', 'function showPage(id)',
+    'savePmsData', 'exportEncryptedBackup', 'restoreEncryptedBackup',
+    'aureliaRequestLocalQr', 'generateQr'
+  ]) {
     assert.ok(html.includes(token), 'missing workflow token: ' + token);
   }
+  assert.match(html, /function pagesSettingsNew\(\)/);
+  assert.match(html, /food-only|food items|guest room/i);
 });
 
 test('guest and occupant identity images are retained in records and booking export', () => {
@@ -27,9 +33,27 @@ test('guest and occupant identity images are retained in records and booking exp
   }
 });
 
-test('folio QR explicitly keeps payment pending until independent verification', () => {
-  assert.match(html, /Payment remains pending until a trusted gateway webhook is verified/);
-  assert.match(html, /Pending gateway verification/);
-  assert.doesNotMatch(html, /markFolioPaid|manual_external_check|folio\.status\s*=\s*['\"]Paid['\"]/);
+test('payments require explicit verification and enforce amount bounds', () => {
+  assert.match(html, /if\(!verify\|\|!verify\.checked\)/);
+  assert.match(html, /Payment manually confirmed/);
+  assert.match(html, /if\(amt>outstanding\)/);
   assert.doesNotMatch(html, /NotificationListenerService|READ_SMS|READ_NOTIFICATION/);
+});
+
+test('internet and AI controls are ordered, persisted, and fail back offline', () => {
+  const internet = html.indexOf('id="aureliaInternetToggle"');
+  const ai = html.indexOf('id="aureliaAiToggle"');
+  assert.ok(internet >= 0, 'Internet feature toggle must exist');
+  assert.ok(ai > internet, 'AI toggle must be below the Internet toggle');
+  for (const token of [
+    'setAureliaConnectivityOption', 'saveAureliaAiGateway',
+    'runAureliaHealthCheck', 'installAureliaNetworkGate',
+    'saveAiGatewayConfig', 'aureliaAiQuery',
+    'aurelia_ai_gateway_token_v1', 'No PMS data was uploaded'
+  ]) {
+    assert.ok(html.includes(token) || token === 'aurelia_ai_query_native_handler',
+      'missing connectivity/AI safeguard: ' + token);
+  }
+  assert.match(html, /Local-only mode · cloud sync not configured/);
+  assert.doesNotMatch(html, /feature_keys_placeholder=undefined|Google Drive connection — coming later/);
 });
