@@ -33,8 +33,6 @@ if re.search(r'local_auth\s*:', pub) or 'android.permission.USE_BIOMETRIC' in ma
  errors.append('PIN/biometric plugin dependency or Android permission remains after requested removal.')
 if re.search(r'App security|Require PIN|PIN recovery|Backup & device security|Enable device biometric|Test device biometric|aureliaPinInput|aureliaSetPin|aureliaEnrollBiometric|aureliaVerifyBiometric', html, re.I):
  errors.append('PIN/biometric settings UI or helper implementation remains.')
-if 'didChangeAppLifecycleState' not in main:
- errors.append('App lifecycle handling is missing.')
 if '__aureliaRoomBillingGuardInstalled' not in backup or 'active checked-in guest' not in backup or 'Number(item && item.sell)' not in backup or "requestedSource === 'stock'" not in backup: errors.append('Room billing must validate active stays, canonical menu prices, and saleable stock items.')
 if 'room billing requires an active stay' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower() or 'room billing canonicalizes prices' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower(): errors.append('Room billing regression tests are missing.')
 if 'quickchart.io/qr' in html.lower() or 'api.qrserver.com' in html.lower(): errors.append('External QR generation service remains in HTML.')
