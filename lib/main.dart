@@ -947,12 +947,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         final enabled = value['enabled'];
         if (requestId == null || enabled is! bool) throw const FormatException('PIN entry preference must be true or false.');
         final biometricEnabled = await AureliaSecureVault.readSecret('aurelia_pms_biometric_enabled_v1') == 'true';
-        if (!enabled && !biometricEnabled) {
+        if (!enabled) {
           final deviceSupported = await LocalAuthentication().isDeviceSupported();
-          if (!deviceSupported) {
-            throw const FormatException('Keep PIN entry enabled because no supported device-authentication method is configured.');
+          if (!biometricEnabled || !deviceSupported) {
+            throw const FormatException('Keep PIN entry enabled unless device authentication is enabled and supported.');
           }
-          throw const FormatException('Enable device authentication before disabling PIN entry.');
         }
         await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', enabled ? 'true' : 'false');
         await _controller.runJavaScript('window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},true,null);');
