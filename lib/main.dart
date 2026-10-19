@@ -616,26 +616,6 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
     }
   }
 
-  Future<void> _installAureliaAssistant() async {
-    const script = r"""
-(function(){
- if(window.__aureliaAssistantInstalled)return;window.__aureliaAssistantInstalled=true;
- const s=document.createElement('style');s.textContent='#aurelia-ai-launch{position:fixed;z-index:2147483000;right:18px;bottom:22px;border:1px solid #d7bd80;border-radius:999px;padding:13px 17px;background:linear-gradient(135deg,#153d35,#245f53);color:#fff8e8;font:600 14px system-ui;box-shadow:0 10px 30px #102a3150;cursor:pointer}#aurelia-ai-panel{position:fixed;z-index:2147483000;right:14px;bottom:82px;width:min(370px,calc(100vw - 28px));height:min(520px,calc(100vh - 120px));display:none;flex-direction:column;overflow:hidden;border:1px solid #c7a86a;border-radius:20px;background:#fffdf8;color:#1c302b;box-shadow:0 22px 65px #102a3150;font:14px system-ui}#aurelia-ai-head{padding:16px;background:linear-gradient(135deg,#153d35,#102a31);color:#fff8e8;display:flex;justify-content:space-between;align-items:center}#aurelia-ai-head small{display:block;color:#d9d0b8;margin-top:4px;font-weight:400}#aurelia-ai-log{flex:1;overflow:auto;padding:13px;display:flex;flex-direction:column;gap:10px}.aurelia-ai-msg{max-width:92%;padding:10px 12px;border-radius:13px;white-space:pre-wrap;line-height:1.45;overflow-wrap:anywhere}.aurelia-ai-msg.bot{align-self:flex-start;background:#edf1e8;border:1px solid #dce5d7}.aurelia-ai-msg.user{align-self:flex-end;background:#173f36;color:#fff8e8}#aurelia-ai-form{display:flex;gap:8px;padding:11px;border-top:1px solid #e3d8c3}#aurelia-ai-input{flex:1;min-width:0;border:1px solid #d9cdb6;border-radius:10px;padding:10px;background:#fff;color:#172e28;font:14px system-ui}#aurelia-ai-send{border:0;border-radius:10px;background:#153d35;color:white;padding:0 14px;font-weight:600}#aurelia-ai-note{padding:0 13px 10px;color:#7a8076;font-size:11px}';document.head.appendChild(s);
- const b=document.createElement('button');b.id='aurelia-ai-launch';b.type='button';b.textContent='✦ Aurelia Assist';
- const p=document.createElement('section');p.id='aurelia-ai-panel';p.setAttribute('aria-label','Aurelia Assist');
- p.innerHTML='<div id="aurelia-ai-head"><div><strong>Aurelia Assist</strong><small>Offline help · no cloud AI connected</small></div><button id="aurelia-ai-close" aria-label="Close assistant" style="background:transparent;border:0;color:#fff;font-size:22px">×</button></div><div id="aurelia-ai-log" aria-live="polite"></div><div id="aurelia-ai-note">Advice only. Verify amounts and confirm billing actions yourself.</div><form id="aurelia-ai-form"><input id="aurelia-ai-input" autocomplete="off" placeholder="Ask about hotel, POS, reports…" maxlength="500" aria-label="Ask Aurelia Assist"><button id="aurelia-ai-send" type="submit">Ask</button></form>';
- document.body.appendChild(b);document.body.appendChild(p);const log=p.querySelector('#aurelia-ai-log'),input=p.querySelector('#aurelia-ai-input');
- function msg(t,w){const e=document.createElement('div');e.className='aurelia-ai-msg '+w;e.textContent=t;log.appendChild(e);log.scrollTop=log.scrollHeight;return e;}
- msg('Hello. I can guide you through hotel room and guest management, restaurant POS, food-only room billing, reports, and local backup. I work offline using built-in guidance; this is not a generative cloud AI model.','bot');
- b.addEventListener('click',()=>{p.style.display=p.style.display==='flex'?'none':'flex';if(p.style.display==='flex')input.focus()});p.querySelector('#aurelia-ai-close').addEventListener('click',()=>p.style.display='none');
- p.querySelector('#aurelia-ai-form').addEventListener('submit',e=>{e.preventDefault();const q=input.value.trim();if(!q)return;input.value='';msg(q,'user');const id='ai_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);const pending=msg('Checking local guidance…','bot');pending.dataset.request=id;try{if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function')throw Error('Unavailable');window.AureliaNative.postMessage(JSON.stringify({type:'aureliaAiQuery',requestId:id,question:q,config:window.__AURELIA_AI_CONFIG||{}}));}catch(_){pending.textContent='Assistant unavailable in this view. You can continue using the PMS normally.';}});
- window.aureliaAiResult=function(id,answer,error){const safe=String(id).replace(/[^A-Za-z0-9_-]/g,'');const el=log.querySelector('[data-request="'+safe+'"]');if(el)el.textContent=error||answer||'No guidance available.';};
-})();
-""";
-    try { await _controller.runJavaScript(script); }
-    catch (error) { debugPrint('Aurelia Assist UI could not be installed: $error'); }
-  }
-
   String _answerAureliaAssistant(String question) {
     final q = question.toLowerCase();
     if (q.contains('drive') || q.contains('cloud') || q.contains('sync') || q.contains('backup') || q.contains('restore')) {
