@@ -705,7 +705,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           await AureliaSecureVault.writeSecret('aurelia_ai_gateway_token_v1', tokenValue.trim());
         }
         await _controller.runJavaScript(
-          'window.aureliaAiGatewaySaveResult?.(\${jsonEncode(requestId)},true,null);',
+          'window.aureliaAiGatewaySaveResult?.(${jsonEncode(requestId)},true,null);',
         );
         return;
       }
@@ -753,7 +753,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
               final body = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 10));
               if (body.length > 256 * 1024) throw const FormatException('AI response exceeded the size limit.');
               if (response.statusCode < 200 || response.statusCode >= 300) {
-                throw HttpException('AI gateway returned HTTP \${response.statusCode}.');
+                throw HttpException('AI gateway returned HTTP ${response.statusCode}.');
               }
               final decoded = jsonDecode(body);
               String? remoteAnswer;
@@ -772,7 +772,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
               if (remoteAnswer == null || remoteAnswer.trim().isEmpty) {
                 throw const FormatException('AI gateway response did not contain an answer field.');
               }
-              answer = 'Online AI guidance — verify before applying:\n\n\${remoteAnswer.trim()}';
+              answer = 'Online AI guidance — verify before applying:\n\n${remoteAnswer.trim()}';
             } catch (error) {
               debugPrint('Aurelia online AI request failed: $error');
               answer = _answerAureliaAssistant(question.trim()) +
@@ -783,7 +783,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           }
         }
         await _controller.runJavaScript(
-          'window.aureliaAiResult?.(\${jsonEncode(requestId)},\${jsonEncode(answer)},null);',
+          'window.aureliaAiResult?.(${jsonEncode(requestId)},${jsonEncode(answer)},null);',
         );
         return;
       }
