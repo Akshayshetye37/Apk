@@ -27,9 +27,9 @@
       let html = original.apply(this, arguments);
       // Remove the redundant browser PIN / biometric panel. The Android app already
       // has native app-lock and encrypted device storage; browser-only PIN controls mislead.
-      html = html.replace(/<section class="card"[^>]*>\s*<div class="section-title"><h2>Backup & device security<\\/h2>[\\s\\S]*?<\\/section>/i, '');
+      html = html.replace(/<section class="card"[^>]*>\s*<div class="section-title"><h2>Backup & device security<\/h2>[\\s\\S]*?<\/section>/i, '');
       // Replace the non-functional placeholder with explicit configuration fields.
-      html = html.replace(/<section class="card" id="aureliaDriveSettingsCard"[\\s\\S]*?<\\/section>/i,
+      html = html.replace(/<section class="card" id="aureliaDriveSettingsCard"[\\s\\S]*?<\/section>/i,
         '<section class="card" id="aureliaDriveSetupCard"><div class="section-title"><h2>Google Drive backup</h2><span class="muted">Authorization setup</span></div>' +
         '<p class="muted">Connect only after a Google OAuth client is configured for this Android application. A folder ID alone does not grant access.</p>' +
         '<div class="field"><label>Google OAuth client ID</label><input id="aureliaGoogleClientId" autocomplete="off" placeholder="Your Google OAuth client ID" value="' + ((window.DB&&DB.settings&&DB.settings.googleClientId)||'') + '"></div>' +
