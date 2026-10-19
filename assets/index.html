@@ -1100,9 +1100,27 @@ async function runGenericOcr(e,btn){
   const text=await runImageOCR(file,status);
   const parsed=parseIdText(text);
   const scope=btn?.closest('[data-occ]');  const type=(scope||document).querySelector('[data-setting="occIdType"]') || document.getElementById('gIdType');  const num=(scope||document).querySelector('[data-setting="occIdNumber"]') || document.getElementById('gIdNumber');
-  if(parsed.idType&&type)type.value=parsed.idType;
-  if(parsed.idNumber&&num)num.value=parsed.idNumber;
-  const nameField=(scope||document).querySelector('[data-setting="occName"]')||(scope||document).getElementById?.('gName');if(parsed.name&&nameField&&!nameField.value.trim())nameField.value=parsed.name;
+  const setOcrFieldIfEmpty=(field,value)=>{
+    const candidate=String(value||'').trim();
+    if(!field||!candidate||String(field.value||'').trim())return false;
+    if(field.tagName==='SELECT'){
+      const options=Array.from(field.options||[]);
+      const match=options.find(option=>option.value===candidate)||options.find(option=>String(option.textContent||'').trim()===candidate);
+      if(!match)return false;
+      field.value=match.value;
+    }else{
+      field.value=candidate;
+    }
+    if(typeof Event==='function'&&typeof field.dispatchEvent==='function'){
+      field.dispatchEvent(new Event('input',{bubbles:true}));
+      field.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+    return true;
+  };
+  setOcrFieldIfEmpty(type,parsed.idType);
+  setOcrFieldIfEmpty(num,parsed.idNumber);
+  const nameField=(scope||document).querySelector('[data-setting="occName"]')||(scope||document).getElementById?.('gName');
+  setOcrFieldIfEmpty(nameField,parsed.name);
 }
 function demoOCR(btn){ return runGenericOcr(null,btn); }
 
