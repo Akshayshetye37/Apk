@@ -504,7 +504,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           },
           onPageFinished: (_) {
             if (mounted) setState(() => _loading = false);
-            unawaited(_installAureliaAssistant());
+            // No floating AI assistant is installed in the production PMS UI.
           },
           onWebResourceError: (error) {
             debugPrint('Aurelia PMS WebView error: ${error.description}');
