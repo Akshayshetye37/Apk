@@ -1049,8 +1049,9 @@ function parseIdText(text){
    ||t.match(/\b[A-Z]{2}\d{2}\s?\d{4}\s?\d{7}\b/i)
    ||t.match(/\b[A-Z]{2}\d{2}\s?\d{11,13}\b/i);
  const mrz=lines.map(x=>x.replace(/\s+/g,'').toUpperCase()).find(x=>/^P<[A-Z]{3}/.test(x));
- const mrzDoc=mrz&&mrz.match(/^[A-Z0-9<]{5,9}([A-Z][A-Z0-9]{7,8})[A-Z0-9<]?$/);
- const passport=mrzDoc?mrzDoc[1]:t.match(/\b[A-Z]\d{7}\b/i);
+ const mrzBody=mrz?mrz.slice(5).split('<')[0]:'';
+ const mrzDoc=mrzBody.match(/^[A-Z]\d{7,8}/);
+ const passport=mrzDoc?mrzDoc[0]:t.match(/\b[A-Z]\d{7}\b/i);
  const voter=t.match(/\b[A-Z]{3}\d{7}\b/i);
  const idNumber=(aad||pan||dl||passport||voter)?.[0]||'';
  const idType=aad?'Aadhaar Card':pan?'PAN Card':dl?'Driving Licence':passport?'Passport':voter?'Voter ID':'';
