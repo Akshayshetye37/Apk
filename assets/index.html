@@ -895,7 +895,7 @@ function pagesSettings(){
  <div class="field full"><label>Google OAuth Web Client ID</label><input id="aureliaGoogleClientId" value="${esc(DB.settings.googleClientId||'')}" placeholder="xxxx.apps.googleusercontent.com"><small class="muted">Create an OAuth Client ID in Google Cloud Console and add this app's HTTPS domain as an authorized JavaScript origin.</small></div>
  </div>
  <div class="row" style="gap:10px;flex-wrap:wrap;align-items:center"><label>Backup destination <select id="aureliaBackupDestination" onchange="aureliaSetBackupDestination(this.value)" style="padding:10px;border:1px solid var(--line);border-radius:10px"><option value="local" ${DB.settings.backupDestination!=='drive'?'selected':''}>Local device / browser</option><option value="drive" ${DB.settings.backupDestination==='drive'?'selected':''}>Google Drive</option></select></label>
- <button class="btn primary" onclick="aureliaConnectDrive()">Save ID & Connect Google Drive</button><button class="btn" onclick="aureliaUploadDriveBackup()">Back up to Drive now</button><button class="btn" onclick="aureliaDownloadBackup()">Download full JSON backup</button><button class="btn" onclick="aureliaExportCSV('balance')">Export balance sheet CSV</button><button class="btn" onclick="aureliaExportCSV('inventory')">Export restaurant inventory CSV</button></div>
+ <button class="btn primary" onclick="aureliaConnectDrive()">Save ID & Connect Google Drive</button><button class="btn" onclick="aureliaUploadDriveBackup()">Back up to Drive now</button><button class="btn" onclick="aureliaNativeExportEncryptedBackup()">Export encrypted backup</button><button class="btn" onclick="document.getElementById('aureliaEncryptedRestoreFile').click()">Restore encrypted backup</button><input id="aureliaEncryptedRestoreFile" type="file" accept=".aurelia,.json,application/json" hidden onchange="aureliaNativeRestoreEncryptedBackup(event)"><button class="btn" onclick="aureliaDownloadBackup()">Download full JSON backup</button><button class="btn" onclick="aureliaExportCSV('balance')">Export balance sheet CSV</button><button class="btn" onclick="aureliaExportCSV('inventory')">Export restaurant inventory CSV</button></div>
  <div id="aureliaDriveNote" class="muted" role="status" style="margin-top:8px">${DB.settings.backupDestination==='drive'?'Google Drive selected. Save your OAuth Client ID and connect to authorize uploads.':'Local auto-backup is active for successful app saves.'}</div>
  <hr style="border:0;border-top:1px solid var(--line);margin:16px 0"><h3>PIN recovery / device authentication</h3><p class="muted">PIN recovery is stored locally on this device. It is not a replacement for authenticated staff accounts.</p>
  <div class="row" style="gap:8px;flex-wrap:wrap"><input id="aureliaPinInput" type="password" inputmode="numeric" maxlength="8" placeholder="4–8 digit PIN" style="padding:10px;border:1px solid var(--line);border-radius:10px;max-width:180px"><button class="btn" onclick="aureliaSetPin()">Set / reset PIN</button><button class="btn" onclick="aureliaForgotPin()">Forgot PIN / recovery</button><button class="btn" onclick="aureliaEnrollBiometric()">Enable device biometric</button><button class="btn" onclick="aureliaVerifyBiometric()">Test device biometric</button></div><div id="aureliaSecurityNote" class="muted" style="margin-top:8px">Biometric enrollment depends on HTTPS and device/browser support.</div></section>`;
@@ -2982,6 +2982,56 @@ function aureliaSetBackupDestination(value){
  if(note)note.textContent='Google Drive sync is disabled in this build until encrypted cloud uploads and restore can be verified. Use the passphrase-encrypted Export backup action.';
  toast(value==='drive'?'Google Drive sync is unavailable; local encrypted storage remains active':'Local backup preference saved');
 }
+
+let aureliaEncryptedBackupSequence=0;
+function aureliaNativeExportEncryptedBackup(){
+  if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){toast('Encrypted native backup is available only in the Android app.');return;}
+  const passphrase=prompt('Create a strong passphrase for this encrypted backup. Store it separately; it cannot be recovered if lost.');
+  if(passphrase===null)return;
+  if(passphrase.length<12){toast('Use a passphrase of at least 12 characters.');return;}
+  const confirmPass=prompt('Re-enter the backup passphrase to confirm.');
+  if(confirmPass!==passphrase){toast('Passphrases did not match. No backup was created.');return;}
+  const requestId='backup_export_'+Date.now().toString(36)+'_'+(++aureliaEncryptedBackupSequence);
+  window.__aureliaEncryptedBackupPending=window.__aureliaEncryptedBackupPending||{};
+  window.__aureliaEncryptedBackupPending[requestId]={started:Date.now()};
+  window.aureliaNativeBackupExportResult=function(id,ok,error){
+    const pending=window.__aureliaEncryptedBackupPending||{};
+    if(!pending[id])return;delete pending[id];
+    if(ok)toast('Encrypted backup saved. Keep the passphrase safe.');
+    else toast(error||'Encrypted backup was not saved.');
+  };
+  window.AureliaNative.postMessage(JSON.stringify({type:'exportEncryptedBackup',requestId,data:JSON.stringify(DB),passphrase}));
+}
+function aureliaNativeRestoreEncryptedBackup(event){
+  const file=event?.target?.files?.[0];if(event?.target)event.target.value='';
+  if(!file)return;
+  if(file.size>25*1024*1024){toast('Backup file is too large to restore safely.');return;}
+  const reader=new FileReader();
+  reader.onerror=()=>toast('Could not read the selected backup file.');
+  reader.onload=()=>{
+    try{
+      const envelope=JSON.parse(String(reader.result||''));
+      if(!envelope||typeof envelope!=='object'||Array.isArray(envelope)){toast('This is not a valid Aurelia encrypted backup envelope.');return;}
+      const passphrase=prompt('Enter the passphrase used when this encrypted backup was created.');
+      if(passphrase===null)return;
+      if(passphrase.length<1){toast('Passphrase is required.');return;}
+      if(!confirm('Restore will replace the current local PMS data. Export a current backup first. Continue?'))return;
+      if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){toast('Encrypted restore is available only in the Android app.');return;}
+      const requestId='backup_restore_'+Date.now().toString(36)+'_'+(++aureliaEncryptedBackupSequence);
+      window.__aureliaEncryptedBackupPending=window.__aureliaEncryptedBackupPending||{};
+      window.__aureliaEncryptedBackupPending[requestId]={started:Date.now()};
+      window.aureliaNativeBackupRestoreResult=function(id,ok,error){
+        const pending=window.__aureliaEncryptedBackupPending||{};
+        if(!pending[id])return;delete pending[id];
+        if(ok){toast('Encrypted backup restored. Reloading the local PMS…');}
+        else toast(error||'Encrypted restore failed. Existing records should remain unchanged.');
+      };
+      window.AureliaNative.postMessage(JSON.stringify({type:'restoreEncryptedBackup',requestId,envelope,passphrase}));
+    }catch(_){toast('Invalid backup file. Choose an Aurelia .aurelia encrypted archive.');}
+  };
+  reader.readAsText(file);
+}
+
 function aureliaDownloadBackup(){
   try{
     const payload={app:'AURELIA PMS',version:3,exportedAt:new Date().toISOString(),data:DB};
