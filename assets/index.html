@@ -1852,7 +1852,7 @@ function pagesSettingsNew(){
 <section class="card" style="margin-top:16px"><div class="section-title"><h2>Import / Export</h2></div><div class="actions"><button class="btn primary" onclick="showPage('importExport')">Open Center</button><button class="btn" onclick="exportJSON()">Full JSON backup</button></div></section>`;
 }
 
-function runAureliaHealthCheck(){
+async function runAureliaHealthCheck(){
   const report=document.getElementById('aureliaHealthReport');
   if(!report)return;
   if(!DB||typeof DB!=='object'||Array.isArray(DB)){
