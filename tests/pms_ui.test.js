@@ -146,3 +146,20 @@ test('Settings do not expose duplicate browser PIN/biometric controls or online 
   assert.match(gate, /PmsAccessGate/);
   assert.match(gate, /_verifyPin|verifyPin/);
 });
+
+
+test('all rendered button elements have a wired click action and resolvable handler', () => {
+  const buttons = [...html.matchAll(/<button\\b[^>]*>/gi)].map(match => match[0]);
+  assert.ok(buttons.length >= 100, 'expected the full PMS button surface to be scanned');
+  for (const button of buttons) {
+    assert.match(button, /\\bonclick\\s*=/i, 'button has no click action: ' + button.slice(0, 180));
+    const attribute = button.match(/\\bonclick\\s*=\\s*["']([^"']*)["']/i);
+    if (!attribute) continue;
+    const call = attribute[1].match(/^\\s*(?:return\\s+)?([A-Za-z_$][\\w$]*)\\s*\\(/);
+    if (!call) continue;
+    const name = call[1];
+    const declared = new RegExp('(?:function\\\\s+' + name + '\\\\s*\\\\(|(?:const|let|var)\\\\s+' + name + '\\\\s*=|window\\\\.' + name + '\\\\s*=|' + name + '\\\\s*:\\\\s*function)').test(html);
+    assert.ok(declared, 'button handler is not defined in bundled HTML: ' + name);
+  }
+  assert.doesNotMatch(html, /App security|Require PIN \/ device authentication/);
+});
