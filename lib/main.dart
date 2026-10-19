@@ -592,35 +592,9 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         }),
       );
     }
-    // App PIN and biometric gate removed by request; load local PMS directly.
+    // Load local PMS directly; this build has no in-app PIN/biometric gate.
     unawaited(_loadLocalPms());
 
-  }
-
-  String _answerAureliaAssistant(String question) {
-    final q = question.toLowerCase();
-    if (q.contains('drive') || q.contains('cloud') || q.contains('sync') || q.contains('backup') || q.contains('restore')) {
-      return 'BACKUP GUIDANCE\\nThe encrypted local PMS store is the source of truth. Use Settings > Backup & Restore to create a local encrypted snapshot or export a protected archive. Cloud sync must remain “Not Configured / Local-Only Mode” until OAuth, encrypted upload, remote verification, and restore tests are implemented. A folder ID alone does not prove Drive sync is active.';
-    }
-    if (q.contains('room bill') || q.contains('food only') || q.contains('guest food') || q.contains('restaurant bill to room')) {
-      return 'ROOM BILLING GUIDANCE\\nSelect an existing hotel guest/room, add food items from the restaurant menu, verify quantities and the food total, then post to the guest room bill. Only food items should be posted through this flow; do not merge restaurant table bills, inventory, or non-food charges. Verify the final amount before confirming.';
-    }
-    if (q.contains('restaurant') || q.contains('pos') || q.contains('kot') || q.contains('order')) {
-      return 'RESTAURANT POS GUIDANCE\\nUse Restaurant (POS) for menu items, table/takeaway/delivery orders, kitchen tickets, restaurant payments, and inventory. Keep restaurant sales and bills in the restaurant entity. Use Room Billing (Guest Food) only when food is charged to an existing hotel guest.';
-    }
-    if (q.contains('check in') || q.contains('check-in') || q.contains('guest') || q.contains('room') || q.contains('checkout') || q.contains('check out')) {
-      return 'HOTEL PMS GUIDANCE\\nUse Hotel (Rooms & Guests) to maintain room status and guest records, then use the dedicated check-in/check-out actions. Confirm room availability, dates, guest identity details, and rates before saving. Guest ID OCR is assistive only: compare extracted fields with the document before storing or using them.';
-    }
-    if (q.contains('report') || q.contains('revenue') || q.contains('occupancy') || q.contains('sales')) {
-      return 'REPORTING GUIDANCE\\nOpen Reports & Export and choose the report period and entity. Check hotel occupancy/room revenue separately from restaurant sales; guest-room food charges should not be counted twice as independent restaurant revenue. Reconcile totals against bills and payments before accounting use.';
-    }
-    if (q.contains('security') || q.contains('privacy') || q.contains('id photo') || q.contains('identity') || q.contains('ocr')) {
-      return 'SECURITY GUIDANCE\\nTreat guest identity images and extracted ID fields as sensitive. Restrict access, verify OCR manually, avoid sharing guest data, and keep a tested encrypted backup. This assistant does not transmit questions or PMS records to a cloud AI service.';
-    }
-    if (q.contains('inventory') || q.contains('stock') || q.contains('menu')) {
-      return 'MENU & INVENTORY GUIDANCE\\nMaintain food menu items and stock inside Restaurant (POS) / Inventory. Check item price, availability, and stock before accepting orders. Keep hotel room charges and restaurant inventory as separate records.';
-    }
-    return 'AURELIA ASSIST (OFFLINE)\\nI can provide built-in operational guidance for Hotel PMS, Restaurant POS, food-only room billing, reports, guest ID/OCR safety, and encrypted local backup. Try “How do I bill food to a room?”, “How should I back up data?”, or “How do I separate restaurant sales from hotel revenue?”.\\n\\nThis is an offline rules-based assistant, not a connected generative AI model. It will not change bills or records on your behalf.';
   }
 
   Future<void> _handleNativeMessage(String raw) async {
@@ -633,108 +607,6 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       if (rawId is String) {
         final cleaned = rawId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
         requestId = cleaned.substring(0, cleaned.length.clamp(0, 64).toInt());
-      }
-      // The single aureliaAiQuery handler below enforces the Internet/AI toggles and
-      // uses the configured HTTPS gateway only when explicitly enabled.
-      if (value['type'] == 'saveAiGatewayConfig') {
-        final endpointValue = value['endpoint'];
-        final tokenValue = value['token'];
-        if (requestId == null || endpointValue is! String || tokenValue is! String ||
-            endpointValue.length > 2048 || tokenValue.length > 4096) {
-          throw const FormatException('Invalid AI gateway configuration.');
-        }
-        final endpoint = endpointValue.trim();
-        if (endpoint.isNotEmpty) {
-          final uri = Uri.tryParse(endpoint);
-          if (uri == null || uri.scheme != 'https' || uri.host.isEmpty ||
-              uri.userInfo.isNotEmpty || uri.fragment.isNotEmpty) {
-            throw const FormatException('AI gateway must be a valid HTTPS URL without embedded credentials or fragments.');
-          }
-        }
-        if (endpoint.isEmpty) {
-          await AureliaSecureVault.deleteSecret('aurelia_ai_gateway_token_v1');
-        } else if (tokenValue.trim().isNotEmpty) {
-          await AureliaSecureVault.writeSecret('aurelia_ai_gateway_token_v1', tokenValue.trim());
-        }
-        await _controller.runJavaScript(
-          'window.aureliaAiGatewaySaveResult?.(${jsonEncode(requestId)},true,null);',
-        );
-        return;
-      }
-      if (value['type'] == 'aureliaAiQuery') {
-        final question = value['question'];
-        final configValue = value['config'];
-        if (requestId == null || question is! String || question.trim().isEmpty || question.length > 500) {
-          throw const FormatException('Ask a question of 1–500 characters.');
-        }
-        final config = configValue is Map ? configValue : const <String, dynamic>{};
-        final internetEnabled = config['internetEnabled'] == true;
-        final aiEnabled = config['aiEnabled'] == true;
-        final endpointValue = config['aiGatewayUrl'];
-        String answer;
-        if (!aiEnabled) {
-          answer = 'AI automation is disabled in Settings. Enable it to use Aurelia Assist.';
-        } else if (!internetEnabled || endpointValue is! String || endpointValue.trim().isEmpty) {
-          answer = _answerAureliaAssistant(question.trim());
-          if (!internetEnabled) {
-            answer += '\n\nInternet access for online features is disabled. No external request was made.';
-          }
-        } else {
-          final uri = Uri.tryParse(endpointValue.trim());
-          if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty || uri.fragment.isNotEmpty) {
-            answer = '${_answerAureliaAssistant(question.trim())}\n\nThe AI gateway URL is invalid or not HTTPS. No external request was made.';
-          } else {
-            HttpClient? client;
-            try {
-              client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-              final request = await client.postUrl(uri).timeout(const Duration(seconds: 10));
-              request.headers.contentType = ContentType.json;
-              request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-              final token = await AureliaSecureVault.readSecret('aurelia_ai_gateway_token_v1');
-              if (token != null && token.isNotEmpty) request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-              // Privacy by design: send only the user's explicit question, never guest records or billing data.
-              request.write(jsonEncode({
-                'question': question.trim(),
-                'message': question.trim(),
-                'app': 'Aurelia PMS',
-                'mode': 'hotel_restaurant_operations',
-              }));
-              final response = await request.close().timeout(const Duration(seconds: 15));
-              final body = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 10));
-              if (body.length > 256 * 1024) throw const FormatException('AI response exceeded the size limit.');
-              if (response.statusCode < 200 || response.statusCode >= 300) {
-                throw HttpException('AI gateway returned HTTP ${response.statusCode}.');
-              }
-              final decoded = jsonDecode(body);
-              String? remoteAnswer;
-              if (decoded is Map<String, dynamic>) {
-                final direct = decoded['answer'] ?? decoded['response'] ?? decoded['output_text'];
-                if (direct is String) remoteAnswer = direct;
-                if (remoteAnswer == null && decoded['choices'] is List && (decoded['choices'] as List).isNotEmpty) {
-                  final first = (decoded['choices'] as List).first;
-                  if (first is Map && first['message'] is Map && (first['message'] as Map)['content'] is String) {
-                    remoteAnswer = (first['message'] as Map)['content'] as String;
-                  } else if (first is Map && first['text'] is String) {
-                    remoteAnswer = first['text'] as String;
-                  }
-                }
-              }
-              if (remoteAnswer == null || remoteAnswer.trim().isEmpty) {
-                throw const FormatException('AI gateway response did not contain an answer field.');
-              }
-              answer = 'Online AI guidance — verify before applying:\n\n${remoteAnswer.trim()}';
-            } catch (error) {
-              debugPrint('Aurelia online AI request failed: $error');
-              answer = '${_answerAureliaAssistant(question.trim())}\n\nOnline AI is unavailable right now. Showing offline guidance instead; no PMS data was uploaded.';
-            } finally {
-              client?.close(force: true);
-            }
-          }
-        }
-        await _controller.runJavaScript(
-          'window.aureliaAiResult?.(${jsonEncode(requestId)},${jsonEncode(answer)},null);',
-        );
-        return;
       }
       if (value['type'] == 'exportEncryptedBackup') {
         final dataValue = value['data'];
