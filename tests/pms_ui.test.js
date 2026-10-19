@@ -71,7 +71,7 @@ test('internet and AI controls are ordered, persisted, and fail back offline', (
 
 test('health check is read-only until confirmed and repair preserves existing records', async () => {
   const vm = require('node:vm');
-  const start = html.indexOf('function runAureliaHealthCheck(){');
+  const start = html.indexOf('async function runAureliaHealthCheck(){');
   const end = html.indexOf('\nwindow.__AURELIA_AI_CONFIG=', start);
   assert.ok(start >= 0 && end > start, 'health-check implementation must be discoverable');
   const source = html.slice(start, end);
