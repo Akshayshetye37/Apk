@@ -793,7 +793,9 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       if (value['type'] == 'pickImage') {
         final source = value['source'], purpose = value['purpose'];
         if (requestId == null || (source != 'camera' && source != 'gallery') ||
-            (purpose != 'id' && purpose != 'logo' && purpose != 'qr')) throw const FormatException('Invalid image picker request');
+            (purpose != 'id' && purpose != 'logo' && purpose != 'qr')) {
+          throw const FormatException('Invalid image picker request');
+        }
         final picked = await ImagePicker().pickImage(source: source == 'camera' ? ImageSource.camera : ImageSource.gallery, maxWidth: 2400, maxHeight: 2400, requestFullMetadata: false);
         if (picked == null) { await _controller.runJavaScript('window.aureliaNativeImagePickerResult?.(${jsonEncode(requestId)},null,null);'); return; }
         final tempFile = File(picked.path);
