@@ -19,10 +19,39 @@ export default {
         !constantTimeEqual(supplied, env.AURELIA_GATEWAY_TOKEN)) {
       return json(401, { error: "Unauthorized." });
     }
+    const contentType = (request.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
+    if (contentType !== "application/json") return json(415, { error: "Use application/json." });
     const contentLength = Number(request.headers.get("Content-Length") || 0);
-    if (contentLength > 8192) return json(413, { error: "Request too large." });
+    if (Number.isFinite(contentLength) && contentLength > 8192) {
+      return json(413, { error: "Request too large." });
+    }
+    // Enforce the limit while reading, including chunked requests without Content-Length.
     let body;
-    try { body = await request.json(); } catch (_) { return json(400, { error: "Invalid JSON." }); }
+    try {
+      const reader = request.body && request.body.getReader();
+      if (!reader) return json(400, { error: "Invalid JSON." });
+      const chunks = [];
+      let total = 0;
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        total += part.value.byteLength;
+        if (total > 8192) {
+          try { await reader.cancel(); } catch (_) {}
+          return json(413, { error: "Request too large." });
+        }
+        chunks.push(part.value);
+      }
+      const bytes = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    } catch (_) {
+      return json(400, { error: "Invalid JSON." });
+    }
     const question = typeof body?.question === "string" ? body.question.trim() : "";
     if (!question || question.length > 500) return json(400, { error: "Question must contain 1–500 characters." });
     const model = env.OPENAI_MODEL || "gpt-4.1-mini";
