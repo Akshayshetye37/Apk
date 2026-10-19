@@ -155,9 +155,12 @@ test('all rendered button elements have a wired click action and resolvable hand
     assert.match(button, /\\bonclick\\s*=/i, 'button has no click action: ' + button.slice(0, 180));
     const attribute = button.match(/\\bonclick\\s*=\\s*["']([^"']*)["']/i);
     if (!attribute) continue;
-    const call = attribute[1].match(/^\\s*(?:return\\s+)?([A-Za-z_$][\\w$]*)\\s*\\(/);
-    if (!call) continue;
-    const name = call[1];
+    const handlerText = attribute[1].trim();
+    const openParen = handlerText.indexOf('(');
+    if (openParen < 1) continue;
+    let name = handlerText.slice(0, openParen).trim();
+    if (name.startsWith('return ')) name = name.slice(7).trim();
+    if (!name || !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) continue;
     const declared =
       html.includes('function ' + name + '(') ||
       html.includes('function ' + name + ' (') ||
