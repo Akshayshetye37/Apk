@@ -7,9 +7,9 @@
 <title>Aurelia 5★ Hotel PMS — Functional Sea Breeze</title>
 <style>
 :root{
-  --brand:#0e9c9c;--brand2:#14b8a6;--ink:#123842;--muted:#6b8084;
-  --bg:#eef9f8;--card:#fff;--line:#d8e8e7;--soft:#e3f7f5;--danger:#c94d4d;
-  --warn:#b77b13;--ok:#278a61;--shadow:0 12px 30px rgba(20,70,75,.08);
+  --brand:#7a4b2a;--brand2:#b8863b;--ink:#332117;--muted:#806f60;
+  --bg:#f4eee5;--card:#fffaf2;--line:#dfcfb8;--soft:#ead8bd;--danger:#b94036;
+  --warn:#a36b18;--ok:#52744a;--shadow:0 12px 30px rgba(58,35,19,.12);
   --radius:22px;
 }
 *{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -18,11 +18,11 @@ h1,h2,h3,.serif{font-family:Georgia,"Times New Roman",serif;font-style:italic}
 .app{min-height:100vh;display:flex}
 .sidebar{width:250px;background:#fff;border-right:1px solid var(--line);position:fixed;inset:0 auto 0 0;padding:22px 14px;z-index:30}
 .brand{display:flex;align-items:center;gap:12px;padding:6px 10px 20px}.logo{width:48px;height:48px;border-radius:15px;object-fit:cover;border:1px solid var(--line);background:var(--soft)}.brand strong{font-family:Georgia,serif;font-style:italic;font-size:20px}
-.nav{display:grid;gap:5px}.nav button{border:0;background:transparent;text-align:left;padding:12px 13px;border-radius:14px;color:var(--ink);font-weight:600}.nav button.active{background:var(--soft);color:#086f73}.nav button:hover{background:#f2fbfa}
+.nav{display:grid;gap:5px}.nav button{border:0;background:transparent;text-align:left;padding:12px 13px;border-radius:14px;color:var(--ink);font-weight:600}.nav button.active{background:var(--soft);color:#68401f}.nav button:hover{background:#f3e7d5}
 .main{margin-left:250px;flex:1;min-width:0}.top{position:sticky;top:0;z-index:20;background:rgba(255,255,255,.94);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding:14px 24px}
 .toprow{display:flex;gap:12px;align-items:center}.mobile-menu{display:none}
-.search{flex:1;position:relative}.search input{width:100%;height:50px;border:1px solid var(--line);border-radius:17px;padding:0 18px;background:#f9fdfd;outline:none}.search input:focus{border-color:var(--brand)}
-.search-results{position:absolute;left:0;right:0;top:56px;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;display:none;max-height:430px;overflow:auto}.search-results.show{display:block}.sr-group{padding:10px 14px 4px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}.sr{padding:11px 14px;border-top:1px solid #edf4f3}.sr:hover{background:#f4fbfa}.sr b{display:block}.sr small{color:var(--muted)}
+.search{flex:1;position:relative}.search input{width:100%;height:50px;border:1px solid var(--line);border-radius:17px;padding:0 18px;background:#fffaf2;outline:none}.search input:focus{border-color:var(--brand)}
+.search-results{position:absolute;left:0;right:0;top:56px;background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden;display:none;max-height:430px;overflow:auto}.search-results.show{display:block}.sr-group{padding:10px 14px 4px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}.sr{padding:11px 14px;border-top:1px solid #e9dcc9}.sr:hover{background:#f2e5d2}.sr b{display:block}.sr small{color:var(--muted)}
 .iconbtn{width:46px;height:46px;border:1px solid var(--line);background:#fff;border-radius:15px}
 .content{padding:24px;max-width:1400px;margin:auto}.hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;margin-bottom:18px}.hero h1{font-size:38px;margin:0 0 5px}.hero p{margin:0;color:var(--muted)}
 .actions{display:flex;gap:9px;flex-wrap:wrap}.btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:14px;padding:12px 16px;font-weight:700}.btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border:0;box-shadow:0 8px 20px rgba(14,156,156,.2)}.btn.danger{color:var(--danger)}.btn.small{padding:8px 11px;border-radius:11px;font-size:13px}
@@ -36,7 +36,7 @@ h1,h2,h3,.serif{font-family:Georgia,"Times New Roman",serif;font-style:italic}
 .modal-back{position:fixed;inset:0;background:rgba(10,28,31,.5);display:none;align-items:center;justify-content:center;padding:18px;z-index:100}.modal-back.show{display:flex}.modal{width:min(900px,100%);max-height:92vh;overflow:auto;background:#fff;border-radius:25px;border:1px solid var(--line);box-shadow:0 30px 80px rgba(0,0,0,.25);padding:22px}.modal h2{margin-top:0}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{display:grid;gap:6px}.field.full{grid-column:1/-1}.field label{font-size:13px;color:var(--muted);font-weight:700}.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);border-radius:14px;padding:12px;background:#fbfefe;outline:none}.field textarea{min-height:90px;resize:vertical}.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--brand)}
 .subcard{border:1px dashed #bfd8d6;border-radius:18px;padding:14px;margin-top:12px;background:#fbfefe}.subhead{display:flex;justify-content:space-between;align-items:center;gap:8px}.photo{width:80px;height:80px;border-radius:14px;object-fit:cover;border:1px solid var(--line);background:#eef7f6}
 .occupant,.vehicle{border:1px solid var(--line);border-radius:16px;padding:12px;margin-top:10px}.danger-text{color:var(--danger)}
-.toast{position:fixed;right:18px;bottom:90px;z-index:150;background:#123842;color:#fff;padding:13px 16px;border-radius:14px;box-shadow:var(--shadow);display:none}.toast.show{display:block}
+.toast{position:fixed;right:18px;bottom:90px;z-index:150;background:#332117;color:#fff;padding:13px 16px;border-radius:14px;box-shadow:var(--shadow);display:none}.toast.show{display:block}
 .bottom{display:none}.more-menu{position:fixed;inset:auto 14px 82px 14px;background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:0 20px 50px rgba(0,0,0,.2);padding:10px;display:none;z-index:50}.more-menu.show{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.more-menu button{border:0;background:#f5fbfa;padding:12px;border-radius:12px;text-align:left}
 .report-box{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}.report-box .btn{padding:10px}
 .empty{padding:30px;text-align:center;color:var(--muted)}
@@ -82,7 +82,7 @@ h1,h2,h3,.serif{font-family:Georgia,"Times New Roman",serif;font-style:italic}
 .feature-off .child-feature{opacity:.55}
 .restaurant-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 .restaurant-tab{border:1px solid var(--line);background:#fff;border-radius:14px;padding:10px 14px;font-weight:800}
-.restaurant-tab.active{background:var(--soft);color:#086f73;border-color:#b8dedd}
+.restaurant-tab.active{background:var(--soft);color:#68401f;border-color:#b8dedd}
 .food-cart{display:grid;gap:8px}
 .food-line{display:grid;grid-template-columns:1fr 80px 100px 42px;gap:8px;align-items:center;border:1px solid var(--line);border-radius:13px;padding:9px}
 .food-line input{width:100%;border:1px solid var(--line);border-radius:9px;padding:7px}
@@ -90,10 +90,10 @@ h1,h2,h3,.serif{font-family:Georgia,"Times New Roman",serif;font-style:italic}
 .restaurant-customer{border:1px solid var(--line);border-radius:16px;padding:13px;background:#fbfefe}
 .walkin-badge{background:#f3ebff;color:#7652a8}
 .stay-badge{background:#e2f4f6;color:#146b72}
-.audit-chip{font-size:11px;padding:4px 7px;border-radius:999px;background:var(--soft);color:#086f73}
+.audit-chip{font-size:11px;padding:4px 7px;border-radius:999px;background:var(--soft);color:#68401f}
 
 /* ID OCR review polish */
-.photo{object-fit:contain;background:#eef9f8;border:1px solid #d8e8e7;border-radius:14px}
+.photo{object-fit:contain;background:#f4eee5;border:1px solid #dfcfb8;border-radius:14px}
 #bkOcrStatus,#guestOcrStatus{min-height:20px}
 
 /* Final aligned restaurant bill */
@@ -195,20 +195,20 @@ hr{border-color:var(--line)!important}a{color:#86632b}
 </style>
 
 <style id="final-restaurant-bill-fix">
-.bill-lines{margin-top:12px;border-top:1px solid var(--line,#d8e8e7);border-bottom:1px solid var(--line,#d8e8e7)}
+.bill-lines{margin-top:12px;border-top:1px solid var(--line,#dfcfb8);border-bottom:1px solid var(--line,#dfcfb8)}
 .bill-line{display:grid;grid-template-columns:minmax(0,1fr) 74px 110px;gap:12px;align-items:center;padding:11px 0}
 .bill-line .qty{text-align:center}
 .bill-line .amount{text-align:right;font-weight:700}
 .bill-total{display:grid;grid-template-columns:1fr 110px;gap:12px;align-items:center;padding:14px 0 4px;font-size:17px}
 .bill-total .amount{text-align:right;font-size:20px}
-.bill-date{text-align:right;margin-top:8px;color:var(--muted,#6b8084);font-size:13px}
+.bill-date{text-align:right;margin-top:8px;color:var(--muted,#806f60);font-size:13px}
 .open-bill-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:12px}
-.open-bill-card{border:1px solid var(--line,#d8e8e7);border-radius:18px;padding:14px;background:#fff}
-.bill-status{display:inline-flex;padding:4px 9px;border-radius:999px;background:#e3f7f5;color:#0e6f70;font-size:12px;font-weight:700}
+.open-bill-card{border:1px solid var(--line,#dfcfb8);border-radius:18px;padding:14px;background:#fff}
+.bill-status{display:inline-flex;padding:4px 9px;border-radius:999px;background:#ead8bd;color:#0e6f70;font-size:12px;font-weight:700}
 .pos-subtabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
-.pos-subtabs .btn.active{background:#0e9c9c;color:#fff}
+.pos-subtabs .btn.active{background:#7a4b2a;color:#fff}
 .item-table{width:100%;border-collapse:collapse}
-.item-table th,.item-table td{padding:9px;border-bottom:1px solid var(--line,#d8e8e7);text-align:left}
+.item-table th,.item-table td{padding:9px;border-bottom:1px solid var(--line,#dfcfb8);text-align:left}
 .item-table th:last-child,.item-table td:last-child{text-align:right}
 @media(max-width:600px){
  .bill-line{grid-template-columns:minmax(0,1fr) 48px 88px;gap:7px}
@@ -645,7 +645,7 @@ function exportImageDocument(scope,id,format){
  }
  const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d'),width=1600,pad=80,lineH=48,maxChars=82;
  const wrapped=[];lines.forEach(line=>{const m=String(line).match(new RegExp(`.{1,${maxChars}}(?:\\s|$)`,'g'));if(m)m.forEach(x=>wrapped.push(x.trim()));else wrapped.push(line)});
- const height=Math.max(900,pad*2+wrapped.length*lineH+120);canvas.width=width;canvas.height=height;ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);ctx.fillStyle='#123842';
+ const height=Math.max(900,pad*2+wrapped.length*lineH+120);canvas.width=width;canvas.height=height;ctx.fillStyle='#fff';ctx.fillRect(0,0,width,height);ctx.fillStyle='#332117';
  ctx.font='bold 46px Georgia';ctx.fillText(wrapped.shift()||title,pad,85);ctx.font='28px Arial';let y=155;
  wrapped.forEach(line=>{if(y>height-pad){return}ctx.fillText(line,pad,y);y+=lineH});
  canvas.toBlob(blob=>{if(blob){const url=URL.createObjectURL(blob);try{const preview=window.open(url,'_blank');if(!preview)toast('Image created. If preview was blocked, check your downloads.')}catch(_){}downloadBlob(blob,`aurelia-${scope}-${Date.now()}.${format}`);toast(`${format.toUpperCase()} image exported; preview opened when pop-ups are allowed`);setTimeout(()=>URL.revokeObjectURL(url),60000)}else{toast('Could not render image. Try PDF/print or allow sufficient browser memory.')}},format==='jpg'?'image/jpeg':'image/png',0.95);
@@ -1378,7 +1378,7 @@ function printInvoice(id){
  const rows=b.charges.map(c=>`<tr><td>${esc(c.item)} × ${c.qty}</td><td>${money(c.amount)}</td></tr>`).join('');
  const qrText=`upi://pay?pa=${DB.settings.upi||''}&pn=${DB.settings.hotelName||''}&am=${Math.max(0,due(b)).toFixed(2)}&cu=INR&tn=${b.sr}`;
  const qr=DB.settings.upiQr||((window.__aureliaQrCache||{})[qrText]);if(!qr){aureliaRequestLocalQr(qrText,data=>{if(data)printInvoice(id)});return;}
- const html=`<!doctype html><html><head><meta charset="utf-8"><title>${esc(b.sr)}</title><style>body{font-family:Arial;padding:28px;max-width:760px;margin:auto;color:#123842}h1{font-family:Georgia;font-style:italic}table{width:100%;border-collapse:collapse}td{padding:10px;border-bottom:1px solid #ddd}.due{font-size:24px;font-weight:800}.qr{text-align:center;margin-top:20px}.qr img{width:300px;height:300px}</style></head><body>${DB.settings.logo?`<div style="margin-bottom:10px"><img src="${DB.settings.logo}" alt="Hotel logo" style="max-width:150px;max-height:90px;object-fit:contain"></div>`:""}<h1>${esc(DB.settings.hotelName)}</h1><div>${esc(DB.settings.address)}<br>${esc(DB.settings.phone)}</div><h2>INVOICE · ${esc(b.sr)}</h2><p><b>${esc(g?.name||'')}</b> · Room ${esc(r?.number||'')}</p><table>${rows}</table><p>Total: <b>${money(total(b))}</b><br>Paid: <b>${money(b.paid)}</b><br><span class="due">Amount due: ${money(due(b))}</span></p><div class="qr"><b>PAYMENT QR</b><br><img src="${qr}"><div>${esc(DB.settings.upi||'')}</div></div><p>${esc(DB.settings.checkoutMessage||'')}</p></body></html>`;
+ const html=`<!doctype html><html><head><meta charset="utf-8"><title>${esc(b.sr)}</title><style>body{font-family:Arial;padding:28px;max-width:760px;margin:auto;color:#332117}h1{font-family:Georgia;font-style:italic}table{width:100%;border-collapse:collapse}td{padding:10px;border-bottom:1px solid #ddd}.due{font-size:24px;font-weight:800}.qr{text-align:center;margin-top:20px}.qr img{width:300px;height:300px}</style></head><body>${DB.settings.logo?`<div style="margin-bottom:10px"><img src="${DB.settings.logo}" alt="Hotel logo" style="max-width:150px;max-height:90px;object-fit:contain"></div>`:""}<h1>${esc(DB.settings.hotelName)}</h1><div>${esc(DB.settings.address)}<br>${esc(DB.settings.phone)}</div><h2>INVOICE · ${esc(b.sr)}</h2><p><b>${esc(g?.name||'')}</b> · Room ${esc(r?.number||'')}</p><table>${rows}</table><p>Total: <b>${money(total(b))}</b><br>Paid: <b>${money(b.paid)}</b><br><span class="due">Amount due: ${money(due(b))}</span></p><div class="qr"><b>PAYMENT QR</b><br><img src="${qr}"><div>${esc(DB.settings.upi||'')}</div></div><p>${esc(DB.settings.checkoutMessage||'')}</p></body></html>`;
  const w=window.open('','_blank'); if(!w){toast('Allow popups to print the invoice');return}
  w.document.open();w.document.write(html);w.document.close(); setTimeout(()=>w.print(),300);
 }
@@ -1638,12 +1638,12 @@ function restaurantViewDraft(){
   const rows=(d.items||[]).map(x=>`<tr><td>${esc(x.name)}</td><td class="qty">× ${Number(x.qty||0)}</td><td class="amt">${money(Number(x.qty||0)*Number(x.price||0))}</td></tr>`).join("");
   const when=new Date().toLocaleString("en-IN",{day:"numeric",month:"short",year:"numeric",hour:"numeric",minute:"2-digit"});
   w.document.write(`<html><head><title>Restaurant Bill</title><style>
-  body{font-family:Arial,sans-serif;padding:32px;max-width:760px;margin:auto;color:#123842}
+  body{font-family:Arial,sans-serif;padding:32px;max-width:760px;margin:auto;color:#332117}
   h1{margin:0 0 4px}h2{margin:0 0 22px;font-weight:500}
-  table{width:100%;border-collapse:collapse}td{padding:10px 0;border-bottom:1px solid #d8e8e7}
+  table{width:100%;border-collapse:collapse}td{padding:10px 0;border-bottom:1px solid #dfcfb8}
   .qty{text-align:center;width:90px}.amt{text-align:right;width:130px;font-weight:700}
-  .total{display:grid;grid-template-columns:1fr 130px;gap:12px;margin-top:16px;padding-top:14px;border-top:2px solid #123842;font-size:19px;font-weight:800}
-  .date{text-align:right;color:#6b8084;margin-top:12px;font-size:13px}
+  .total{display:grid;grid-template-columns:1fr 130px;gap:12px;margin-top:16px;padding-top:14px;border-top:2px solid #332117;font-size:19px;font-weight:800}
+  .date{text-align:right;color:#806f60;margin-top:12px;font-size:13px}
   
 /* AURELIA LUXURY LAYER: distinct hotel and dining workspaces, shared folio */
 :root{--lux-forest:#18392e;--lux-forest-2:#244b3d;--lux-gold:#bd9a60;--lux-ivory:#faf7f0;--lux-paper:#fffdf8;--lux-line:#e5dccb;--lux-ink:#24342d;--lux-terra:#a75f42}
@@ -2428,7 +2428,7 @@ function wrapTermsText(text,n=82){
 function termsCanvas(b,g){
  const c=document.createElement("canvas");c.width=1600;c.height=2200;
  const x=c.getContext("2d");x.fillStyle="#fff";x.fillRect(0,0,c.width,c.height);
- x.fillStyle="#123842";x.textAlign="center";x.font="bold 52px Georgia";
+ x.fillStyle="#332117";x.textAlign="center";x.font="bold 52px Georgia";
  x.fillText(DB.settings?.hotelName||"HOTEL",800,110);
  x.font="32px Arial";x.fillText("TERMS & CONDITIONS",800,170);
  x.textAlign="left";x.font="28px Arial";
