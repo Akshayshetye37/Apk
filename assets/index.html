@@ -1812,6 +1812,7 @@ function pagesSettingsNew(){
       <div class="feature-row"><label><span><b>Internet access for online features</b><small class="muted" style="display:block">Controls app-level online integrations; it does not switch off Android Wi-Fi/mobile data.</small></span><input id="aureliaInternetToggle" type="checkbox" \${DB.settings.internetEnabled!==false?"checked":""} onchange="setAureliaConnectivityOption('internetEnabled',this.checked)"></label><small id="aureliaInternetState">\${DB.settings.internetEnabled!==false?"Enabled":"Disabled"}</small></div>
       <div class="feature-row"><label><span><b>AI automation</b><small class="muted" style="display:block">Diagnostics, safe repairs and optional online AI assistance.</small></span><input id="aureliaAiToggle" type="checkbox" \${DB.settings.aiEnabled!==false?"checked":""} onchange="setAureliaConnectivityOption('aiEnabled',this.checked)"></label><small id="aureliaAiState">\${DB.settings.aiEnabled!==false?"Enabled":"Disabled"}</small></div>
       <div class="field full" style="margin-top:12px"><label for="aureliaAiGatewayUrl">Secure AI gateway URL (optional)</label><input id="aureliaAiGatewayUrl" type="url" inputmode="url" placeholder="https://your-secure-ai-gateway.example/api/chat" value="\${esc(DB.settings.aiGatewayUrl||"")}"><small class="muted">Use your own authenticated HTTPS backend. Never paste a provider API key here or embed one in the APK. Without a configured gateway, Aurelia uses built-in offline guidance and diagnostics.</small></div>
+      <div class="field full" style="margin-top:10px"><label for="aureliaAiGatewayToken">Gateway access token (optional)</label><input id="aureliaAiGatewayToken" type="password" autocomplete="new-password" placeholder="Stored in Android secure storage, never in PMS database"><small class="muted">Use a short-lived or revocable token for your own backend. Never enter a raw model-provider key into a third-party endpoint.</small></div>
       <div class="actions" style="margin-top:10px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="saveAureliaAiGateway()">Save AI gateway</button><button class="btn" type="button" onclick="runAureliaHealthCheck()">Run health check & safe repair</button></div>
       <div id="aureliaAiGatewayState" class="muted" role="status" style="margin-top:8px">Online AI gateway: \${DB.settings.aiGatewayUrl?"Configured in settings":"Not configured"}.</div>
       <div id="aureliaHealthReport" class="muted" role="status" style="margin-top:8px"></div>
@@ -1880,7 +1881,18 @@ function saveAureliaAiGateway(){
   DB.settings=DB.settings||{};DB.settings.aiGatewayUrl=value;
   try{save();}catch(e){if(note)note.textContent='Could not save the gateway setting locally.';return;}
   window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled!==false,aiEnabled:DB.settings.aiEnabled!==false,aiGatewayUrl:value};
-  if(note)note.textContent=value?'Gateway URL saved. Ensure the server authenticates requests and does not log guest data.':'Gateway cleared. Offline guidance remains available.';
+  const tokenInput=document.getElementById('aureliaAiGatewayToken');
+  const token=(tokenInput?.value||'').trim();
+  if(window.AureliaNative&&typeof window.AureliaNative.postMessage==='function'){
+    const requestId='aigw_'+Date.now().toString(36);
+    window.aureliaAiGatewaySaveResult=function(id,ok,error){
+      if(id!==requestId)return;
+      if(tokenInput)tokenInput.value='';
+      if(note)note.textContent=ok?'AI gateway configuration saved. The access token is stored by Android secure storage.':'Gateway URL saved locally, but secure credential setup failed: '+(error||'unknown error');
+    };
+    window.AureliaNative.postMessage(JSON.stringify({type:'saveAiGatewayConfig',requestId,endpoint:value,token}));
+  }else if(note){note.textContent='Gateway URL saved locally. Secure credential storage requires the Android app; online AI remains unavailable in this browser.';}
+  if(tokenInput)tokenInput.value='';
   toast('AI gateway setting saved');
 }
 function runAureliaHealthCheck(){
@@ -1902,6 +1914,7 @@ function runAureliaHealthCheck(){
   try{audit('PMS health check',summary);}catch(_){}
 }
 
+window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled!==false,aiEnabled:DB.settings.aiEnabled!==false,aiGatewayUrl:DB.settings.aiGatewayUrl||''};
 pages.settings=pagesSettingsNew;
 
 function setAllNewSafety(on){
