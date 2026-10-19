@@ -94,4 +94,47 @@
       if(status)status.textContent='For accurate guest records, verify the extracted name spelling and ID type against the original card before saving.';
     }
   });
+
+  // Final settings cleanup: remove the obsolete browser security panel and the
+  // non-functional Google Drive placeholder completely, including on rerenders.
+  function removeLegacySecurityAndDrivePanels() {
+    const forbiddenHeadings = ['Backup & device security', 'Google Drive backup'];
+    document.querySelectorAll('h1,h2,h3,h4,[role="heading"]').forEach(function (heading) {
+      const label = (heading.textContent || '').replace(/\\s+/g, ' ').trim();
+      if (!forbiddenHeadings.some(function (x) { return label.toLowerCase() === x.toLowerCase(); })) return;
+      let panel = heading.closest('section.card, .card, .settings-card, .content-card, .section-card, section');
+      if (!panel) panel = heading.parentElement;
+      if (panel) panel.remove();
+    });
+    // Remove any remaining legacy PIN/recovery/biometric controls and their labels.
+    document.querySelectorAll('input,button,label,select,textarea').forEach(function (el) {
+      const text = ((el.textContent || '') + ' ' + (el.getAttribute('placeholder') || '') + ' ' +
+        (el.getAttribute('aria-label') || '') + ' ' + (el.id || '') + ' ' + (el.name || '')).toLowerCase();
+      if (/local pin|enter a new pin|set \/ reset pin|forgot pin|recovery code|device biometric|test device biometric|backup destination|download json backup/.test(text)) {
+        const wrapper = el.closest('.field, .form-row, .setting-row, .actions, .form-group, label');
+        if (wrapper) wrapper.remove(); else el.remove();
+      }
+    });
+    // Remove legacy explanatory copy even if it was rendered outside its original card.
+    document.querySelectorAll('p,div,small,span').forEach(function (el) {
+      if (el.children.length > 3) return;
+      const text = (el.textContent || '').replace(/\\s+/g, ' ').trim().toLowerCase();
+      if (text && text.length < 650 && (
+        text.includes('pin and recovery are stored in this browser') ||
+        text.includes('no device authenticator is enrolled yet') ||
+        text.includes('local recovery snapshots are saved when app data is saved') ||
+        text.includes('google drive backup is not active yet') ||
+        text.includes('google drive connection — coming later') ||
+        text.includes('offline device export / import') ||
+        text.includes('when implemented, this section will support account connection')
+      )) el.remove();
+    });
+    document.querySelectorAll('#aureliaDriveSetupCard,#aureliaDriveSettingsCard,#aureliaDeviceSecurityCard,#aureliaDeviceBackupCard').forEach(function (el) {
+      if (el) el.remove();
+    });
+  }
+  removeLegacySecurityAndDrivePanels();
+  const cleanupObserver = new MutationObserver(function () { removeLegacySecurityAndDrivePanels(); });
+  if (document.documentElement) cleanupObserver.observe(document.documentElement, { childList: true, subtree: true });
+
 })();
