@@ -628,7 +628,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
  function msg(t,w){const e=document.createElement('div');e.className='aurelia-ai-msg '+w;e.textContent=t;log.appendChild(e);log.scrollTop=log.scrollHeight;return e;}
  msg('Hello. I can guide you through hotel room and guest management, restaurant POS, food-only room billing, reports, and local backup. I work offline using built-in guidance; this is not a generative cloud AI model.','bot');
  b.addEventListener('click',()=>{p.style.display=p.style.display==='flex'?'none':'flex';if(p.style.display==='flex')input.focus()});p.querySelector('#aurelia-ai-close').addEventListener('click',()=>p.style.display='none');
- p.querySelector('#aurelia-ai-form').addEventListener('submit',e=>{e.preventDefault();const q=input.value.trim();if(!q)return;input.value='';msg(q,'user');const id='ai_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);const pending=msg('Checking local guidance…','bot');pending.dataset.request=id;try{if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function')throw Error('Unavailable');window.AureliaNative.postMessage(JSON.stringify({type:'aureliaAiQuery',requestId:id,question:q}));}catch(_){pending.textContent='Assistant unavailable in this view. You can continue using the PMS normally.';}});
+ p.querySelector('#aurelia-ai-form').addEventListener('submit',e=>{e.preventDefault();const q=input.value.trim();if(!q)return;input.value='';msg(q,'user');const id='ai_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);const pending=msg('Checking local guidance…','bot');pending.dataset.request=id;try{if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function')throw Error('Unavailable');window.AureliaNative.postMessage(JSON.stringify({type:'aureliaAiQuery',requestId:id,question:q,config:window.__AURELIA_AI_CONFIG||{}}));}catch(_){pending.textContent='Assistant unavailable in this view. You can continue using the PMS normally.';}});
  window.aureliaAiResult=function(id,answer,error){const safe=String(id).replace(/[^A-Za-z0-9_-]/g,'');const el=log.querySelector('[data-request="'+safe+'"]');if(el)el.textContent=error||answer||'No guidance available.';};
 })();
 """;
@@ -681,6 +681,109 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         final answer = _answerAureliaAssistant(question.trim());
         await _controller.runJavaScript(
           'window.aureliaAiResult?.(${jsonEncode(requestId)},${jsonEncode(answer)},null);',
+        );
+        return;
+      }
+      if (value['type'] == 'saveAiGatewayConfig') {
+        final endpointValue = value['endpoint'];
+        final tokenValue = value['token'];
+        if (requestId == null || endpointValue is! String || tokenValue is! String ||
+            endpointValue.length > 2048 || tokenValue.length > 4096) {
+          throw const FormatException('Invalid AI gateway configuration.');
+        }
+        final endpoint = endpointValue.trim();
+        if (endpoint.isNotEmpty) {
+          final uri = Uri.tryParse(endpoint);
+          if (uri == null || uri.scheme != 'https' || uri.host.isEmpty ||
+              uri.userInfo.isNotEmpty || uri.fragment.isNotEmpty) {
+            throw const FormatException('AI gateway must be a valid HTTPS URL without embedded credentials or fragments.');
+          }
+        }
+        if (tokenValue.trim().isEmpty || endpoint.isEmpty) {
+          await AureliaSecureVault.deleteSecret('aurelia_ai_gateway_token_v1');
+        } else {
+          await AureliaSecureVault.writeSecret('aurelia_ai_gateway_token_v1', tokenValue.trim());
+        }
+        await _controller.runJavaScript(
+          'window.aureliaAiGatewaySaveResult?.(\${jsonEncode(requestId)},true,null);',
+        );
+        return;
+      }
+      if (value['type'] == 'aureliaAiQuery') {
+        final question = value['question'];
+        final configValue = value['config'];
+        if (requestId == null || question is! String || question.trim().isEmpty || question.length > 500) {
+          throw const FormatException('Ask a question of 1–500 characters.');
+        }
+        final config = configValue is Map ? configValue : const <String, dynamic>{};
+        final internetEnabled = config['internetEnabled'] != false;
+        final aiEnabled = config['aiEnabled'] != false;
+        final endpointValue = config['aiGatewayUrl'];
+        String answer;
+        if (!aiEnabled) {
+          answer = 'AI automation is disabled in Settings. Enable it to use Aurelia Assist.';
+        } else if (!internetEnabled || endpointValue is! String || endpointValue.trim().isEmpty) {
+          answer = _answerAureliaAssistant(question.trim());
+          if (!internetEnabled) {
+            answer += '\n\nInternet access for online features is disabled. No external request was made.';
+          } else {
+            answer += '\n\nOnline AI is not configured. Add your own authenticated HTTPS gateway in Settings to enable model-based responses.';
+          }
+        } else {
+          final uri = Uri.tryParse(endpointValue.trim());
+          if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty || uri.fragment.isNotEmpty) {
+            answer = _answerAureliaAssistant(question.trim()) + '\n\nThe AI gateway URL is invalid or not HTTPS. No external request was made.';
+          } else {
+            HttpClient? client;
+            try {
+              client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+              final request = await client.postUrl(uri).timeout(const Duration(seconds: 10));
+              request.headers.contentType = ContentType.json;
+              request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+              final token = await AureliaSecureVault.readSecret('aurelia_ai_gateway_token_v1');
+              if (token != null && token.isNotEmpty) request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+              // Privacy by design: send only the user's explicit question, never guest records or billing data.
+              request.write(jsonEncode({
+                'question': question.trim(),
+                'message': question.trim(),
+                'app': 'Aurelia PMS',
+                'mode': 'hotel_restaurant_operations',
+              }));
+              final response = await request.close().timeout(const Duration(seconds: 15));
+              final body = await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 10));
+              if (body.length > 256 * 1024) throw const FormatException('AI response exceeded the size limit.');
+              if (response.statusCode < 200 || response.statusCode >= 300) {
+                throw HttpException('AI gateway returned HTTP \${response.statusCode}.');
+              }
+              final decoded = jsonDecode(body);
+              String? remoteAnswer;
+              if (decoded is Map<String, dynamic>) {
+                final direct = decoded['answer'] ?? decoded['response'] ?? decoded['output_text'];
+                if (direct is String) remoteAnswer = direct;
+                if (remoteAnswer == null && decoded['choices'] is List && (decoded['choices'] as List).isNotEmpty) {
+                  final first = (decoded['choices'] as List).first;
+                  if (first is Map && first['message'] is Map && (first['message'] as Map)['content'] is String) {
+                    remoteAnswer = (first['message'] as Map)['content'] as String;
+                  } else if (first is Map && first['text'] is String) {
+                    remoteAnswer = first['text'] as String;
+                  }
+                }
+              }
+              if (remoteAnswer == null || remoteAnswer.trim().isEmpty) {
+                throw const FormatException('AI gateway response did not contain an answer field.');
+              }
+              answer = 'Online AI guidance — verify before applying:\n\n\${remoteAnswer.trim()}';
+            } catch (error) {
+              debugPrint('Aurelia online AI request failed: $error');
+              answer = _answerAureliaAssistant(question.trim()) +
+                  '\n\nOnline AI is unavailable right now. Showing offline guidance instead; no PMS data was uploaded.';
+            } finally {
+              client?.close(force: true);
+            }
+          }
+        }
+        await _controller.runJavaScript(
+          'window.aureliaAiResult?.(\${jsonEncode(requestId)},\${jsonEncode(answer)},null);',
         );
         return;
       }
@@ -1059,7 +1162,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       debugPrint('Aurelia native bridge rejected request: $error');
       if (requestId != null) {
         try {
-          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupFolderResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeDeviceBackupResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
+          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupFolderResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeDeviceBackupResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaAiGatewaySaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
         } catch (_) {}
       }
     }
