@@ -1053,7 +1053,7 @@ function parseIdText(text){
  const mrzDoc=mrzDocText&&mrzDocText.match(/^([A-Z]\d{8})(?=[A-Z0-9<]|$)/);
  const passport=mrzDoc?mrzDoc[1]:t.match(/\b[A-Z]\d{7}\b/i);
  const voter=t.match(/\b[A-Z]{3}\d{7}\b/i);
- const idNumber=(aad||pan||dl||passport||voter)?.[0]||'';
+ const idNumber=(aad||pan||dl)?.[0]||(typeof passport==='string'?passport:passport?.[0])||voter?.[0]||'';
  const idType=aad?'Aadhaar Card':pan?'PAN Card':dl?'Driving Licence':passport?'Passport':voter?'Voter ID':'';
  const excluded=/^(GOVERNMENT OF INDIA|UNIQUE IDENTIFICATION AUTHORITY OF INDIA|INCOME TAX DEPARTMENT|REPUBLIC OF INDIA|DRIVING LICENCE|PERMANENT ACCOUNT NUMBER|ELECTION COMMISSION OF INDIA|AADHAAR|AADHAR|PAN CARD|PASSPORT|INDIA|MALE|FEMALE)$/i;
  let name='';
