@@ -29,8 +29,8 @@ test('actual page router exposes separate hotel, restaurant, billing and setting
     assert.ok(dart.includes(token), 'missing native backup workflow handler: ' + token);
   }
   const interaction = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'interaction_reliability.js'), 'utf8');
-  assert.match(interaction, /type:\\s*'exportEncryptedBackup'/);
-  assert.match(interaction, /type:\\s*'restoreEncryptedBackup'/);
+  assert.match(interaction, /type:\s*'exportEncryptedBackup'/);
+  assert.match(interaction, /type:\s*'restoreEncryptedBackup'/);
   assert.match(html, /function pagesSettingsNew\(\)/);
   assert.match(html, /food-only|food items|guest room/i);
 });
