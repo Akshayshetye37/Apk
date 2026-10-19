@@ -775,7 +775,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         if (requestId == null) throw const FormatException('Missing secure reload request id');
         // Reload from the encrypted native store, never via WebView location.reload().
         final loaded = await _loadLocalPms();
-        if (mounted) setState(() { _pmsLoaded = loaded; _loading = false; });
+        if (mounted) setState(() { _loading = false; });
         return;
       }
       if (value['type'] == 'restoreEncryptedBackup') {
@@ -796,7 +796,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         if (!loaded) {
           throw StateError('Backup data was encrypted and saved, but the PMS could not reopen it. Keep the app installed and recover access before trying again.');
         }
-        if (mounted) setState(() { _pmsLoaded = true; _loading = false; });
+        if (mounted) setState(() { _loading = false; });
         await _controller.runJavaScript(
           'window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},true,null);',
         );
@@ -1066,7 +1066,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       debugPrint('Aurelia native bridge rejected request: $error');
       if (requestId != null) {
         try {
-          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupFolderResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeDeviceBackupResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaAiGatewaySaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaAiResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});');
+          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupFolderResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeDeviceBackupResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaAiGatewaySaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaAiResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});');
         } catch (_) {}
       }
     }
