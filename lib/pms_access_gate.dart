@@ -89,9 +89,13 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
         _failedAttempts = int.tryParse(attempts ?? '') ?? 0;
         _lockUntil = lock == null ? null : DateTime.tryParse(lock);
         _deviceAuthAvailable = deviceAuth;
-        _biometricEnabled = biometricPreference == 'true' && deviceAuth;
-        _pinEntryEnabled = pinEntryPreference == 'true' ||
-            (biometricPreference == 'true' && !deviceAuth);
+        // Require PIN setup before any biometric-only unlock can be used.
+        // If stored preferences are absent or both disabled, default to PIN.
+        _biometricEnabled = salt != null && biometricPreference == 'true' && deviceAuth;
+        _pinEntryEnabled = salt == null ||
+            pinEntryPreference == 'true' ||
+            biometricPreference != 'true' ||
+            !deviceAuth;
         _loading = false;
       });
       _startLockoutTicker();
