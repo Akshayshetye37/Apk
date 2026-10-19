@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'image_viewer_engine.dart';
 import 'dart:convert';
+import 'xlsx_importer.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -597,6 +598,8 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
 
   }
 
+  final Map<String, XlsxWorkbookReader> _xlsxImports = {};
+
   Future<void> _handleNativeMessage(String raw) async {
     String? requestId;
     try {
@@ -781,6 +784,31 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         await _controller.runJavaScript('window.aureliaNativeLocalBackupResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
+      if (value['type'] == 'xlsxOpen') {
+        final encoded = value['bytesBase64'];
+        if (requestId == null || encoded is! String || encoded.isEmpty || encoded.length > 34 * 1024 * 1024) {
+          throw const FormatException('Workbook is missing or exceeds the upload limit.');
+        }
+        final bytes = base64Decode(encoded);
+        final workbook = XlsxWorkbookReader.open(bytes);
+        _xlsxImports.removeWhere((key, _) => key != requestId);
+        _xlsxImports[requestId] = workbook;
+        final sheets = workbook.sheets.map((s) => s.toJson()).toList();
+        await _controller.runJavaScript('window.__aureliaXlsxImportResult?.(${jsonEncode(requestId)},${jsonEncode({'kind':'sheets','sheets':sheets})},null);');
+        return;
+      }
+      if (value['type'] == 'xlsxReadSheet') {
+        final token = value['token'];
+        final index = value['index'];
+        if (requestId == null || token is! String || index is! int || !_xlsxImports.containsKey(token)) {
+          throw const FormatException('Workbook session expired. Choose the file again.');
+        }
+        final workbook = _xlsxImports[token]!;
+        final rows = workbook.readSheet(index);
+        final sheetName = workbook.sheets[index].name;
+        await _controller.runJavaScript('window.__aureliaXlsxImportResult?.(${jsonEncode(requestId)},${jsonEncode({'kind':'rows','rows':rows,'sheetName':sheetName})},null);');
+        return;
+      }
       if (value['type'] == 'savePmsData') {
         final dataValue = value['data'];
         if (requestId == null || dataValue is! String || dataValue.length > 20 * 1024 * 1024) {
@@ -937,6 +965,10 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
     } catch (error) {
       debugPrint('Aurelia native bridge rejected request: $error');
       if (requestId != null) {
+        try {
+          await _controller.runJavaScript('window.__aureliaXlsxImportResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});');
+        } catch (_) {}
+
         try {
           await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupFolderResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeDeviceBackupResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
         } catch (_) {}

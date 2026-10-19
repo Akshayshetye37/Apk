@@ -666,14 +666,72 @@ function inspectImportFile(e){
  selectedImportFile=e.target.files?.[0]||null;
  document.getElementById('importInfo').textContent=selectedImportFile?`${selectedImportFile.name} · ${Math.round(selectedImportFile.size/1024)} KB · ready for inspection/import`:'Select a file to inspect before importing.';
 }
+let xlsxImportToken=null,xlsxWorkbookToken=null,xlsxImportSheets=[],xlsxImportFileName='',xlsxImportRows=[],xlsxImportHeaders=[],xlsxImportHeaderRow=0;
 function importSelected(){
  if(!selectedImportFile){toast('Choose an import file first');return}
  const name=selectedImportFile.name.toLowerCase();
  if(name.endsWith('.json')){
   const reader=new FileReader();reader.onload=()=>{try{const obj=JSON.parse(reader.result);if(!obj||typeof obj!=='object')throw new Error('Invalid JSON');DB=obj;save();setupNav();refreshBrand();showPage('dashboard');audit('JSON import completed',selectedImportFile.name);save();toast('JSON data imported')}catch(e){toast('Invalid JSON backup')}};reader.readAsText(selectedImportFile);return;
  }
- toast('File accepted. Native Flutter import adapter should parse PDF/XLSX/images and map fields safely before committing them.');
+ if(!name.endsWith('.xlsx')){toast('Excel import currently supports .xlsx only. Save legacy .xls files as .xlsx and retry.');return}
+ if(selectedImportFile.size>25*1024*1024){toast('Workbook exceeds the 25 MB import limit.');return}
+ const reader=new FileReader();reader.onload=()=>{try{const data=String(reader.result||'').split(',')[1];if(!data)throw new Error('empty');xlsxImportFileName=selectedImportFile.name;window.__aureliaXlsxImportResult=(id,payload,error)=>handleXlsxImportResult(id,payload,error);const requestId='xlsx_'+Date.now();xlsxImportToken=requestId;window.AureliaNative.postMessage(JSON.stringify({type:'xlsxOpen',requestId,bytesBase64:data,fileName:xlsxImportFileName}));document.getElementById('importInfo').textContent='Reading workbook and detecting worksheets…'}catch(e){toast('Could not read this workbook.')}};reader.readAsDataURL(selectedImportFile);
 }
+function handleXlsxImportResult(id,payload,error){
+ if(id!==xlsxImportToken)return;
+ if(error){toast('Excel import failed: '+String(error));document.getElementById('importInfo').textContent='Workbook could not be read.';return}
+ try{
+  const result=typeof payload==='string'?JSON.parse(payload):payload;
+  if(result.kind==='sheets'){xlsxWorkbookToken=id;xlsxImportSheets=(result.sheets||[]).map(s=>({...s,token:id}));renderXlsxSheetPicker();return}
+  if(result.kind==='rows'){xlsxImportRows=result.rows||[];renderXlsxPreview(result);return}
+ }catch(e){toast('Invalid workbook response.');}
+}
+function loadXlsxSheet(){
+ const index=Number(document.getElementById('xlsxSheetChoice')?.value);if(!Number.isInteger(index)||!xlsxImportSheets[index])return;
+ const requestId='xlsx_'+Date.now();xlsxImportToken=requestId;window.AureliaNative.postMessage(JSON.stringify({type:'xlsxReadSheet',requestId,token:xlsxWorkbookToken,index}));toast('Reading worksheet…');
+}
+const XLSX_GUEST_FIELDS=[
+ ['name','Guest name',['name','guest name','full name','guest full name','customer name','नाम']],
+ ['phone','Phone',['phone','mobile','mobile number','contact','contact number','phone number']],
+ ['email','Email',['email','email address']],
+ ['idType','ID type',['id type','identity type','document type','id proof']],
+ ['idNumber','ID number',['id number','identity number','document number','id no','aadhaar number','aadhar number','passport number','pan number']],
+ ['address','Address',['address','guest address','residential address']]
+];
+function normXlsxHeader(v){return String(v||'').toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu,' ').trim()}
+function detectXlsxHeader(rows){
+ let best={row:0,score:0};
+ rows.slice(0,20).forEach((r,i)=>{const vals=r.map(normXlsxHeader);let score=0;for(const [, , aliases] of XLSX_GUEST_FIELDS)if(vals.some(v=>aliases.some(a=>normXlsxHeader(a)===v)))score++;if(score>best.score)best={row:i,score}});
+ return best;
+}
+function renderXlsxPreview(result){
+ const rows=xlsxImportRows;const detected=detectXlsxHeader(rows);xlsxImportHeaderRow=detected.row;const headers=(rows[detected.row]||[]).map((v,i)=>String(v||'').trim()||('Column '+(i+1)));xlsxImportHeaders=headers;
+ const selects=XLSX_GUEST_FIELDS.map(([key,label,aliases])=>{const auto=headers.findIndex(h=>aliases.some(a=>normXlsxHeader(a)===normXlsxHeader(h)));return '<div class="field"><label>'+esc(label)+'</label><select data-xlsx-field="'+key+'"><option value="-1">Do not import</option>'+headers.map((h,i)=>'<option value="'+i+'" '+(i===auto?'selected':'')+'>'+esc(h)+'</option>').join('')+'</select></div>'}).join('');
+ const sample=rows.slice(detected.row+1,detected.row+6).map(r=>'<tr>'+headers.map((_,i)=>'<td>'+esc(String(r[i]??''))+'</td>').join('')+'</tr>').join('');
+ openModal('Preview Excel guests', '<p><b>'+esc(result.sheetName||'Worksheet')+'</b> · '+Math.max(0,rows.length-detected.row-1)+' data rows detected. Header row: '+(detected.row+1)+'.</p><div class="form-grid">'+selects+'</div><div class="table-wrap" style="overflow:auto;max-height:230px;margin-top:12px"><table class="table"><thead><tr>'+headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+sample+'</tbody></table></div><p class="muted">Only guest name, phone, email, ID type, ID number and address are mapped. Existing guests are never overwritten. Embedded workbook photos are not imported in this version.</p><div class="actions"><button class="btn" onclick="renderXlsxSheetPicker()">Back to worksheets</button><button class="btn primary" onclick="commitXlsxImport()">Import new guests</button></div>');
+ window.__aureliaXlsxCurrentSheet=result.sheetName||'Worksheet';
+}
+function renderXlsxSheetPicker(){const usable=xlsxImportSheets.map((s,i)=>({...s,index:i}));openModal('Excel workbook · '+xlsxImportSheets.length+' worksheets','<p>Choose a worksheet. Hidden sheets are marked. Each worksheet is imported separately.</p><div class="field"><label>Worksheet</label><select id="xlsxSheetChoice">'+usable.map(s=>'<option value="'+s.index+'">'+esc(s.name)+(s.hidden?' · hidden':'')+(s.headerScore<2?' · header not detected':'')+'</option>').join('')+'</select></div><p class="muted">Sheets not selected remain untouched.</p><div class="actions"><button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="loadXlsxSheet()">Preview worksheet</button></div>')}
+async function commitXlsxImport(){
+ const mapping={};document.querySelectorAll('[data-xlsx-field]').forEach(el=>mapping[el.dataset.xlsxField]=Number(el.value));
+ if(mapping.name<0){toast('Map a guest name column before importing.');return}
+ const dataRows=xlsxImportRows.slice(xlsxImportHeaderRow+1).filter(r=>r.some(v=>String(v??'').trim())).slice(0,501);
+ if(dataRows.length>500){toast('This worksheet exceeds the 500-row safety limit. Split it into smaller worksheets.');return}
+ const staged=[],seen=new Set();
+ const norm=v=>String(v||'').trim().toLowerCase().replace(/\s+/g,' ');
+ const normId=v=>String(v||'').trim().toUpperCase().replace(/\s+/g,'');
+ const matches=(a,b)=>{const ai=normId(a.idNumber),bi=normId(b.idNumber);if(ai&&bi&&ai===bi)return true;const ap=String(a.phone||'').replace(/\D/g,''),bp=String(b.phone||'').replace(/\D/g,'');return !!(norm(a.name)&&norm(a.name)===norm(b.name)&&ap&&ap===bp)};
+ for(const row of dataRows){const g={};for(const f of ['name','phone','email','idType','idNumber','address']){const c=mapping[f];g[f]=c>=0?String(row[c]??'').trim():''}if(!g.name)continue;if(staged.some(x=>matches(x,g)))continue;staged.push(g)}
+ if(!staged.length){toast('No guest records with names were found.');return}
+ const existing=Array.isArray(DB.guests)?DB.guests:[];const fresh=staged.filter(g=>!existing.some(x=>matches(x,g)));const skipped=staged.length-fresh.length;
+ if(!fresh.length){toast('No new guests. All rows matched existing guests.');return}
+ if(!confirm('Import '+fresh.length+' new guest records from '+xlsxImportFileName+' / '+window.__aureliaXlsxCurrentSheet+'? '+skipped+' existing guest matches will be skipped. No existing records will be overwritten.'))return;
+ const candidate=structuredClone(DB);candidate.guests=Array.isArray(candidate.guests)?candidate.guests:[];
+ const batch='xlsx_'+Date.now();for(const g of fresh)candidate.guests.push({id:'g'+Date.now()+Math.random().toString(36).slice(2,9),name:g.name,phone:g.phone,email:g.email,idType:g.idType,idNumber:g.idNumber,address:g.address,occupants:[],vehicles:[],idPhoto:''});
+ candidate.audit=Array.isArray(candidate.audit)?candidate.audit:[];candidate.audit.push({id:'a'+Date.now(),action:'Excel guest import',detail:fresh.length+' guests from '+xlsxImportFileName+' / '+window.__aureliaXlsxCurrentSheet+'; '+skipped+' duplicate matches skipped',at:new Date().toISOString()});
+ try{aureliaStorage.setItem('aurelia_pms_v3',JSON.stringify(candidate));await window.aureliaWaitForSecureSave?.();Object.keys(DB).forEach(k=>delete DB[k]);Object.assign(DB,candidate);closeModal();setupNav();refreshBrand();showPage('guests');toast('Imported '+fresh.length+' guests. '+skipped+' existing matches skipped.')}catch(e){toast('Import was not committed because encrypted storage save failed. Keep the app open and retry.')}
+}
+function setupNav(){
 function setupNav(){
  const side=document.getElementById('sideNav'); side.innerHTML=MODULES.map(([id,n])=>`<button data-nav="${id}" onclick="showPage('${id}')">${n}</button>`).join('');
  document.getElementById('moreMenu').innerHTML=MODULES.map(([id,n])=>`<button onclick="showPage('${id}');toggleMore()">${n}</button>`).join('');
@@ -873,7 +931,7 @@ function pagesImportExport(){
     <div id="importInfo" class="muted" style="margin-top:12px">Select a file to inspect before importing.</div>
    </div>
    <div class="actions" style="margin-top:12px"><button class="btn" onclick="importSelected()">Import into PMS</button><button class="btn danger" onclick="document.getElementById('importFile').value='';document.getElementById('importInfo').textContent='Select a file to inspect before importing.'">Clear</button></div>
-   <div class="muted" style="margin-top:10px">JSON import is fully handled by this prototype. Binary PDF/XLSX/image parsing requires the Flutter production import adapters.</div>
+   <div class="muted" style="margin-top:10px">Excel .xlsx imports support worksheet selection, flexible column mapping, preview, duplicate skipping and encrypted save. Embedded photos and legacy .xls are not imported.</div>
   </section>
  </div>
  <section class="card" style="margin-top:16px"><div class="section-title"><h2>Single guest export</h2></div><div class="row"><select id="guestExportSelect" style="min-width:240px;padding:11px;border:1px solid var(--line);border-radius:12px"><option value="">Select guest</option>${DB.guests.map(g=>`<option value="${g.id}">${esc(g.name)} · ${esc(g.phone||'')}</option>`).join('')}</select><button class="btn" onclick="exportGuestSelected()">Choose format & export</button></div></section><section class="card" style="margin-top:16px"><div class="section-title"><h2>Local backup & restore</h2></div><p class="muted">Create a passphrase-encrypted backup or restore one. Keep the passphrase separately; restoring replaces current local records.</p><div class="actions"><button class="btn primary" onclick="aureliaNativeExportEncryptedBackup()">Export encrypted backup</button><button class="btn" onclick="document.getElementById('aureliaEncryptedRestoreFile').click()">Restore encrypted backup</button><input id="aureliaEncryptedRestoreFile" type="file" accept=".aurelia,.json,application/json" hidden onchange="aureliaNativeRestoreEncryptedBackup(event)"></div><div class="muted" id="aureliaBackupStatus" role="status"></div></section>`;
