@@ -23,6 +23,9 @@ test('actual page router exposes separate hotel, restaurant, billing and setting
   ]) {
     assert.ok(html.includes(token), 'missing workflow token: ' + token);
   }
+  for (const token of ['exportEncryptedBackup', 'restoreEncryptedBackup']) {
+    assert.ok(dart.includes(token), 'missing native backup workflow: ' + token);
+  }
   assert.match(html, /function pagesSettingsNew\(\)/);
   assert.match(html, /food-only|food items|guest room/i);
 });
@@ -54,7 +57,7 @@ test('internet and AI controls are ordered, persisted, and fail back offline', (
     assert.ok(html.includes(token), 'missing connectivity/AI UI safeguard: ' + token);
   }
   for (const token of ['aureliaAiQuery', 'aurelia_ai_gateway_token_v1',
-    'No PMS data was uploaded', 'HttpHeaders.authorizationHeader']) {
+    'never guest records or billing data', 'HttpHeaders.authorizationHeader']) {
     assert.ok(dart.includes(token), 'missing native AI safeguard: ' + token);
   }
   assert.match(html, /Local-only mode · cloud sync not configured/);
