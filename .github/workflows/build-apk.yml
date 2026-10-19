@@ -50,7 +50,7 @@ jobs:
           import re, subprocess, tempfile
           html = Path('assets/index.html')
           text = html.read_text(encoding='utf-8')
-          patches = [('scripts/interaction_reliability.js', 'aurelia-interaction-reliability-patch'), ('scripts/file_viewing.js', 'aurelia-file-viewing-patch')]
+          patches = [('scripts/interaction_reliability.js', 'aurelia-interaction-reliability-patch'), ('scripts/file_viewing.js', 'aurelia-file-viewing-patch'), ('scripts/luxury_polish.js', 'aurelia-luxury-polish-patch')]
           for source_path, patch_id in patches:
               source = Path(source_path).read_text(encoding='utf-8')
               tag = '<script id="' + patch_id + '">\n' + source + '\n</script>'
@@ -134,7 +134,7 @@ jobs:
           from pathlib import Path
           html = Path('assets/index.html')
           text = html.read_text(encoding='utf-8')
-          patches = [('scripts/interaction_reliability.js', 'aurelia-interaction-reliability-patch'), ('scripts/file_viewing.js', 'aurelia-file-viewing-patch')]
+          patches = [('scripts/interaction_reliability.js', 'aurelia-interaction-reliability-patch'), ('scripts/file_viewing.js', 'aurelia-file-viewing-patch'), ('scripts/luxury_polish.js', 'aurelia-luxury-polish-patch')]
           for source_path, patch_id in patches:
               source = Path(source_path).read_text(encoding='utf-8')
               tag = '<script id="' + patch_id + '">\n' + source + '\n</script>'
