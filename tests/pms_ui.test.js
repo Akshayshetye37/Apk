@@ -75,13 +75,13 @@ test('health check is read-only until confirmed and repair preserves existing re
   const end = html.indexOf('\nwindow.__AURELIA_AI_CONFIG=', start);
   assert.ok(start >= 0 && end > start, 'health-check implementation must be discoverable');
   const source = html.slice(start, end);
-  async function harness({db, confirmResult = false, saveThrows = false}) {
+  async function harness({db, confirmResult = false, saveThrows = false, secureSaveFails = false}) {
     const report = {textContent: '', style: {}};
     const auditEvents = [];
     const context = {
       DB: db,
       document: {getElementById: id => id === 'aureliaHealthReport' ? report : null},
-      window: {confirm: () => confirmResult},
+      window: {confirm: () => confirmResult, aureliaWaitForSecureSave: async () => { if (secureSaveFails) throw new Error('simulated encrypted save failure'); }},
       audit: (...args) => auditEvents.push(args),
       save: () => { if (saveThrows) throw new Error('simulated save failure'); },
       String,
@@ -108,7 +108,7 @@ test('health check is read-only until confirmed and repair preserves existing re
   assert.equal(missing.guests[0], existingGuest, 'existing guest object must be retained');
 
   const failed = {rooms: [], guests: [existingGuest], bookings: []};
-  const failedResult = await harness({db: failed, confirmResult: true, saveThrows: true});
+  const failedResult = await harness({db: failed, confirmResult: true, secureSaveFails: true});
   assert.equal(Object.hasOwn(failed, 'inventory'), false, 'failed save must roll back newly added collections');
   assert.equal(failed.guests[0], existingGuest, 'failed repair must preserve guest records');
   assert.match(failedResult.report.textContent, /Safe repair failed/);
