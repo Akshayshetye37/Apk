@@ -1,0 +1,11 @@
+name = "aurelia-ai-gateway"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[vars]
+OPENAI_MODEL = "gpt-4.1-mini"
+
+# Configure secrets after creating the Worker:
+#   npx wrangler secret put OPENAI_API_KEY
+#   npx wrangler secret put AURELIA_GATEWAY_TOKEN
