@@ -1896,7 +1896,7 @@ function saveAureliaAiGateway(){
   if(tokenInput)tokenInput.value='';
   toast('AI gateway setting saved');
 }
-function runAureliaHealthCheck(){
+async function runAureliaHealthCheck(){
   const report=document.getElementById('aureliaHealthReport');
   if(!report)return;
   if(!DB||typeof DB!=='object'||Array.isArray(DB)){
@@ -1931,6 +1931,7 @@ function runAureliaHealthCheck(){
   try{
     missing.forEach(key=>{if(!Object.prototype.hasOwnProperty.call(DB,key)){DB[key]=[];added.push(key);}});
     save();
+    if(typeof window.aureliaWaitForSecureSave==='function') await window.aureliaWaitForSecureSave();
   }catch(error){
     added.forEach(key=>{try{delete DB[key];}catch(_){}});
     report.textContent='Safe repair failed. Newly-added empty lists were removed from memory; existing records were preserved. Details: '+String(error);
