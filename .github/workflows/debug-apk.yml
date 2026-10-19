@@ -63,6 +63,11 @@ jobs:
           PY
       - name: Resolve Flutter dependencies
         run: flutter pub get
+      - name: Remove generated placeholder widget test
+        run: |
+          if ! git ls-files --error-unmatch test/widget_test.dart >/dev/null 2>&1; then
+            rm -f test/widget_test.dart
+          fi
       - name: Analyze Flutter source
         run: flutter analyze --fatal-infos
       - name: Run backup import regression tests
