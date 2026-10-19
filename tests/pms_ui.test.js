@@ -131,7 +131,7 @@ test('Settings do not expose duplicate browser PIN/biometric controls or online 
   // Native app-lock gate remains implemented separately and is not removed with
   // these obsolete in-WebView controls.
   assert.doesNotMatch(dart, /PmsAccessGate|_unlockAndLoad|_unlocked/);
-  assert.doesNotMatch(dart, /getAuthPreferences|setBiometricEnabled|setPinEntryEnabled|setAppProtection|LocalAuthentication|local_auth/);
+  assert.doesNotMatch(dart, /getAuthPreferences|setBiometricEnabled|setPinEntryEnabled|setAppProtection|LocalAuthentication|local_auth|aureliaNativePinEntrySettingResult|aureliaNativeBiometricSettingResult/);
 });
 
 
