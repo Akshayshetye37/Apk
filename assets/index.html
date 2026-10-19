@@ -1804,13 +1804,13 @@ function pagesSettingsNew(){
       <div class="field full"><label>Connection status</label><input value="Not configured" readonly></div>
       <div class="field full"><label>Backup method</label><input value="Offline device export / import" readonly></div>
       <span class="audit-chip">Local-only mode · cloud sync not configured</span>
-      <p class="muted">When implemented, this section will support account connection and encrypted backup transfer. Do not assume cloud copies exist until the status explicitly confirms a successful backup.</p>
+      <p class="muted">Google Drive sync is disabled in this Android build. No cloud upload or remote restore is available. Continue using encrypted local export/import; do not assume any cloud backup exists.</p>
     </section>
     <section class="card" id="aureliaConnectivityAiCard">
       <div class="section-title"><h2>Internet & AI automation</h2><span class="audit-chip">Offline-first</span></div>
       <p class="muted">Choose whether Aurelia may use online features. Room operations, billing and saved records must continue to work locally when internet is disabled or unavailable.</p>
-      <div class="feature-row"><label><span><b>Internet access for online features</b><small class="muted" style="display:block">Controls app-level online integrations; it does not switch off Android Wi-Fi/mobile data.</small></span><input id="aureliaInternetToggle" type="checkbox" ${DB.settings.internetEnabled!==false?"checked":""} onchange="setAureliaConnectivityOption('internetEnabled',this.checked)"></label><small id="aureliaInternetState">${DB.settings.internetEnabled!==false?"Enabled":"Disabled"}</small></div>
-      <div class="feature-row"><label><span><b>AI automation</b><small class="muted" style="display:block">Diagnostics, safe repairs and optional online AI assistance.</small></span><input id="aureliaAiToggle" type="checkbox" ${DB.settings.aiEnabled!==false?"checked":""} onchange="setAureliaConnectivityOption('aiEnabled',this.checked)"></label><small id="aureliaAiState">${DB.settings.aiEnabled!==false?"Enabled":"Disabled"}</small></div>
+      <div class="feature-row"><label><span><b>Internet access for online features</b><small class="muted" style="display:block">Controls app-level online integrations; it does not switch off Android Wi-Fi/mobile data.</small></span><input id="aureliaInternetToggle" type="checkbox" ${DB.settings.internetEnabled===true?"checked":""} onchange="setAureliaConnectivityOption('internetEnabled',this.checked)"></label><small id="aureliaInternetState">${DB.settings.internetEnabled===true?"Enabled":"Disabled"}</small></div>
+      <div class="feature-row"><label><span><b>AI automation</b><small class="muted" style="display:block">Diagnostics, safe repairs and optional online AI assistance.</small></span><input id="aureliaAiToggle" type="checkbox" ${DB.settings.aiEnabled===true?"checked":""} onchange="setAureliaConnectivityOption('aiEnabled',this.checked)"></label><small id="aureliaAiState">${DB.settings.aiEnabled===true?"Enabled":"Disabled"}</small></div>
       <div class="field full" style="margin-top:12px"><label for="aureliaAiGatewayUrl">Secure AI gateway URL (optional)</label><input id="aureliaAiGatewayUrl" type="url" inputmode="url" placeholder="https://your-secure-ai-gateway.example/api/chat" value="${esc(DB.settings.aiGatewayUrl||"")}"><small class="muted">Use your own authenticated HTTPS backend. Never paste a provider API key here or embed one in the APK. Without a configured gateway, Aurelia uses built-in offline guidance and diagnostics.</small></div>
       <div class="field full" style="margin-top:10px"><label for="aureliaAiGatewayToken">Gateway access token (optional)</label><input id="aureliaAiGatewayToken" type="password" autocomplete="new-password" placeholder="Stored in Android secure storage, never in PMS database"><small class="muted">Use a short-lived or revocable token for your own backend. Never enter a raw model-provider key into a third-party endpoint.</small></div>
       <div class="actions" style="margin-top:10px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="saveAureliaAiGateway()">Save AI gateway</button><button class="btn" type="button" onclick="runAureliaHealthCheck()">Run health check & safe repair</button></div>
@@ -1870,7 +1870,7 @@ function setAureliaConnectivityOption(key,on){
   try{save();}catch(e){console.error('[AURELIA HEALTH] Could not save connectivity setting',e);toast('Setting could not be saved. Check local storage.');return;}
   const state=document.getElementById(key==='internetEnabled'?'aureliaInternetState':'aureliaAiState');
   if(state)state.textContent=on?'Enabled':'Disabled';
-  window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled!==false,aiEnabled:DB.settings.aiEnabled!==false,aiGatewayUrl:DB.settings.aiGatewayUrl||''};
+  window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled===true,aiEnabled:DB.settings.aiEnabled===true,aiGatewayUrl:DB.settings.aiGatewayUrl||''};
   window.__AURELIA_INTERNET_ENABLED=window.__AURELIA_AI_CONFIG.internetEnabled;
   audit('Connectivity setting changed',key+': '+(on?'enabled':'disabled'));
   toast((key==='internetEnabled'?'Internet features':'AI automation')+' '+(on?'enabled':'disabled'));
@@ -1881,7 +1881,7 @@ function saveAureliaAiGateway(){
   if(value && (!/^https:\/\//i.test(value)||/[\s<>]/.test(value))){if(note)note.textContent='Use a valid HTTPS URL. HTTP endpoints are rejected for security.';return;}
   DB.settings=DB.settings||{};DB.settings.aiGatewayUrl=value;
   try{save();}catch(e){if(note)note.textContent='Could not save the gateway setting locally.';return;}
-  window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled!==false,aiEnabled:DB.settings.aiEnabled!==false,aiGatewayUrl:value};
+  window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled===true,aiEnabled:DB.settings.aiEnabled===true,aiGatewayUrl:value};
   const tokenInput=document.getElementById('aureliaAiGatewayToken');
   const token=(tokenInput?.value||'').trim();
   if(window.AureliaNative&&typeof window.AureliaNative.postMessage==='function'){
@@ -1897,25 +1897,53 @@ function saveAureliaAiGateway(){
   toast('AI gateway setting saved');
 }
 function runAureliaHealthCheck(){
-  const report=document.getElementById('aureliaHealthReport');if(!report)return;
-  const issues=[],repairs=[];
-  if(!DB||typeof DB!=='object'||Array.isArray(DB)){report.textContent='Health check stopped: the database root is invalid. No automatic replacement was made.';return;}
-  DB.settings=DB.settings&&typeof DB.settings==='object'&&!Array.isArray(DB.settings)?DB.settings:{};
-  const arrays=['rooms','guests','bookings','reservations','inventory','expenses','audit','invoices','inventoryLedger','restaurantSales','paymentSignals'];
-  arrays.forEach(k=>{if(!Array.isArray(DB[k])){DB[k]=[];repairs.push('Restored missing collection structure: '+k);}});
-  DB.settings.features=DB.settings.features&&typeof DB.settings.features==='object'&&!Array.isArray(DB.settings.features)?DB.settings.features:{};
-  DB.settings.featureTree=DB.settings.featureTree&&typeof DB.settings.featureTree==='object'&&!Array.isArray(DB.settings.featureTree)?DB.settings.featureTree:{};
-  DB.seq=DB.seq&&typeof DB.seq==='object'?DB.seq:{booking:1000,reservation:0,invoice:1,expense:1};
-  ['rooms','guests','bookings','reservations','inventory','invoices','restaurantSales'].forEach(k=>{
-    const seen=new Set();(DB[k]||[]).forEach((row,i)=>{if(!row||typeof row!=='object'){issues.push(k+' contains a non-object row at position '+(i+1));return;}const id=row.id??row.sr??row.code;if(id!==undefined&&id!==null&&String(id)!==''){const key=String(id);if(seen.has(key))issues.push(k+' has duplicate identifier '+key);seen.add(key);}});
+  const report=document.getElementById('aureliaHealthReport');
+  if(!report)return;
+  if(!DB||typeof DB!=='object'||Array.isArray(DB)){
+    report.textContent='Health check stopped: the database root is invalid. No data changed.';
+    return;
+  }
+  const collections=['rooms','guests','bookings','reservations','inventory','expenses','audit','invoices','inventoryLedger','restaurantSales','paymentSignals'];
+  const missing=[],malformed=[],duplicates=[];
+  collections.forEach(key=>{
+    if(!Object.prototype.hasOwnProperty.call(DB,key)){missing.push(key);return;}
+    if(!Array.isArray(DB[key])){malformed.push(key+' exists but is not a list; left unchanged');return;}
+    const seen=new Set();
+    DB[key].forEach((row,index)=>{
+      if(!row||typeof row!=='object'||Array.isArray(row)){malformed.push(key+' has a malformed record at position '+(index+1)+'; left unchanged');return;}
+      const raw=row.id??row.sr??row.code;
+      if(raw===undefined||raw===null||String(raw).trim()==='')return;
+      const id=String(raw).trim();
+      if(seen.has(id))duplicates.push(key+' has duplicate identifier '+id);
+      seen.add(id);
+    });
   });
-  try{save();}catch(e){issues.push('Could not persist repaired schema: '+String(e));}
-  const summary='Health check completed. Safe structural repairs: '+(repairs.length?repairs.join('; '):'none needed')+'. Findings: '+(issues.length?issues.join('; '):'no duplicate identifiers or malformed rows detected')+'. Financial records were not deleted, merged, or rewritten.';
-  report.textContent=summary;report.style.color=issues.length?'#9a5b20':'#2e7152';
-  try{audit('PMS health check',summary);}catch(_){}
+  if(Object.prototype.hasOwnProperty.call(DB,'settings')&&(!DB.settings||typeof DB.settings!=='object'||Array.isArray(DB.settings)))malformed.push('settings is malformed; left unchanged');
+  const preview=['Health check preview. No records have been changed.',missing.length?'Missing collection lists: '+missing.join(', '):'All expected collection lists exist.'];
+  if(malformed.length)preview.push('Malformed structures/records: '+malformed.join('; '));
+  if(duplicates.length)preview.push('Duplicate identifiers: '+duplicates.join('; '));
+  preview.push('Repair may add only absent empty collection lists after confirmation. It will not replace malformed data, merge duplicates, or rewrite financial/guest records.');
+  report.textContent=preview.join(' ');
+  report.style.color=(missing.length||malformed.length||duplicates.length)?'#9a5b20':'#2e7152';
+  if(!missing.length){try{audit('PMS health check',preview.join(' '));}catch(_){}return;}
+  if(!window.confirm('Create only the missing empty collection lists? Existing records and malformed sections will remain unchanged.')){report.textContent=preview.join(' ')+' Repair cancelled; no data changed.';return;}
+  const added=[];
+  try{
+    missing.forEach(key=>{if(!Object.prototype.hasOwnProperty.call(DB,key)){DB[key]=[];added.push(key);}});
+    save();
+  }catch(error){
+    added.forEach(key=>{try{delete DB[key];}catch(_){}});
+    report.textContent='Safe repair failed. Newly-added empty lists were removed from memory; existing records were preserved. Details: '+String(error);
+    report.style.color='#a8443d';
+    try{audit('PMS health repair failed',String(error).slice(0,180));}catch(_){}
+    return;
+  }
+  const result='Safe repair applied: added empty collection lists '+(added.join(', ')||'(none)')+'. Existing records, malformed sections, and duplicate IDs were not modified.';
+  report.textContent=result+(malformed.length?' Findings requiring manual review: '+malformed.join('; '):'')+(duplicates.length?' Duplicate IDs requiring manual review: '+duplicates.join('; '):'');
+  report.style.color=(malformed.length||duplicates.length)?'#9a5b20':'#2e7152';
+  try{audit('PMS health repair',result);}catch(_){}
 }
-
-window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled!==false,aiEnabled:DB.settings.aiEnabled!==false,aiGatewayUrl:DB.settings.aiGatewayUrl||''};
+window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled===true,aiEnabled:DB.settings.aiEnabled===true,aiGatewayUrl:DB.settings.aiGatewayUrl||''};
 window.__AURELIA_INTERNET_ENABLED=window.__AURELIA_AI_CONFIG.internetEnabled;
 (function installAureliaNetworkGate(){
  if(window.__aureliaNetworkGateInstalled)return;window.__aureliaNetworkGateInstalled=true;
