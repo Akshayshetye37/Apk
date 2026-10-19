@@ -137,6 +137,9 @@ test('Settings do not expose duplicate browser PIN/biometric controls or online 
   assert.doesNotMatch(html, /Backup & device security|PIN recovery \/ device authentication|Enable device biometric|Test device biometric|Set \/ reset PIN/);
   assert.doesNotMatch(html, /aureliaConnectivityAiCard|Secure AI gateway URL|Gateway access token|Online AI gateway:/);
   assert.doesNotMatch(dart, /unawaited\(_installAureliaAssistant\(\)\)/);
+  assert.doesNotMatch(dart, /Online AI is not configured\. Add your own authenticated HTTPS gateway in Settings/);
+  assert.match(html, /id="aureliaDataIntegrityCard"/);
+  assert.match(html, /onclick="runAureliaHealthCheck\(\)"/);
   // Native app-lock gate remains implemented separately and is not removed with
   // these obsolete in-WebView controls.
   const gate = fs.readFileSync(path.join(__dirname, '..', 'lib', 'pms_access_gate.dart'), 'utf8');
