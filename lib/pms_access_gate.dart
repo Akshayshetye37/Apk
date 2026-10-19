@@ -68,7 +68,7 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
   Future<void> _initialize() async {
     try {
       final biometricPreference = await widget.readSecret('aurelia_pms_biometric_enabled_v1');
-      final pinEntryPreference = await widget.readSecret('aurelia_pms_pin_entry_enabled_v1');
+      var pinEntryPreference = await widget.readSecret('aurelia_pms_pin_entry_enabled_v1');
       // Fail closed: authentication is mandatory on every launch. Missing or
       // disabled preferences must never bypass the native access gate. A fresh
       // installation must configure a PIN before the PMS WebView is loaded.
@@ -83,6 +83,13 @@ class _PmsAccessGateState extends State<PmsAccessGate> {
       try {
         deviceAuth = await _localAuth.isDeviceSupported();
       } catch (_) {}
+      // Persist the safe default so Settings and the actual gate cannot disagree.
+      // PIN must remain enabled unless a supported device-auth method is enabled.
+      if (pinEntryPreference != 'true' &&
+          (biometricPreference != 'true' || !deviceAuth)) {
+        await widget.writeSecret('aurelia_pms_pin_entry_enabled_v1', 'true');
+        pinEntryPreference = 'true';
+      }
       if (!mounted) return;
       setState(() {
         _configured = salt != null && hash != null;
