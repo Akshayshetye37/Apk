@@ -57,13 +57,30 @@ class XlsxWorkbookReader {
     return parts.join('/');
   }
 
+  /// Detect legacy .xls / encrypted OLE files from their signature, not extension.
+  static void sniff(Uint8List bytes) {
+    if (bytes.length >= 4 && bytes[0] == 0xD0 && bytes[1] == 0xCF &&
+        bytes[2] == 0x11 && bytes[3] == 0xE0) {
+      throw const XlsxImportException(
+        'This looks like an old Excel (.xls) file or a password-protected workbook. '
+        'Open it in Excel and use File → Save As → Excel Workbook (.xlsx). '
+        'If it has a password, remove it first. On a phone, open it in Google Sheets, '
+        'then Share & export → Save as Excel (.xlsx).',
+      );
+    }
+    if (bytes.length < 4 || bytes[0] != 0x50 || bytes[1] != 0x4B) {
+      throw const XlsxImportException(
+        'This file is not an .xlsx workbook. Save it as Excel Workbook (.xlsx). '
+        'CSV is data-only and does not preserve photos.',
+      );
+    }
+  }
+
   static XlsxWorkbookReader open(Uint8List bytes) {
     if (bytes.isEmpty || bytes.length > maxInputBytes) {
       throw const XlsxImportException('Workbook is empty or exceeds the 25 MB limit.');
     }
-    if (bytes.length < 4 || bytes[0] != 0x50 || bytes[1] != 0x4b) {
-      throw const XlsxImportException('This is not an .xlsx ZIP workbook. Legacy .xls is unsupported.');
-    }
+    sniff(bytes);
     final Archive archive;
     try {
       archive = ZipDecoder().decodeBytes(bytes, verify: true);
@@ -193,4 +210,157 @@ class XlsxWorkbookReader {
     }
     return result;
   }
+
+  /// Extract photos attached to worksheet rows via floating drawing anchors
+  /// and Excel richData "Place in Cell" representation. Row numbers are
+  /// one-based physical Excel row numbers, including the header row.
+  Map<int, Uint8List> photosForSheet(int index, List<String> warnings) {
+    if (index < 0 || index >= sheets.length) throw const XlsxImportException('Invalid worksheet selection.');
+    final path = sheets[index].path;
+    final file = _files[path];
+    if (file == null) return {};
+    final sheet = XmlDocument.parse(utf8.decode(file.content as List<int>));
+    final floating = _floatingImages(path, warnings);
+    final inCell = _inCellImages(sheet, warnings);
+    final merged = <int, Uint8List>{...floating};
+    for (final entry in inCell.entries) {
+      if (merged.containsKey(entry.key)) {
+        warnings.add('multiple_photos_ambiguous:${entry.key}');
+      } else {
+        merged[entry.key] = entry.value;
+      }
+    }
+    return merged;
+  }
+
+  Map<int, Uint8List> _floatingImages(String sheetPath, List<String> warnings) {
+    final slash = sheetPath.lastIndexOf('/');
+    final directory = sheetPath.substring(0, slash);
+    final fileName = sheetPath.substring(slash + 1);
+    final relsFile = _files['$directory/_rels/$fileName.rels'];
+    if (relsFile == null) return {};
+    XmlDocument parseFile(ArchiveFile source) => XmlDocument.parse(utf8.decode(source.content as List<int>));
+    try {
+      final rels = parseFile(relsFile);
+      final drawingRel = _all(rels, 'Relationship').where(
+        (r) => (_attr(r, 'Type') ?? '').endsWith('/drawing'),
+      ).firstOrNull;
+      final target = drawingRel == null ? null : _attr(drawingRel, 'Target');
+      if (target == null) return {};
+      final drawingPath = _resolve(directory, target);
+      final drawingFile = _files[drawingPath];
+      if (drawingFile == null) { warnings.add('drawing_missing:$drawingPath'); return {}; }
+      final drawing = parseFile(drawingFile);
+      final drawSlash = drawingPath.lastIndexOf('/');
+      final drawDir = drawingPath.substring(0, drawSlash);
+      final drawName = drawingPath.substring(drawSlash + 1);
+      final drawingRelsFile = _files['$drawDir/_rels/$drawName.rels'];
+      final mediaTargets = <String, String>{};
+      if (drawingRelsFile != null) {
+        for (final rel in _all(parseFile(drawingRelsFile), 'Relationship')) {
+          final id = _attr(rel, 'Id'), relTarget = _attr(rel, 'Target');
+          if (id != null && relTarget != null) mediaTargets[id] = relTarget;
+        }
+      }
+      final out = <int, Uint8List>{};
+      for (final anchor in _all(drawing, 'oneCellAnchor').followedBy(_all(drawing, 'twoCellAnchor'))) {
+        final from = _kids(anchor, 'from').firstOrNull;
+        final zeroRow = int.tryParse(from == null ? '' : _kids(from, 'row').firstOrNull?.innerText ?? '');
+        final blip = _all(anchor, 'blip').firstOrNull;
+        final embed = blip == null ? null : _attr(blip, 'embed');
+        if (zeroRow == null || embed == null) { warnings.add('floating_photo_anchor_unreadable'); continue; }
+        final row = zeroRow + 1;
+        final mediaTarget = mediaTargets[embed];
+        if (mediaTarget == null) { warnings.add('floating_photo_relationship_missing:$row'); continue; }
+        final mediaPath = _resolve(drawDir, mediaTarget);
+        final media = _files[mediaPath];
+        if (media == null) { warnings.add('floating_photo_media_missing:$row'); continue; }
+        final image = _supportedImage(mediaPath, media, row, warnings);
+        if (image == null) continue;
+        if (out.containsKey(row)) { warnings.add('multiple_photos_ambiguous:$row'); } else { out[row] = image; }
+      }
+      return out;
+    } catch (_) {
+      warnings.add('floating_photo_layout_unreadable');
+      return {};
+    }
+  }
+
+  Map<int, Uint8List> _inCellImages(XmlDocument sheet, List<String> warnings) {
+    const required = ['xl/metadata.xml', 'xl/richData/rdrichvalue.xml',
+      'xl/richData/rdrichvaluestructure.xml', 'xl/richData/richValueRel.xml',
+      'xl/richData/_rels/richValueRel.xml.rels'];
+    if (!required.every(_files.containsKey)) return {};
+    try {
+      XmlDocument read(String path) => XmlDocument.parse(utf8.decode(_files[path]!.content as List<int>));
+      final relationshipTargets = <String, String>{};
+      for (final rel in _all(read(required[4]), 'Relationship')) {
+        final id = _attr(rel, 'Id'), target = _attr(rel, 'Target');
+        if (id != null && target != null) relationshipTargets[id] = target;
+      }
+      final relIds = [for (final rel in _all(read(required[3]), 'rel')) _attr(rel, 'id')];
+      final linkPositions = <int>[];
+      for (final structure in _all(read(required[2]), 's')) {
+        linkPositions.add(_kids(structure, 'k').map((k) => _attr(k, 'n')).toList().indexOf('_rvRel:LocalImageIdentifier'));
+      }
+      final richValueToRel = <int>[];
+      for (final value in _all(read(required[1]), 'rv')) {
+        final structureIndex = int.tryParse(_attr(value, 's') ?? '') ?? -1;
+        final values = _kids(value, 'v').toList();
+        final position = structureIndex >= 0 && structureIndex < linkPositions.length ? linkPositions[structureIndex] : -1;
+        richValueToRel.add(position >= 0 && position < values.length ? int.tryParse(values[position].innerText) ?? -1 : -1);
+      }
+      final metadata = read(required[0]);
+      final futureValues = <int>[];
+      for (final future in _all(metadata, 'futureMetadata').where((e) => _attr(e, 'name') == 'XLRICHVALUE')) {
+        for (final block in _kids(future, 'bk')) {
+          final rvb = _all(block, 'rvb').firstOrNull;
+          futureValues.add(int.tryParse(rvb == null ? '' : _attr(rvb, 'i') ?? '') ?? -1);
+        }
+      }
+      final valueMetadata = _all(metadata, 'valueMetadata').firstOrNull;
+      if (valueMetadata == null) return {};
+      final valueIndexes = <int>[];
+      for (final block in _kids(valueMetadata, 'bk')) {
+        final rc = _all(block, 'rc').firstOrNull;
+        valueIndexes.add(int.tryParse(rc == null ? '' : _attr(rc, 'v') ?? '') ?? -1);
+      }
+      final out = <int, Uint8List>{};
+      for (final cell in _all(sheet, 'c')) {
+        final vm = int.tryParse(_attr(cell, 'vm') ?? '');
+        if (vm == null) continue;
+        final row = int.tryParse(RegExp(r'\d+').firstMatch(_attr(cell, 'r') ?? '')?.group(0) ?? '');
+        if (row == null) { warnings.add('in_cell_photo_unreadable:unknown_row'); continue; }
+        try {
+          final futureIndex = valueIndexes[vm - 1];
+          final richIndex = futureValues[futureIndex];
+          final relIndex = richValueToRel[richIndex];
+          final relId = relIds[relIndex];
+          final mediaPath = _resolve('xl/richData/', relationshipTargets[relId]!);
+          final media = _files[mediaPath]!;
+          final image = _supportedImage(mediaPath, media, row, warnings);
+          if (image == null) continue;
+          if (out.containsKey(row)) { warnings.add('multiple_photos_ambiguous:$row'); } else { out[row] = image; }
+        } catch (_) { warnings.add('in_cell_photo_unreadable:$row'); }
+      }
+      return out;
+    } catch (_) {
+      warnings.add('in_cell_photo_layout_unreadable');
+      return {};
+    }
+  }
+
+  Uint8List? _supportedImage(String path, ArchiveFile file, int row, List<String> warnings) {
+    final extension = path.split('.').last.toLowerCase();
+    if (!const {'png', 'jpg', 'jpeg'}.contains(extension)) { warnings.add('unsupported_image_format:$extension'); return null; }
+    if (file.size <= 0 || file.size > 8 * 1024 * 1024) { warnings.add('photo_size_invalid_or_too_large:$row'); return null; }
+    final bytes = Uint8List.fromList(file.content as List<int>);
+    final isPng = bytes.length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 &&
+      bytes[2] == 0x4e && bytes[3] == 0x47 && bytes[4] == 0x0d && bytes[5] == 0x0a &&
+      bytes[6] == 0x1a && bytes[7] == 0x0a;
+    final isJpeg = bytes.length >= 3 && bytes[0] == 0xff && bytes[1] == 0xd8 && bytes[2] == 0xff;
+    if (!isPng && !isJpeg) { warnings.add('photo_magic_bytes_invalid:$row'); return null; }
+    return bytes;
+  }
+
 }

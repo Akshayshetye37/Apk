@@ -41,8 +41,24 @@ void main() {
     expect(prefixed.readSheet(0), defaultNamespace.readSheet(0));
   });
 
-  test('rejects a non-ZIP legacy workbook', () {
-    expect(() => XlsxWorkbookReader.open(Uint8List.fromList([0xD0, 0xCF, 0x11, 0xE0])),
-        throwsA(isA<XlsxImportException>()));
+  test('detects legacy XLS by content signature', () {
+    expect(
+      () => XlsxWorkbookReader.open(Uint8List.fromList([0xD0, 0xCF, 0x11, 0xE0, 0x00])),
+      throwsA(isA<XlsxImportException>().having((e) => e.message, 'message', contains('password-protected'))),
+    );
+  });
+
+  test('an XLSX renamed to XLS is accepted by content signature', () {
+    final bytes = workbookBytes();
+    expect(bytes.take(2), [0x50, 0x4b]);
+    expect(() => XlsxWorkbookReader.open(bytes), returnsNormally);
+  });
+
+  test('an XLS renamed to XLSX is rejected by content signature', () {
+    final legacy = Uint8List.fromList([0xD0, 0xCF, 0x11, 0xE0, 0x00]);
+    expect(
+      () => XlsxWorkbookReader.open(legacy),
+      throwsA(isA<XlsxImportException>().having((e) => e.message, 'message', contains('old Excel (.xls)'))),
+    );
   });
 }
