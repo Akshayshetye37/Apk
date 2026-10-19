@@ -158,7 +158,7 @@ test('all rendered button elements have a wired click action and resolvable hand
       new RegExp('\\bfunction\\s+' + name + '\\s*\\(').test(sources) ||
       new RegExp('\\b(?:const|let|var)\\s+' + name + '\\s*=').test(sources) ||
       new RegExp('\\b' + name + '\\s*:\\s*function').test(sources) ||
-      sources.includes('window.' + name + ' =');
+      new RegExp('window\\.' + name + '\\s*=').test(sources);
     assert.ok(declared, 'button handler is not defined in bundled HTML or scripts: ' + name);
   }
   assert.doesNotMatch(html, /App security|Require PIN \/ device authentication/);
