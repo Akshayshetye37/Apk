@@ -717,8 +717,6 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           answer = _answerAureliaAssistant(question.trim());
           if (!internetEnabled) {
             answer += '\n\nInternet access for online features is disabled. No external request was made.';
-          } else {
-            answer += '\n\nOnline AI is not configured. Add your own authenticated HTTPS gateway in Settings to enable model-based responses.';
           }
         } else {
           final uri = Uri.tryParse(endpointValue.trim());
