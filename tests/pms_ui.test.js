@@ -169,4 +169,8 @@ test('PIN and biometric security are completely removed and theme is brown and g
   assert.doesNotMatch(html, /App security|Require PIN \/ device authentication|Backup & device security|PIN recovery|Enable device biometric|Test device biometric|aureliaPinInput|aureliaSetPin|aureliaEnrollBiometric|aureliaVerifyBiometric|aureliaConnectivityAiCard|Online AI is not configured|Google Drive backup/);
   assert.match(html, /--brand:#7a4b2a/);
   assert.match(html, /--brand2:#b8863b/);
+  assert.doesNotMatch(html, /--brand:#17483b|--brand2:#286b56|--brand:#1e5942/);
+  assert.doesNotMatch(html, /aureliaBackupSecurityPanel|aureliaBackupSettingsHTML|aureliaDriveAccessToken|aureliaConnectDrive|aureliaUploadDriveBackup|Google Drive sync target/);
+  assert.match(html, /Local backup & restore/);
+  assert.match(html, /aureliaNativeExportEncryptedBackup/);
 });
