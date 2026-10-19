@@ -158,7 +158,12 @@ test('all rendered button elements have a wired click action and resolvable hand
     const call = attribute[1].match(/^\\s*(?:return\\s+)?([A-Za-z_$][\\w$]*)\\s*\\(/);
     if (!call) continue;
     const name = call[1];
-    const declared = new RegExp('(?:function\\\\s+' + name + '\\\\s*\\\\(|(?:const|let|var)\\\\s+' + name + '\\\\s*=|window\\\\.' + name + '\\\\s*=|' + name + '\\\\s*:\\\\s*function)').test(html);
+    const declared =
+      html.includes('function ' + name + '(') ||
+      html.includes('function ' + name + ' (') ||
+      new RegExp('(?:const|let|var)\\s+' + name + '\\s*=').test(html) ||
+      html.includes('window.' + name + ' =') ||
+      html.includes(name + ': function');
     assert.ok(declared, 'button handler is not defined in bundled HTML: ' + name);
   }
   assert.doesNotMatch(html, /App security|Require PIN \/ device authentication/);
