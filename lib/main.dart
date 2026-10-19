@@ -935,17 +935,25 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         if (enabled && !deviceSupported) {
           throw const FormatException('This device does not support Android device authentication.');
         }
+        final pinEnabled = await AureliaSecureVault.readSecret('aurelia_pms_pin_entry_enabled_v1') == 'true';
+        if (!enabled && !pinEnabled) {
+          throw const FormatException('Keep PIN entry enabled before disabling the last supported unlock method.');
+        }
         await AureliaSecureVault.writeSecret('aurelia_pms_biometric_enabled_v1', enabled ? 'true' : 'false');
-        // PIN and biometric preferences are independent user choices. Disabling
-        // biometrics must not silently turn PIN entry on or alter its setting.
         await _controller.runJavaScript('window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
       if (value['type'] == 'setPinEntryEnabled') {
         final enabled = value['enabled'];
         if (requestId == null || enabled is! bool) throw const FormatException('PIN entry preference must be true or false.');
-        // PIN entry is independently optional. The access gate bypasses
-        // authentication only when both preferences are disabled.
+        final biometricEnabled = await AureliaSecureVault.readSecret('aurelia_pms_biometric_enabled_v1') == 'true';
+        if (!enabled && !biometricEnabled) {
+          final deviceSupported = await LocalAuthentication().isDeviceSupported();
+          if (!deviceSupported) {
+            throw const FormatException('Keep PIN entry enabled because no supported device-authentication method is configured.');
+          }
+          throw const FormatException('Enable device authentication before disabling PIN entry.');
+        }
         await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', enabled ? 'true' : 'false');
         await _controller.runJavaScript('window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},true,null);');
         return;
