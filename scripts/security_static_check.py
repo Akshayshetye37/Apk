@@ -28,6 +28,7 @@ if re.search(r'<script\b[^>]+src=["\']https?://', html, re.I) or not re.search(r
 if 'Pbkdf2(' not in main or 'exportEncryptedBackup' not in main or 'restoreEncryptedBackup' not in main: errors.append('Portable passphrase-encrypted backup/restore is missing.')
 if 'local_auth: 2.3.0' not in pub or 'FlutterFragmentActivity' not in activity or 'android.permission.USE_BIOMETRIC' not in manifest: errors.append('Native PIN/device authentication support is incomplete.')
 if '_lockUntilKey' not in gate or '310000' not in gate or 'didChangeAppLifecycleState' not in main: errors.append('PIN lockout or background-session locking is missing.')
+if "if (pinEntryPreference != 'true' && biometricPreference != 'true')" in gate or '_pinEntryEnabled = salt == null ||' not in gate: errors.append('Native access gate must fail closed and require first-run PIN setup when preferences are absent or disabled.')
 if 'PmsAccessGate' not in main or 'local_auth' not in gate: errors.append('Native PIN/device authentication gate is missing.')
 if "if (!enabled)" not in main or 'App protection cannot be disabled in this secure build.' not in main: errors.append('Native app protection must fail closed when web content requests disabling the lock.')
 if "if (enabled === false)" not in file_viewing or 'App protection cannot be disabled in this secure build.' not in file_viewing: errors.append('Web settings bridge must not expose an app-lock disable action.')
