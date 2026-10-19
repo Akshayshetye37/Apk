@@ -1,0 +1,105 @@
+name: Aurelia PMS Android Validation
+
+on:
+  push:
+    branches:
+      - fix/native-ocr-rebuild
+      - main
+  pull_request:
+    branches:
+      - fix/native-ocr-rebuild
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aurelia-android-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-build:
+    name: Validate source and build Android debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact source revision
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+
+      - name: Verify dependency lockfile is committed
+        shell: bash
+        run: |
+          test -f pubspec.lock
+          git ls-files --error-unmatch pubspec.lock
+
+      - name: Resolve Flutter dependencies without changing the lockfile
+        run: flutter pub get --enforce-lockfile
+
+      - name: Flutter static analysis
+        run: flutter analyze
+
+      - name: Flutter unit tests
+        run: flutter test
+
+      - name: JavaScript syntax checks
+        shell: bash
+        run: |
+          node --check backend/ai-gateway/worker.js
+          for file in scripts/*.js tests/*.js; do
+            node --check "$file"
+          done
+
+      - name: Run Node.js regression suite
+        run: node --test tests/*.test.js
+
+      - name: Run static security checks
+        run: python scripts/security_static_check.py
+
+      - name: Clean generated Flutter build outputs
+        run: flutter clean
+
+      - name: Restore locked Flutter dependencies after clean
+        run: flutter pub get --enforce-lockfile
+
+      - name: Build ARM Android debug APK
+        run: flutter build apk --debug --target-platform android-arm,android-arm64
+
+      - name: Verify APK artifact
+        shell: bash
+        run: |
+          test -s build/app/outputs/flutter-apk/app-debug.apk
+          sha256sum build/app/outputs/flutter-apk/app-debug.apk
+
+      - name: Upload debug APK for device validation
+        uses: actions/upload-artifact@v4
+        with:
+          name: aurelia-pms-debug-apk-${{ github.sha }}
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
