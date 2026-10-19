@@ -30,6 +30,10 @@
       html = html.replace(/<section class="card"[^>]*>\s*<div class="section-title"><h2>Backup & device security<\/h2>[\s\S]*?<\/section>/i, '');
       // Replace the non-functional placeholder with explicit configuration fields.
       html = html.replace(/<section class="card" id="aureliaDriveSettingsCard"[\s\S]*?<\/section>/i,
+        '<section class="card" id="aureliaDeviceBackupCard"><div class="section-title"><h2>Backup device</h2><span class="muted">Encrypted</span></div>' +
+        '<p class="muted">Choose a folder once. The app writes one encrypted backup file and overwrites it after each successful PMS data save. The app-private encrypted copy remains available too.</p>' +
+        '<div class="actions"><button class="btn" type="button" id="aureliaChooseDeviceBackupFolder">Choose folder</button><button class="btn primary" type="button" id="aureliaDeviceBackupNow">Backup now</button></div>' +
+        '<div id="aureliaDeviceBackupNote" class="aurelia-luxury-note" role="status" style="margin-top:10px">Folder not selected. Automatic folder backup starts after a folder is selected.</div></section>' +
         '<section class="card" id="aureliaDriveSetupCard"><div class="section-title"><h2>Google Drive backup</h2><span class="muted">Authorization setup</span></div>' +
         '<p class="muted">Connect only after a Google OAuth client is configured for this Android application. A folder ID alone does not grant access.</p>' +
         '<div class="field"><label>Google OAuth client ID</label><input id="aureliaGoogleClientId" autocomplete="off" placeholder="Your Google OAuth client ID" value="' + ((window.DB&&DB.settings&&DB.settings.googleClientId)||'') + '"></div>' +
@@ -45,6 +49,32 @@
   patchSettings();
   // Bind handlers after settings HTML has been rendered. Do not claim authorization
   // or upload success without a native OAuth implementation and verified Drive response.
+  window.aureliaNativeBackupFolderResult=function(id,ok,message){
+    const note=document.getElementById('aureliaDeviceBackupNote');
+    if(note)note.textContent=message|| (ok?'Backup folder selected.':'Folder selection cancelled.');
+    if(typeof window.toast==='function')window.toast(ok?'Device backup folder selected':(message||'Folder selection cancelled.'));
+  };
+  window.aureliaNativeDeviceBackupResult=function(id,ok,error){
+    const note=document.getElementById('aureliaDeviceBackupNote');
+    if(note)note.textContent=ok?'Encrypted device backup saved and existing file overwritten.':('Device backup failed: '+String(error||'Unknown error'));
+    if(typeof window.toast==='function')window.toast(ok?'Device backup updated':('Device backup failed: '+String(error||'')));
+  };
+  document.addEventListener('click',function(e){
+    const folder=e.target&&e.target.closest('#aureliaChooseDeviceBackupFolder');
+    const backup=e.target&&e.target.closest('#aureliaDeviceBackupNow');
+    if(folder||backup){
+      if(!window.AureliaNative||typeof window.AureliaNative.postMessage!=='function'){
+        const note=document.getElementById('aureliaDeviceBackupNote');
+        if(note)note.textContent='Folder backup is available in the installed Android app, not in a standalone browser preview.';
+        return;
+      }
+      const requestId=(folder?'folder_':'device_backup_')+Date.now();
+      window.AureliaNative.postMessage(JSON.stringify({type:folder?'chooseDeviceBackupFolder':'backupDeviceNow',requestId:requestId}));
+      const note=document.getElementById('aureliaDeviceBackupNote');
+      if(note)note.textContent=folder?'Choose a folder in Android’s folder picker…':'Saving the latest encrypted backup…';
+      return;
+    }
+  });
   document.addEventListener('click',function(e){
     const target=e.target&&e.target.closest('#aureliaDriveAuthorizeBtn,#aureliaDriveBackupNowBtn');
     if(!target)return;
