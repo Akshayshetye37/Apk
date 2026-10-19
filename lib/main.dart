@@ -460,7 +460,7 @@ class AureliaPmsApp extends StatelessWidget {
       title: 'Aurelia PMS',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF17365D)),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF38251D), secondary: const Color(0xFFD8B45C)),
         useMaterial3: true,
       ),
       home: const PmsWebViewPage(),
