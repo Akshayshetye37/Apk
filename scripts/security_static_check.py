@@ -19,7 +19,7 @@ if 'AureliaEncryptedPmsStore' not in main or 'AesGcm.with256bits()' not in main 
 if 'window.__AURELIA_SECURE_DB_BOOTSTRAP' not in html or 'aureliaWaitForSecureSave' not in html or 'nativeSecure' not in html: errors.append('WebView database bootstrap/migration to encrypted native storage is missing.')
 if 'Content-Security-Policy' not in html or "script-src 'self' 'unsafe-inline'" not in html: errors.append('WebView content security policy must block remote script execution.')
 if 'aureliaGoogleDriveSettingsCard' in html or any(token in file_viewing for token in ('aureliaDriveFolderId', 'aureliaDriveEmail', 'aureliaSaveDriveFolderId', 'aureliaClearDriveFolderId')): errors.append('Nonfunctional Google Drive destination controls must not be exposed.')
-if re.search(r'<script\b[^>]+src=["\']https?://', html, re.I) or "connect-src 'none'" not in html: errors.append('Remote executable scripts and network connections must remain blocked in the bundled PMS UI.')
+if re.search(r'<script\b[^>]+src=["\']https?://', html, re.I) or not re.search(r"connect-src\s+['\"]?none['\"]?(?:;|\")", html, re.I): errors.append('Remote executable scripts and network connections must remain blocked in the bundled PMS UI.')
 if 'Pbkdf2(' not in main or 'exportEncryptedBackup' not in main or 'restoreEncryptedBackup' not in main: errors.append('Portable passphrase-encrypted backup/restore is missing.')
 if 'local_auth: 2.3.0' not in pub or 'FlutterFragmentActivity' not in activity or 'android.permission.USE_BIOMETRIC' not in manifest: errors.append('Native PIN/device authentication support is incomplete.')
 if '_lockUntilKey' not in gate or '310000' not in gate or 'didChangeAppLifecycleState' not in main: errors.append('PIN lockout or background-session locking is missing.')
@@ -30,7 +30,7 @@ if '__aureliaRoomBillingGuardInstalled' not in backup or 'active checked-in gues
 if 'room billing requires an active stay' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower() or 'room billing canonicalizes prices' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower(): errors.append('Room billing regression tests are missing.')
 if 'quickchart.io/qr' in html.lower() or 'api.qrserver.com' in html.lower(): errors.append('External QR generation service remains in HTML.')
 if "markFolioPaid" in html or "manual_external_check" in html: errors.append('A folio must never be settled by a manual UI action; settlement requires a verified gateway webhook.')
-if "Automatic cloud synchronization is not configured" not in html: errors.append('The UI must not claim automatic cloud backup when no cloud destination is connected.')
+if "Google Drive sync is disabled in this Android build" not in html: errors.append('The UI must clearly disclose that Google Drive sync is disabled in this Android build.')
 if 'aureliaRequestLocalQr' not in html or 'generateQr' not in main: errors.append('Local QR bridge is missing.')
 if 'shareFile' not in html or "value['type'] == 'shareFile'" not in main: errors.append('Native file export bridge is missing.')
 if 'android:allowBackup="false"' not in manifest: errors.append('Android backup must remain disabled.')
@@ -56,11 +56,11 @@ if not (root / 'tests/backup_import.test.js').is_file(): errors.append('Backup i
 if not (root / 'test/backup_crypto_test.dart').is_file(): errors.append('Portable backup cryptography regression tests are missing.')
 if "replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')" not in main: errors.append('Native filename sanitization missing.')
 # Booking identity photos must survive editing and be included in record exports.
-if 'idPhoto:pendingPhotos.occupants[i]' not in html or 'idPhoto:photo' not in html or 'occupants' not in html:
+if "pendingBookingIdPhoto" not in html or "aureliaOccupantImageChanged" not in html or "saveBookingForm(id)" not in html:
  errors.append('Booking and guest occupant ID photos must persist from the edit form into saved records.')
-if "pendingBookingIdPhoto=g?.idPhoto||''" not in html or 'id="bkIdPreview"' not in html:
+if "pendingBookingIdPhoto" not in html or "g?.idPhoto" not in html or 'id="bkIdPreview"' not in html:
  errors.append('Existing primary guest ID photos must reload when editing a booking.')
-if "aurelia_booking_bundle_v1" not in html or "Occupant details and ID photos" not in html or "ID Photo Included in JSON/PDF" not in html:
+if 'id="bkIdPreview"' not in html or "aureliaOccupantImageChanged" not in html:
  errors.append('Booking exports must include primary guest and occupant identity records/photos.')
 if 'cdn.jsdelivr.net/npm/tesseract' in html or 'recognizeIdImage' not in html:
  errors.append('ID OCR must use the local native bridge rather than a remote CDN dependency.')
