@@ -128,7 +128,7 @@ class MainActivity : FlutterFragmentActivity() {
                                         }
                                     }
                                 }
-                                val target = existing ?: DocumentsContract.createDocument(contentResolver, treeUri, "application/octet-stream", name)
+                                val target = existing ?: DocumentsContract.createDocument(contentResolver, DocumentsContract.buildDocumentUriUsingTree(treeUri, treeId), "application/octet-stream", name)
                                     ?: throw IllegalStateException("Could not create backup file in the selected folder.")
                                 contentResolver.openOutputStream(target, "wt")?.use { it.write(bytes) }
                                     ?: throw IllegalStateException("Could not write the encrypted backup file.")
