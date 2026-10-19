@@ -49,22 +49,10 @@ test('payments require explicit verification and enforce amount bounds', () => {
   assert.doesNotMatch(html, /NotificationListenerService|READ_SMS|READ_NOTIFICATION/);
 });
 
-test('internet and AI controls are ordered, persisted, and fail back offline', () => {
-  const internet = html.indexOf('id="aureliaInternetToggle"');
-  const ai = html.indexOf('id="aureliaAiToggle"');
-  assert.ok(internet >= 0, 'Internet feature toggle must exist');
-  assert.ok(ai > internet, 'AI toggle must be below the Internet toggle');
-  for (const token of [
-    'setAureliaConnectivityOption', 'saveAureliaAiGateway',
-    'runAureliaHealthCheck', 'installAureliaNetworkGate',
-    'saveAiGatewayConfig'
-  ]) {
-    assert.ok(html.includes(token), 'missing connectivity/AI UI safeguard: ' + token);
-  }
-  for (const token of ['aureliaAiQuery', 'aurelia_ai_gateway_token_v1',
-    'never guest records or billing data', 'HttpHeaders.authorizationHeader']) {
-    assert.ok(dart.includes(token), 'missing native AI safeguard: ' + token);
-  }
+test('obsolete AI settings are removed while data-integrity checks remain available', () => {
+  assert.doesNotMatch(html, /aureliaInternetToggle|aureliaAiToggle|aureliaAiGatewayUrl|aureliaConnectivityAiCard/);
+  assert.match(html, /id="aureliaDataIntegrityCard"/);
+  assert.match(html, /async function runAureliaHealthCheck\(\)/);
   assert.match(html, /Local-only mode · cloud sync not configured/);
   assert.doesNotMatch(html, /feature_keys_placeholder=undefined|Google Drive connection — coming later/);
 });
@@ -149,11 +137,11 @@ test('Settings do not expose duplicate browser PIN/biometric controls or online 
 
 
 test('all rendered button elements have a wired click action and resolvable handler', () => {
-  const buttons = [...html.matchAll(/<button\\b[^>]*>/gi)].map(match => match[0]);
+  const buttons = [...html.matchAll(/<button\b[^>]*>/gi)].map(match => match[0]);
   assert.ok(buttons.length >= 100, 'expected the full PMS button surface to be scanned');
   for (const button of buttons) {
-    assert.match(button, /\\bonclick\\s*=/i, 'button has no click action: ' + button.slice(0, 180));
-    const attribute = button.match(/\\bonclick\\s*=\\s*["']([^"']*)["']/i);
+    assert.match(button, /\bonclick\s*=/i, 'button has no click action: ' + button.slice(0, 180));
+    const attribute = button.match(/\bonclick\s*=\s*["']([^"']*)["']/i);
     if (!attribute) continue;
     const handlerText = attribute[1].trim();
     const openParen = handlerText.indexOf('(');
