@@ -1274,6 +1274,21 @@ function openRoomEdit(id){const r=id&&DB.rooms.find(x=>x.id===id);openModal(r?'E
  `<button class="btn" onclick="closeModal()">Cancel</button><button class="btn primary" onclick="saveRoom('${id||''}')">Save</button>`)}
 function saveRoom(id){const d={number:document.querySelector('[data-setting="rmNumber"]').value,type:document.querySelector('[data-setting="rmType"]').value,rate:Number(document.querySelector('[data-setting="rmRate"]').value),status:document.getElementById('rmStatus').value};if(id)Object.assign(DB.rooms.find(x=>x.id===id),d);else DB.rooms.push({id:'r'+Date.now(),...d});save();closeModal();showPage('rooms');toast('Room saved')}
 
+function removeRoom(id){
+ const target=(DB.rooms||[]).find(item=>String(item.id)===String(id));
+ if(!target){toast('Room not found; nothing was removed.');return;}
+ const referenced=(DB.bookings||[]).some(item=>String(item.roomId||'')===String(id)||String(item.roomNumber||'')===String(target.number))||
+  (DB.reservations||[]).some(item=>String(item.roomId||'')===String(id)||String(item.roomNumber||'')===String(target.number));
+ if(referenced||target.status==='occupied'||target.status==='reserved'){
+  toast('This room has current or historical booking references. Change its status instead; the room record was preserved.');
+  return;
+ }
+ if(!confirm('Remove room '+String(target.number||'')+'? This cannot be undone.'))return;
+ DB.rooms=DB.rooms.filter(item=>String(item.id)!==String(id));
+ try{save();audit('Room removed',String(target.number||id));showPage('rooms');toast('Room removed.');}
+ catch(error){DB.rooms.push(target);console.error('[AURELIA] Room removal save failed',error);toast('Room removal could not be saved. The room was restored in memory.');}
+}
+
 function openReservation(id){
  const x=id&&DB.reservations.find(r=>r.id===id);
  const pre=!x?(window.aureliaReservationPrefill||null):null;
