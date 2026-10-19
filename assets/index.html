@@ -1852,39 +1852,7 @@ function pagesSettingsNew(){
 <section class="card" style="margin-top:16px"><div class="section-title"><h2>Import / Export</h2></div><div class="actions"><button class="btn primary" onclick="showPage('importExport')">Open Center</button><button class="btn" onclick="exportJSON()">Full JSON backup</button></div></section>`;
 }
 
-function setAureliaConnectivityOption(key,on){
-  if(!['internetEnabled','aiEnabled'].includes(key)) return;
-  DB.settings=DB.settings||{};DB.settings[key]=!!on;
-  try{save();}catch(e){console.error('[AURELIA HEALTH] Could not save connectivity setting',e);toast('Setting could not be saved. Check local storage.');return;}
-  const state=document.getElementById(key==='internetEnabled'?'aureliaInternetState':'aureliaAiState');
-  if(state)state.textContent=on?'Enabled':'Disabled';
-  window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled===true,aiEnabled:DB.settings.aiEnabled===true,aiGatewayUrl:DB.settings.aiGatewayUrl||''};
-  window.__AURELIA_INTERNET_ENABLED=window.__AURELIA_AI_CONFIG.internetEnabled;
-  audit('Connectivity setting changed',key+': '+(on?'enabled':'disabled'));
-  toast((key==='internetEnabled'?'Internet features':'AI automation')+' '+(on?'enabled':'disabled'));
-}
-function saveAureliaAiGateway(){
-  const input=document.getElementById('aureliaAiGatewayUrl'),note=document.getElementById('aureliaAiGatewayState');
-  const value=(input?.value||'').trim();
-  if(value && (!/^https:\/\//i.test(value)||/[\s<>]/.test(value))){if(note)note.textContent='Use a valid HTTPS URL. HTTP endpoints are rejected for security.';return;}
-  DB.settings=DB.settings||{};DB.settings.aiGatewayUrl=value;
-  try{save();}catch(e){if(note)note.textContent='Could not save the gateway setting locally.';return;}
-  window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled===true,aiEnabled:DB.settings.aiEnabled===true,aiGatewayUrl:value};
-  const tokenInput=document.getElementById('aureliaAiGatewayToken');
-  const token=(tokenInput?.value||'').trim();
-  if(window.AureliaNative&&typeof window.AureliaNative.postMessage==='function'){
-    const requestId='aigw_'+Date.now().toString(36);
-    window.aureliaAiGatewaySaveResult=function(id,ok,error){
-      if(id!==requestId)return;
-      if(tokenInput)tokenInput.value='';
-      if(note)note.textContent=ok?'AI gateway configuration saved. The access token is stored by Android secure storage.':'Gateway URL saved locally, but secure credential setup failed: '+(error||'unknown error');
-    };
-    window.AureliaNative.postMessage(JSON.stringify({type:'saveAiGatewayConfig',requestId,endpoint:value,token}));
-  }else if(note){note.textContent='Gateway URL saved locally. Secure credential storage requires the Android app; online AI remains unavailable in this browser.';}
-  if(tokenInput)tokenInput.value='';
-  toast('AI gateway setting saved');
-}
-async function runAureliaHealthCheck(){
+function runAureliaHealthCheck(){
   const report=document.getElementById('aureliaHealthReport');
   if(!report)return;
   if(!DB||typeof DB!=='object'||Array.isArray(DB)){
@@ -3087,62 +3055,6 @@ function aureliaBackupSettingsHTML(){
 
  </section>`;
 }
-function aureliaSetPin(){
- const pin=document.getElementById('aureliaPinInput')?.value||'';
- if(!/^\d{4,8}$/.test(pin)){toast('Enter a 4–8 digit numeric PIN');return}
- try{
-  let recovery=aureliaStorage.getItem('aurelia_pin_recovery');
-  if(!recovery){const a=new Uint32Array(1);if(window.crypto?.getRandomValues){crypto.getRandomValues(a);recovery=String(100000+(a[0]%900000))}else recovery=String(Math.floor(100000+Math.random()*900000));aureliaStorage.setItem('aurelia_pin_recovery',recovery)}
-  aureliaStorage.setItem('aurelia_local_pin',pin);const input=document.getElementById('aureliaPinInput');if(input)input.value='';
-  const note=document.getElementById('aureliaSecurityNote');if(note)note.textContent='PIN saved on this device. Use “Show recovery code” to view and safely record your recovery code.';
-  toast('Local PIN saved');
- }catch(e){toast('PIN storage unavailable in this browser')}
-}
-function aureliaShowRecoveryCode(){
- const recovery=aureliaStorage.getItem('aurelia_pin_recovery'),note=document.getElementById('aureliaSecurityNote');
- if(!recovery){if(note)note.textContent='No recovery code exists yet. Set/reset your PIN first.';return}
- if(note)note.textContent='Your recovery code is '+recovery+'. Store it privately; anyone with this code can clear the local PIN.';
-}
-function aureliaForgotPin(){
- const stored=aureliaStorage.getItem('aurelia_pin_recovery');
- if(!stored){toast('No recovery code is saved. This browser cannot reset the PIN without it.');return}
- const recovery=prompt('Enter the 6-digit recovery code. Use “Show recovery code” in Settings if needed:');
- if(recovery&&recovery===stored){aureliaStorage.removeItem('aurelia_local_pin');const input=document.getElementById('aureliaPinInput');if(input)input.value='';const note=document.getElementById('aureliaSecurityNote');if(note)note.textContent='PIN cleared. Set a new PIN now. Recovery code remains unchanged.';toast('PIN cleared. Set a new PIN.')}
- else if(recovery!==null)toast('Recovery code did not match');
-}
-function aureliaBase64UrlToBytes(value){
- const normalized=String(value||'').replace(/-/g,'+').replace(/_/g,'/');
- const binary=atob(normalized+'='.repeat((4-normalized.length%4)%4));
- return Uint8Array.from(binary,c=>c.charCodeAt(0));
-}
-async function aureliaEnrollBiometric(){
- const note=document.getElementById('aureliaSecurityNote');
- if(!window.PublicKeyCredential||!navigator.credentials||!window.isSecureContext){if(note)note.textContent='Device authentication needs HTTPS (or localhost), a supported browser, and a device authenticator.';return}
- try{
-  const challenge=crypto.getRandomValues(new Uint8Array(32));
-  const userId=crypto.getRandomValues(new Uint8Array(16));
-  const credential=await navigator.credentials.create({publicKey:{challenge,rp:{name:'AURELIA PMS'},user:{id:userId,name:'aurelia-local-user',displayName:'AURELIA user'},pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],authenticatorSelection:{authenticatorAttachment:'platform',userVerification:'required'},timeout:60000,attestation:'none'}});
-  if(credential){
-   aureliaStorage.setItem('aurelia_biometric_credential',credential.id);
-   if(note)note.textContent='Device authenticator registered. Use “Test device biometric” to check it. This local-only preview does not cryptographically verify the signed assertion; do not use it as secure staff authentication.';
-   toast('Device authenticator registered');
-  }
- }catch(e){if(note)note.textContent=e&&e.name==='NotAllowedError'?'Enrollment was cancelled or timed out. Try again and approve the device prompt.':'Biometric enrollment failed or is unavailable on this device ('+(e&&e.name?e.name:'error')+').'}
-}
-async function aureliaVerifyBiometric(){
- const note=document.getElementById('aureliaSecurityNote');
- const saved=aureliaStorage.getItem('aurelia_biometric_credential');
- if(!saved){if(note)note.textContent='No device authenticator is enrolled yet. Select “Enable device biometric” first.';return}
- if(!window.PublicKeyCredential||!navigator.credentials||!window.isSecureContext){if(note)note.textContent='Device authentication needs HTTPS (or localhost), a supported browser, and a device authenticator.';return}
- try{
-  const challenge=crypto.getRandomValues(new Uint8Array(32));
-  const result=await navigator.credentials.get({publicKey:{challenge,allowCredentials:[{type:'public-key',id:aureliaBase64UrlToBytes(saved)}],userVerification:'required',timeout:60000}});
-  if(result&&result.id===saved){
-   if(note)note.textContent='Device authentication prompt succeeded on this device. Important: this HTML-only preview does not verify the cryptographic signature, so this is a device-authenticator test, not secure login.';
-   toast('Device authenticator test succeeded');
-  }else if(note)note.textContent='The returned credential did not match the enrolled device credential.';
- }catch(e){if(note)note.textContent=e&&e.name==='NotAllowedError'?'Authentication was cancelled, timed out, or the device did not approve it.':'Device authentication failed ('+(e&&e.name?e.name:'error')+').'}
-}
 (function(){
  const originalPagesSettings=window.pagesSettings;
  if(typeof originalPagesSettings==='function'){
@@ -3287,18 +3199,7 @@ async function aureliaVerifyBiometric(){
     };
   }
 
-  // Improve WebAuthn feedback for embedded viewers and normal user cancellation.
-  const originalEnroll=window.aureliaEnrollBiometric;
-  if(typeof originalEnroll==='function'){
-    window.aureliaEnrollBiometric=async function(){
-      if(!window.isSecureContext || location.origin==='null'){
-        const n=document.getElementById('aureliaSecurityNote');
-        if(n)n.textContent='Biometric enrollment cannot work inside this sandboxed HTML viewer. Open the file from HTTPS or localhost in a supported browser, then try again.';
-        return;
-      }
-      return originalEnroll();
-    };
-  }
+
 })();
 </script>
 
