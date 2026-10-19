@@ -9,11 +9,16 @@ main = (root / 'lib/main.dart').read_text(encoding='utf-8')
 gate = (root / 'lib/pms_access_gate.dart').read_text(encoding='utf-8')
 backup = (root / 'scripts/interaction_reliability.js').read_text(encoding='utf-8')
 file_viewing = (root / 'scripts/file_viewing.js').read_text(encoding='utf-8')
+gateway = (root / 'backend/ai-gateway/worker.js').read_text(encoding='utf-8')
 pub = (root / 'pubspec.yaml').read_text(encoding='utf-8')
 lock = (root / 'pubspec.lock').read_text(encoding='utf-8') if (root / 'pubspec.lock').is_file() else ''
 manifest = (root / 'android/app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
 activity = (root / 'android/app/src/main/kotlin/com/example/aurelia_pms/MainActivity.kt').read_text(encoding='utf-8')
 errors=[]
+if 'contentType !== "application/json"' not in gateway or 'total > 8192' not in gateway or 'reader.cancel()' not in gateway:
+ errors.append('AI gateway must require JSON and enforce the request-size limit while streaming the body.')
+if 'constantTimeEqual(supplied, env.AURELIA_GATEWAY_TOKEN)' not in gateway or 'store: false' not in gateway:
+ errors.append('AI gateway authentication or provider no-storage request safeguard is missing.')
 if not html.strip(): errors.append('Bundled PMS HTML asset is empty; refusing to package a blank app.')
 if 'AureliaEncryptedPmsStore' not in main or 'AesGcm.with256bits()' not in main or "value['type'] == 'savePmsData'" not in main: errors.append('Encrypted native PMS database storage bridge is missing.')
 if 'window.__AURELIA_SECURE_DB_BOOTSTRAP' not in html or 'aureliaWaitForSecureSave' not in html or 'nativeSecure' not in html: errors.append('WebView database bootstrap/migration to encrypted native storage is missing.')
