@@ -149,13 +149,23 @@ test('all rendered button elements have a wired click action and resolvable hand
     let name = handlerText.slice(0, openParen).trim();
     if (name.startsWith('return ')) name = name.slice(7).trim();
     if (!name || !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) continue;
-    const declared =
+    const sources = html + '\\n' + fs.readdirSync(path.join(__dirname, '..', 'scripts'))
+      .filter(file => file.endsWith('.js'))
+      .map(file => fs.readFileSync(path.join(__dirname, '..', 'scripts', file), 'utf8'))
+      .join('\\n');
+    const escapedName = name.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, '\\\\    const declared =
       html.includes('function ' + name + '(') ||
       html.includes('function ' + name + ' (') ||
       new RegExp('(?:const|let|var)\\s+' + name + '\\s*=').test(html) ||
       html.includes('window.' + name + ' =') ||
       html.includes(name + ': function');
-    assert.ok(declared, 'button handler is not defined in bundled HTML: ' + name);
+    assert.ok(declared, 'button handler is not defined in bundled HTML: ' + name);');
+    const declared =
+      new RegExp('\\\\bfunction\\\\s+' + escapedName + '\\\\s*\\\\(').test(sources) ||
+      new RegExp('\\\\b(?:const|let|var)\\\\s+' + escapedName + '\\\\s*=').test(sources) ||
+      new RegExp('\\\\b' + escapedName + '\\\\s*:\\\\s*function').test(sources) ||
+      sources.includes('window.' + name + ' =');
+    assert.ok(declared, 'button handler is not defined in bundled HTML or scripts: ' + name);
   }
   assert.doesNotMatch(html, /App security|Require PIN \/ device authentication/);
 });
