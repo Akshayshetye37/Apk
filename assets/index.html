@@ -3230,4 +3230,55 @@ async function aureliaVerifyBiometric(){
 
 
 
+
+<script id="aurelia-native-mlkit-ocr-bridge">
+(function(){
+  'use strict';
+  const browserOcr = window.runImageOCR;
+  let seq = 0;
+  const pending = new Map();
+  window.aureliaNativeOcrResult = function(requestId, text, error) {
+    const entry = pending.get(String(requestId));
+    if (!entry) return;
+    pending.delete(String(requestId));
+    clearTimeout(entry.timer);
+    if (error) entry.reject(new Error(String(error)));
+    else entry.resolve(String(text || ''));
+  };
+  window.runImageOCR = async function(file, statusEl) {
+    if (!file) { if(statusEl) statusEl.textContent='Select a government ID image first.'; return null; }
+    if (!/^image\//i.test(file.type)) { if(statusEl) statusEl.textContent='Please select an image file.'; return null; }
+    if (file.size > 8 * 1024 * 1024) { if(statusEl) statusEl.textContent='Image is too large. Use a clear image under 8 MB for on-device OCR.'; return null; }
+    if (!window.AureliaNative || typeof window.AureliaNative.postMessage !== 'function') {
+      return typeof browserOcr === 'function' ? browserOcr(file,statusEl) : null;
+    }
+    if (window.__aureliaNativeOcrBusy) { if(statusEl) statusEl.textContent='OCR is already running. Please wait.'; return null; }
+    window.__aureliaNativeOcrBusy = true;
+    try {
+      if(statusEl) statusEl.textContent='Reading ID on this device…';
+      const dataUrl = await new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onerror=()=>reject(new Error('Could not read the selected image.'));
+        reader.onload=()=>resolve(String(reader.result||''));
+        reader.readAsDataURL(file);
+      });
+      const comma=dataUrl.indexOf(',');
+      if(comma<0) throw new Error('Invalid image encoding.');
+      const requestId='mlkit_ocr_'+Date.now()+'_'+(++seq);
+      const result = new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>{pending.delete(requestId);reject(new Error('On-device OCR timed out. Please retry with a clearer image.'));},60000);
+        pending.set(requestId,{resolve,reject,timer});
+      });
+      window.AureliaNative.postMessage(JSON.stringify({type:'recognizeIdImage',requestId,imageBase64:dataUrl.slice(comma+1)}));
+      const text=String(await result||'').replace(/\r/g,'\n').replace(/[ \t]+/g,' ').replace(/\n{2,}/g,'\n').trim();
+      if(statusEl) statusEl.textContent=text?'OCR complete. Verify the extracted name spelling, ID type and number against the original image before saving.':'No readable text detected. Retake a sharp, straight-on photo with good lighting.';
+      return text||null;
+    } catch(error) {
+      console.warn('[AURELIA NATIVE OCR]',error);
+      if(statusEl) statusEl.textContent='On-device OCR failed: '+String(error.message||error)+'. You can retry or enter the details manually.';
+      return null;
+    } finally { window.__aureliaNativeOcrBusy=false; }
+  };
+})();
+</script>
 </body></html>
