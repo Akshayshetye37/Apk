@@ -699,9 +699,9 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
             throw const FormatException('AI gateway must be a valid HTTPS URL without embedded credentials or fragments.');
           }
         }
-        if (tokenValue.trim().isEmpty || endpoint.isEmpty) {
+        if (endpoint.isEmpty) {
           await AureliaSecureVault.deleteSecret('aurelia_ai_gateway_token_v1');
-        } else {
+        } else if (tokenValue.trim().isNotEmpty) {
           await AureliaSecureVault.writeSecret('aurelia_ai_gateway_token_v1', tokenValue.trim());
         }
         await _controller.runJavaScript(
