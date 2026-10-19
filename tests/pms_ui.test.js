@@ -139,6 +139,11 @@ test('Settings do not expose duplicate browser PIN/biometric controls or online 
 test('all rendered button elements have a wired click action and resolvable handler', () => {
   const buttons = [...html.matchAll(/<button\b[^>]*>/gi)].map(match => match[0]);
   assert.ok(buttons.length >= 100, 'expected the full PMS button surface to be scanned');
+  const scriptSources = fs.readdirSync(path.join(__dirname, '..', 'scripts'))
+    .filter(file => file.endsWith('.js'))
+    .map(file => fs.readFileSync(path.join(__dirname, '..', 'scripts', file), 'utf8'))
+    .join('\n');
+  const sources = html + '\n' + scriptSources;
   for (const button of buttons) {
     assert.match(button, /\bonclick\s*=/i, 'button has no click action: ' + button.slice(0, 180));
     const attribute = button.match(/\bonclick\s*=\s*["']([^"']*)["']/i);
@@ -148,22 +153,11 @@ test('all rendered button elements have a wired click action and resolvable hand
     if (openParen < 1) continue;
     let name = handlerText.slice(0, openParen).trim();
     if (name.startsWith('return ')) name = name.slice(7).trim();
-    if (!name || !/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) continue;
-    const sources = html + '\\n' + fs.readdirSync(path.join(__dirname, '..', 'scripts'))
-      .filter(file => file.endsWith('.js'))
-      .map(file => fs.readFileSync(path.join(__dirname, '..', 'scripts', file), 'utf8'))
-      .join('\\n');
-    const escapedName = name.replace(/[.*+?^$\\{\\}()|[\\]\\\\]/g, '\\\\    const declared =
-      html.includes('function ' + name + '(') ||
-      html.includes('function ' + name + ' (') ||
-      new RegExp('(?:const|let|var)\\s+' + name + '\\s*=').test(html) ||
-      html.includes('window.' + name + ' =') ||
-      html.includes(name + ': function');
-    assert.ok(declared, 'button handler is not defined in bundled HTML: ' + name);');
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) continue;
     const declared =
-      new RegExp('\\\\bfunction\\\\s+' + escapedName + '\\\\s*\\\\(').test(sources) ||
-      new RegExp('\\\\b(?:const|let|var)\\\\s+' + escapedName + '\\\\s*=').test(sources) ||
-      new RegExp('\\\\b' + escapedName + '\\\\s*:\\\\s*function').test(sources) ||
+      new RegExp('\\bfunction\\s+' + name + '\\s*\\(').test(sources) ||
+      new RegExp('\\b(?:const|let|var)\\s+' + name + '\\s*=').test(sources) ||
+      new RegExp('\\b' + name + '\\s*:\\s*function').test(sources) ||
       sources.includes('window.' + name + ' =');
     assert.ok(declared, 'button handler is not defined in bundled HTML or scripts: ' + name);
   }
