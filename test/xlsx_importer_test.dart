@@ -22,7 +22,6 @@ Uint8List workbookBytes({bool prefixed = true}) {
   add('xl/worksheets/sheet1.xml', sheet1);
   add('xl/worksheets/sheet2.xml', sheet2);
   final encoded = ZipEncoder().encode(archive);
-  if (encoded == null) throw StateError('Could not create test workbook');
   return Uint8List.fromList(encoded);
 }
 

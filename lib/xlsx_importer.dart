@@ -166,7 +166,7 @@ class XlsxWorkbookReader {
         final match = RegExp(r'^([A-Z]+)').firstMatch(ref.toUpperCase());
         if (match == null) continue;
         var col = 0;
-        for (final code in match.group(1)!.codeUnits) col = col * 26 + code - 64;
+        for (final code in match.group(1)!.codeUnits) { col = col * 26 + code - 64; }
         col--;
         if (col < 0 || col >= maxColumns) throw const XlsxImportException('Worksheet exceeds 100 columns.');
         final type = _attr(cell, 't') ?? '';
@@ -188,7 +188,7 @@ class XlsxWorkbookReader {
         if (col > maxColumn) maxColumn = col;
       }
       final values = List<String>.filled(maxColumn + 1, '');
-      for (final entry in cells.entries) values[entry.key] = entry.value;
+      for (final entry in cells.entries) { values[entry.key] = entry.value; }
       result.add(values);
     }
     return result;
