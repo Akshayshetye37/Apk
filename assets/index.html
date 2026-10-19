@@ -1161,7 +1161,7 @@ function saveGuest(id){
  g.name=name;g.phone=phone;g.email=document.getElementById('gEmail').value;g.idType=document.getElementById('gIdType').value;g.idNumber=document.getElementById('gIdNumber').value;if(pendingGuestPhoto)g.idPhoto=pendingGuestPhoto;
  g.occupants=[...document.querySelectorAll('#guestOccList [data-occ]')].map(x=>({id:'o'+Date.now()+Math.random(),name:x.querySelector('[data-setting="occName"]')?.value||'',dob:x.querySelector('[data-setting="occDob"]')?.value||'',relation:x.querySelector('[data-setting="occRelation"]')?.value||'',idType:x.querySelector('[data-setting="occIdType"]')?.value||'',idNumber:x.querySelector('[data-setting="occIdNumber"]')?.value||'',phone:x.querySelector('[data-setting="occPhone"]')?.value||'',idPhoto:''}));
  g.vehicles=[...document.querySelectorAll('#guestVehList [data-veh]')].map(x=>({id:'v'+Date.now()+Math.random(),reg:x.querySelector('[data-setting="vehReg"]')?.value||'',type:x.querySelector('[data-setting="vehType"]')?.value||'Car',photo:''}));
- if(!id)DB.guests.push(g);audit(id?'Guest edited':'Guest created',g.name);save();pendingGuestPhoto='';closeModal();showPage('guests');toast(`Guest saved · ${1+g.occupants.length} total guest${g.occupants.length?'s':''}`);
+ if(!id)DB.guests.push(g);dedupeExistingGuestsInPlace(g.id);audit(id?'Guest edited':'Guest created',g.name);save();pendingGuestPhoto='';closeModal();showPage('guests');toast(`Guest saved · ${1+g.occupants.length} total guest${g.occupants.length?'s':''}`);
 }
 
 function openCharge(bid){
@@ -3383,5 +3383,72 @@ async function aureliaVerifyBiometric(){
     } finally { window.__aureliaNativeOcrBusy=false; }
   };
 })();
+
+function dedupeExistingGuestsInPlace(preferredId){
+  if(!Array.isArray(DB.guests))DB.guests=[];
+  const guests=DB.guests;
+  const canonicalId=g=>String(g&&g.idNumber||'').trim().toUpperCase().replace(/\s+/g,'');
+  const canonicalPhone=g=>String(g&&g.phone||'').replace(/\D/g,'').slice(-10);
+  const identityMatches=(a,b)=>{
+    const ai=canonicalId(a),bi=canonicalId(b),ap=canonicalPhone(a),bp=canonicalPhone(b);
+    // Only merge on a strong, complete identity match; name or phone alone is insufficient.
+    return ai.length>=8&&ai===bi&&ap.length===10&&ap===bp;
+  };
+  let target=guests.find(g=>g&&String(g.id)===String(preferredId));
+  if(!target)return 0;
+  const uniqueArray=(primary,secondary,keyFn)=>{
+    const out=[],seen=new Set();
+    [...(Array.isArray(primary)?primary:[]),...(Array.isArray(secondary)?secondary:[])].forEach(item=>{
+      if(!item||typeof item!=='object')return;
+      const key=keyFn(item);
+      if(key&&seen.has(key))return;
+      if(key)seen.add(key);
+      out.push(item);
+    });
+    return out;
+  };
+  let merged=0;
+  for(let i=guests.length-1;i>=0;i--){
+    const candidate=guests[i];
+    if(!candidate||candidate===target||!identityMatches(target,candidate))continue;
+    const oldId=String(candidate.id??'');
+    // Keep the explicitly edited/preferred record's identity, name, photo and non-empty fields.
+    Object.keys(candidate).forEach(key=>{
+      if(['id','name','idPhoto','occupants','vehicles'].includes(key))return;
+      const current=target[key];
+      if((current===undefined||current===null||String(current).trim()==='')&&candidate[key]!==undefined)target[key]=candidate[key];
+    });
+    target.occupants=uniqueArray(target.occupants,candidate.occupants,x=>String(x.id||[x.name,x.dob,x.idNumber].join('|')).trim());
+    target.vehicles=uniqueArray(target.vehicles,candidate.vehicles,x=>String(x.id||x.reg||'').trim().toUpperCase());
+    ['bookings','reservations','folios','invoices','restaurantSales'].forEach(collection=>{
+      if(!Array.isArray(DB[collection]))return;
+      DB[collection].forEach(record=>{
+        if(!record||typeof record!=='object')return;
+        if(String(record.guestId??'')===oldId)record.guestId=target.id;
+        if(String(record.primaryGuestId??'')===oldId)record.primaryGuestId=target.id;
+        if(String(record.guestId??'')===String(target.id)){
+          if('guestName' in record)record.guestName=target.name;
+          if(collection==='reservations'&&'name' in record)record.name=target.name;
+        }
+      });
+    });
+    const index=guests.indexOf(candidate);
+    if(index>=0)guests.splice(index,1);
+    merged++;
+  }
+  return merged;
+}
+window.upsertGuestAndCascade = function(guest, preferredId){
+  if(!guest||typeof guest!=='object'||Array.isArray(guest))throw new TypeError('A guest record is required.');
+  if(!Array.isArray(DB.guests))DB.guests=[];
+  const requestedId=preferredId??guest.id;
+  let current=DB.guests.find(item=>item&&String(item.id)===String(requestedId));
+  if(current){const stableId=current.id;Object.assign(current,guest,{id:stableId});}
+  else{current={...guest,id:guest.id||'g'+Date.now(),occupants:Array.isArray(guest.occupants)?guest.occupants:[],vehicles:Array.isArray(guest.vehicles)?guest.vehicles:[]};DB.guests.push(current);}
+  dedupeExistingGuestsInPlace(current.id);
+  if(typeof save==='function')save();
+  return DB.guests.find(item=>item&&String(item.id)===String(current.id))||current;
+};
+
 </script>
 </body></html>
