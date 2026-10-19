@@ -131,3 +131,15 @@ test('online AI gateway bounds request bodies and requires authenticated JSON', 
   assert.match(worker, /store: false/);
   assert.doesNotMatch(worker, /console\.(log|error)\([^\n]*(question|token|body)/i);
 });
+
+
+test('Settings do not expose duplicate browser PIN/biometric controls or online AI gateway setup', () => {
+  assert.doesNotMatch(html, /Backup & device security|PIN recovery \/ device authentication|Enable device biometric|Test device biometric|Set \/ reset PIN/);
+  assert.doesNotMatch(html, /aureliaConnectivityAiCard|Secure AI gateway URL|Gateway access token|Online AI gateway:/);
+  assert.doesNotMatch(dart, /unawaited\(_installAureliaAssistant\(\)\)/);
+  // Native app-lock gate remains implemented separately and is not removed with
+  // these obsolete in-WebView controls.
+  const gate = fs.readFileSync(path.join(__dirname, '..', 'lib', 'pms_access_gate.dart'), 'utf8');
+  assert.match(gate, /PmsAccessGate/);
+  assert.match(gate, /_verifyPin|verifyPin/);
+});
