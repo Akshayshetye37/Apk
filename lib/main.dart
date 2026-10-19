@@ -707,8 +707,8 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           throw const FormatException('Ask a question of 1–500 characters.');
         }
         final config = configValue is Map ? configValue : const <String, dynamic>{};
-        final internetEnabled = config['internetEnabled'] != false;
-        final aiEnabled = config['aiEnabled'] != false;
+        final internetEnabled = config['internetEnabled'] == true;
+        final aiEnabled = config['aiEnabled'] == true;
         final endpointValue = config['aiGatewayUrl'];
         String answer;
         if (!aiEnabled) {
