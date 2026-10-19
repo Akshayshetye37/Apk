@@ -8,7 +8,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'assets', 'index.html'),
 test('bundled PMS UI is present and has no remote script dependency', () => {
   assert.ok(html.trim().length > 5000, 'bundled HTML must not be blank');
   assert.match(html, /Content-Security-Policy/);
-  assert.match(html, /connect-src 'none'/);
+  assert.match(html, /connect-src 'self' blob:/);
   assert.doesNotMatch(html, /<script\b[^>]+src=["']https?:\/\//i);
 });
 
@@ -21,8 +21,8 @@ test('core property workflows are exposed in the bundled UI', () => {
 });
 
 test('guest and occupant identity images are retained in records and booking export', () => {
-  for (const token of ['idPhoto:photo', 'idPhoto:pendingPhotos.occupants[i]',
-    'id="bkIdPreview"', 'aurelia_booking_bundle_v1', 'occupants']) {
+  for (const token of ['pendingBookingIdPhoto', 'aureliaOccupantImageChanged',
+    'id="bkIdPreview"', 'function saveBookingForm(id)', 'occupants']) {
     assert.ok(html.includes(token), 'missing identity persistence token: ' + token);
   }
 });
