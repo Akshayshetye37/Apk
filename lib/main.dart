@@ -774,7 +774,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
       if (value['type'] == 'reloadSecurePms') {
         if (requestId == null) throw const FormatException('Missing secure reload request id');
         // Reload from the encrypted native store, never via WebView location.reload().
-        final loaded = await _loadLocalPms();
+        await _loadLocalPms();
         if (mounted) setState(() { _loading = false; });
         return;
       }
@@ -1147,7 +1147,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
