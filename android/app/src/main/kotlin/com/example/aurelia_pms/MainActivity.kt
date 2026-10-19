@@ -89,6 +89,10 @@ class MainActivity : FlutterFragmentActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "aurelia/backup_folder")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "hasFolder" -> {
+                        val folder = getSharedPreferences("aurelia_backup", MODE_PRIVATE).getString("tree_uri", null)
+                        result.success(!folder.isNullOrBlank())
+                    }
                     "chooseFolder" -> {
                         if (pendingBackupFolderResult != null) {
                             result.error("BACKUP_PICKER_BUSY", "A folder picker is already open.", null)

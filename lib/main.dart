@@ -575,7 +575,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
               // Materialize a bounded cache copy so WebView can read the selected file.
               var path = file.path;
               final bytes = file.bytes;
-              if (bytes != null) {
+              if ((path == null || !await File(path).exists()) && bytes != null) {
                 final safeName = file.name.split(RegExp(r'[/\\\\]')).last
                     .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
                 if (safeName.isEmpty || safeName == '.' || safeName == '..') continue;
@@ -751,6 +751,12 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
             try { await ocrFile.delete(); } catch (_) {}
           }
         }
+        return;
+      }
+      if (value['type'] == 'deviceBackupStatus') {
+        if (requestId == null) throw const FormatException('Missing backup status request id');
+        final selected = await const MethodChannel('aurelia/backup_folder').invokeMethod<bool>('hasFolder') ?? false;
+        await _controller.runJavaScript('window.aureliaNativeDeviceBackupStatusResult?.(${jsonEncode(requestId)},$selected,null);');
         return;
       }
       if (value['type'] == 'chooseDeviceBackupFolder') {
