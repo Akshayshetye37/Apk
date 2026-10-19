@@ -1011,7 +1011,34 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
     try {
       final saved = await AureliaEncryptedPmsStore.read();
       final html = await rootBundle.loadString('assets/index.html');
-      final headEnd = html.toLowerCase().indexOf('</head>');
+      // Apply the Aurelia Royal Coast design layer at runtime so the base HTML's
+      // business logic remains untouched and preview/browser behavior stays stable.
+      const royalCoastTheme = r"""<style id="aurelia-royal-coast-theme">
+:root{--brand:#153d35;--brand2:#245f53;--ink:#1c302b;--muted:#75847b;--bg:#f4f0e7;--card:#fffdf8;--line:#e3d8c3;--soft:#e8eee6;--danger:#a8443d;--warn:#a67b35;--ok:#2e7152;--gold:#c7a86a;--gold-light:#e9d8a8;--shadow:0 16px 42px rgba(21,61,53,.09);--radius:20px}
+html,body{background:radial-gradient(ellipse at 95% 0%,rgba(199,168,106,.12),transparent 35%),var(--bg)!important;color:var(--ink)!important}
+h1,h2,h3,.serif,.brand strong{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif!important;font-style:normal!important;letter-spacing:-.025em}
+.sidebar{background:linear-gradient(165deg,#173f36 0%,#102a31 72%,#0c2228 100%)!important;color:#f9f2e3!important;border-right:1px solid #b99a60!important;box-shadow:10px 0 35px rgba(8,33,30,.12)}
+.sidebar .brand{border-bottom:1px solid rgba(201,177,123,.28);margin-bottom:18px}.sidebar .brand strong{color:#f7edda!important;font-size:23px;letter-spacing:.025em}.sidebar .brand .muted{color:#c6d1c5!important}
+.sidebar .logo{border-radius:50%;border:1px solid var(--gold)!important;background:#203e32;box-shadow:0 4px 18px #0002}
+.nav button{color:#e5e9df!important;border-radius:12px;transition:background .18s,color .18s,transform .18s}.nav button:hover{background:rgba(226,213,176,.12)!important;color:#fff!important;transform:translateX(2px)}.nav button.active{background:linear-gradient(120deg,#b99a60,#ead9ab)!important;color:#18352d!important;box-shadow:0 6px 18px #0002}
+.main{background:radial-gradient(ellipse at top right,rgba(196,171,116,.09),transparent 35%),var(--bg)!important}.top{background:rgba(250,247,239,.94)!important;border-bottom:1px solid #ded4bf!important;backdrop-filter:blur(18px)}
+.search input{background:#fffdf8!important;border-color:#ded4bf!important}.search input:focus{border-color:var(--gold)!important;box-shadow:0 0 0 3px #b99a601c}.iconbtn{background:#fffdf8!important;border-color:#ded4bf!important;color:#234536!important}
+.hero h1{font-size:clamp(31px,3vw,43px);font-weight:600;color:#183f35}.hero h1:after{content:"";display:block;width:58px;height:2px;background:linear-gradient(90deg,var(--gold),transparent);margin-top:12px}.hero p{line-height:1.65}
+.card,.item{background:rgba(255,253,248,.97)!important;border-color:#e3d8c3!important;box-shadow:var(--shadow)!important;border-radius:20px}.card{padding:22px}.item{transition:transform .18s,box-shadow .18s,border-color .18s}.item:hover{transform:translateY(-1px);box-shadow:0 15px 34px rgba(39,56,43,.10)!important;border-color:#d1bf98!important}
+.kpi .value{color:#204b3a;font-variant-numeric:tabular-nums}.kpi .label{letter-spacing:.13em}.btn{border-color:#ded4bf!important;background:#fffdf8!important;color:#294738!important;border-radius:12px;transition:transform .16s,box-shadow .16s}.btn:hover{transform:translateY(-1px);box-shadow:0 5px 14px #203b2c12}
+.btn.primary{background:linear-gradient(135deg,#153d35,#286451)!important;color:#fffaf0!important;border:1px solid var(--gold)!important;box-shadow:0 8px 18px rgba(23,72,59,.18)}.btn.primary:hover{background:linear-gradient(135deg,#102f29,#1e5546)!important}.btn.danger{color:#a8443d!important}
+.available{background:#e7f1e8!important;color:#2b6a49!important}.occupied{background:#e1ece6!important;color:#285744!important}.reserved{background:#f3ead8!important;color:#8b692d!important}.cleaning{background:#f8eedb!important;color:#936719!important}.maintenance{background:#f7e5e2!important;color:#a8443d!important}
+.table-wrap{border-color:#e3d8c3!important;border-radius:16px}.table th{background:#eee7d7!important;color:#6d705f!important}.table td{background:#fffdf8!important}.table tr:hover td{background:#faf6eb!important}
+.modal{background:#fffdf8!important;border-color:#c7b17f!important;box-shadow:0 35px 100px rgba(16,36,27,.32)!important;border-radius:22px}.modal-back{background:rgba(13,34,26,.64)!important;backdrop-filter:blur(5px)}
+.field label{color:#69776b!important;letter-spacing:.02em}.field input,.field select,.field textarea{background:#fffefb!important;border-color:#ded7c7!important;border-radius:12px}.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold)!important;box-shadow:0 0 0 3px #b99a6018}
+.subcard,.restaurant-customer,.import-drop{background:#faf7ef!important;border-color:#d9caa8!important}.feature-parent{border-color:#e3d8c3!important;background:#fffdf8!important}.child-feature,.feature-row{background:#faf7ef!important;border-color:#e3d8c3!important}.feature-parent-head .master-toggle input:checked{background:#1e5942!important;border-color:var(--gold)!important}
+.restaurant-tab.active,.pos-subtabs .btn.active{background:#153d35!important;color:#fff8e8!important;border-color:var(--gold)!important}.food-line,.open-bill-card{background:#fffdf8!important;border-color:#e3d8c3!important}.toast{background:#17382c!important;border:1px solid var(--gold)!important}
+.bottom{background:rgba(250,247,239,.97)!important;border-top-color:#d9caa8!important}.bottom button.active{background:#e7ebdf!important;color:#153d35!important}.more-menu{background:#fffdf8!important;border-color:#d9caa8!important}.more-menu button{background:#f4f0e5!important;color:#294738!important}.qr-box{background:#faf7ef!important;border-color:#d4c39e!important}.audit-chip{background:#e8efe5!important;color:#24583f!important}.top-alert{animation:none;box-shadow:0 2px 8px #00000008}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--gold)!important;outline-offset:2px}
+@media(max-width:760px){.content{padding:17px 13px}.card{padding:17px}.sidebar{display:none}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>""";
+      final htmlWithLuxuryTheme = html.replaceFirst('</head>', '$royalCoastTheme</head>');
+      final headEnd = htmlWithLuxuryTheme.toLowerCase().indexOf('</head>');
       if (headEnd < 0) throw const FormatException('Bundled PMS HTML has no head element.');
       final bootstrapData = saved == null
           ? 'null'
@@ -1026,7 +1053,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           'window.__AURELIA_SECURE_DB_EXISTS=${saved != null};'
           'window.__AURELIA_SECURE_DB_BOOTSTRAP=$bootstrapData;'
           '</script>';
-      final page = html.substring(0, headEnd) + bootstrap + html.substring(headEnd);
+      final page = htmlWithLuxuryTheme.substring(0, headEnd) + bootstrap + htmlWithLuxuryTheme.substring(headEnd);
       await _controller.loadHtmlString(
         page,
         baseUrl: 'file:///android_asset/flutter_assets/assets/index.html',
