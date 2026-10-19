@@ -68,7 +68,7 @@ jobs:
       - name: JavaScript syntax checks
         shell: bash
         run: |
-          node --check backend/ai-gateway/worker.js
+          node --input-type=module --check < backend/ai-gateway/worker.js
           for file in scripts/*.js tests/*.js; do
             node --check "$file"
           done
