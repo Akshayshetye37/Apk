@@ -1395,7 +1395,6 @@ function msgGuest(phone){if(!phone){toast('No WhatsApp number');return}window.op
 function setLogo(e){const f=e.target.files?.[0];if(!f)return;const r=new FileReader();r.onload=()=>{DB.settings.logo=r.result;save();refreshBrand();showPage('settings');toast('Logo saved')};r.readAsDataURL(f)}
 function refreshBrand(){document.getElementById('brandName').textContent=DB.settings.hotelName||'AURELIA 5★';const img=document.getElementById('brandLogo');img.src=DB.settings.logo||'';img.style.display=DB.settings.logo?'block':'none'}
 function saveSettings(){
- if(document.getElementById('aureliaGoogleClientId'))DB.settings.googleClientId=document.getElementById('aureliaGoogleClientId').value.trim();
  document.querySelectorAll('[data-setting]').forEach(el=>{if(Object.prototype.hasOwnProperty.call(DB.settings,el.dataset.setting))DB.settings[el.dataset.setting]=el.value});
  document.querySelectorAll('[data-setting-check]').forEach(el=>DB.settings[el.dataset.settingCheck]=el.checked);
  save();refreshBrand();audit('Settings updated','Hotel identity / master features');save();showPage('settings');toast('Settings saved');
