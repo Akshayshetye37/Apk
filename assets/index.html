@@ -1800,10 +1800,10 @@ function pagesSettingsNew(){
   return `<div class="hero"><div><h1>Settings</h1><p>Hotel identity, master features and detailed function kill-switches.</p></div><div class="actions"><span class="muted">Feature controls</span></div></div>
   <div class="grid two">
     <section class="card" id="aureliaDriveSettingsCard"><div class="section-title"><h2>Google Drive backup</h2><span class="muted">Not connected</span></div>
-      <p class="muted">Google Drive backup is not active yet. Your records are not being synced to Google Drive. Continue using Offline Device Backup (Export / Import) to make a copy before changing phones or clearing app data.</p>
+      <p class="muted">Cloud sync is not configured. Your records remain local; no Google Drive upload is claimed. Use encrypted Offline Device Backup (Export / Import) before changing phones or clearing app data.</p>
       <div class="field full"><label>Connection status</label><input value="Not configured" readonly></div>
       <div class="field full"><label>Backup method</label><input value="Offline device export / import" readonly></div>
-      <button class="btn" type="button" disabled aria-disabled="true">Google Drive connection — coming later</button>
+      <span class="audit-chip">Local-only mode · cloud sync not configured</span>
       <p class="muted">When implemented, this section will support account connection and encrypted backup transfer. Do not assume cloud copies exist until the status explicitly confirms a successful backup.</p>
     </section>
     <section class="card" id="aureliaConnectivityAiCard">
@@ -1871,6 +1871,7 @@ function setAureliaConnectivityOption(key,on){
   const state=document.getElementById(key==='internetEnabled'?'aureliaInternetState':'aureliaAiState');
   if(state)state.textContent=on?'Enabled':'Disabled';
   window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled!==false,aiEnabled:DB.settings.aiEnabled!==false,aiGatewayUrl:DB.settings.aiGatewayUrl||''};
+  window.__AURELIA_INTERNET_ENABLED=window.__AURELIA_AI_CONFIG.internetEnabled;
   audit('Connectivity setting changed',key+': '+(on?'enabled':'disabled'));
   toast((key==='internetEnabled'?'Internet features':'AI automation')+' '+(on?'enabled':'disabled'));
 }
@@ -1915,6 +1916,26 @@ function runAureliaHealthCheck(){
 }
 
 window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled!==false,aiEnabled:DB.settings.aiEnabled!==false,aiGatewayUrl:DB.settings.aiGatewayUrl||''};
+window.__AURELIA_INTERNET_ENABLED=window.__AURELIA_AI_CONFIG.internetEnabled;
+(function installAureliaNetworkGate(){
+ if(window.__aureliaNetworkGateInstalled)return;window.__aureliaNetworkGateInstalled=true;
+ const isRemote=function(input){try{const raw=typeof input==='string'?input:(input&&input.url)||String(input||'');const u=new URL(raw,location.href);return (u.protocol==='https:'||u.protocol==='http:')&&u.origin!==location.origin;}catch(_){return false;}};
+ if(typeof window.fetch==='function'){
+  const nativeFetch=window.fetch.bind(window);
+  window.fetch=function(input,init){if(window.__AURELIA_INTERNET_ENABLED===false&&isRemote(input))return Promise.reject(new TypeError('Internet access is disabled in Aurelia Settings.'));return nativeFetch(input,init);};
+ }
+ if(window.XMLHttpRequest&&window.XMLHttpRequest.prototype){
+  const proto=window.XMLHttpRequest.prototype,open=proto.open,send=proto.send;
+  proto.open=function(method,url){this.__aureliaRemoteRequest=isRemote(url);return open.apply(this,arguments);};
+  proto.send=function(){if(window.__AURELIA_INTERNET_ENABLED===false&&this.__aureliaRemoteRequest){try{this.abort();}catch(_){}throw new DOMException('Internet access is disabled in Aurelia Settings.','NetworkError');}return send.apply(this,arguments);};
+ }
+})();
+window.addEventListener('error',function(event){
+ try{if(typeof audit==='function')audit('Runtime error detected',String(event.message||'Unhandled runtime error').slice(0,120));}catch(_){}
+});
+window.addEventListener('unhandledrejection',function(){
+ try{if(typeof audit==='function')audit('Unhandled async error','An asynchronous operation failed; inspect device logs for diagnosis.');}catch(_){}
+});
 pages.settings=pagesSettingsNew;
 
 function setAllNewSafety(on){
