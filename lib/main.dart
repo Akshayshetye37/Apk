@@ -673,17 +673,8 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         final cleaned = rawId.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
         requestId = cleaned.substring(0, cleaned.length.clamp(0, 64).toInt());
       }
-      if (value['type'] == 'aureliaAiQuery') {
-        final question = value['question'];
-        if (requestId == null || question is! String || question.trim().isEmpty || question.length > 500) {
-          throw const FormatException('Ask a question of 1–500 characters.');
-        }
-        final answer = _answerAureliaAssistant(question.trim());
-        await _controller.runJavaScript(
-          'window.aureliaAiResult?.(${jsonEncode(requestId)},${jsonEncode(answer)},null);',
-        );
-        return;
-      }
+      // The single aureliaAiQuery handler below enforces the Internet/AI toggles and
+      // uses the configured HTTPS gateway only when explicitly enabled.
       if (value['type'] == 'saveAiGatewayConfig') {
         final endpointValue = value['endpoint'];
         final tokenValue = value['token'];
