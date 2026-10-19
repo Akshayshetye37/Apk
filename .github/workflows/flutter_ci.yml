@@ -50,6 +50,12 @@ jobs:
           python3 scripts/harden_android.py "$GITHUB_WORKSPACE"
           python3 scripts/install_pdf_engine.py "$GITHUB_WORKSPACE"
 
+      - name: Remove generated placeholder widget test
+        run: |
+          if ! git ls-files --error-unmatch test/widget_test.dart >/dev/null 2>&1; then
+            rm -f test/widget_test.dart
+          fi
+
       - name: Validate JavaScript syntax
         run: |
           set -euo pipefail
