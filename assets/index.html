@@ -1805,6 +1805,12 @@ function pagesSettingsNew(){
       <span class="audit-chip">Local-only mode · cloud sync not configured</span>
       <p class="muted">Google Drive sync is disabled in this Android build. No cloud upload or remote restore is available. Continue using encrypted local export/import; do not assume any cloud backup exists.</p>
     </section>
+    <section class="card" id="aureliaDataIntegrityCard">
+      <div class="section-title"><h2>Data integrity</h2></div>
+      <p class="muted">Check local PMS records for structural problems. Repairs require confirmation and preserve existing guest and booking records.</p>
+      <div class="actions"><button class="btn primary" type="button" onclick="runAureliaHealthCheck()">Run data integrity check</button></div>
+      <div id="aureliaHealthReport" class="muted" role="status" style="margin-top:8px"></div>
+    </section>
     <section class="card"><div class="section-title"><h2>Hotel identity</h2></div>
       <div class="logo-preview"><img id="settingsLogo" src="${DB.settings.logo||""}" onerror="this.style.display='none'"><div><button class="btn" onclick="document.getElementById('logoFile').click()">Upload logo</button><input id="logoFile" type="file" accept="image/*" hidden onchange="setLogo(event)"></div></div>
       <div class="form-grid" style="margin-top:12px">${field("Hotel name","hotelName",DB.settings.hotelName)}${field("Phone","phone",DB.settings.phone)}${field("Address","address",DB.settings.address,true)}${field("GST","gst",DB.settings.gst)}${field("UPI","upi",DB.settings.upi)}${field("Currency","currency",DB.settings.currency)}</div>
@@ -3078,10 +3084,7 @@ function aureliaBackupSettingsHTML(){
   <label>Backup destination <select id="aureliaBackupDestination" style="padding:10px;border:1px solid var(--line);border-radius:10px"><option value="local">This device / browser</option><option value="drive">Google Drive (connect later)</option></select></label>  <button class="btn primary" onclick="aureliaDownloadBackup()">Download full backup</button>
   <button class="btn" onclick="aureliaExportCSV('balance')">Export balance sheet CSV</button>
   <button class="btn" onclick="aureliaExportCSV('inventory')">Export restaurant inventory CSV</button> </div><div id="aureliaDriveNote" class="muted" style="margin-top:8px">Local autosave is active when changes are saved. Google Drive requires a secure OAuth connection and is not connected in this standalone file.</div>
- <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
- <h3>PIN recovery</h3><p class="muted">Set a local app PIN for this browser. Keep a recovery code safely; clearing browser data can remove local settings.</p>
- <div class="row" style="gap:8px;flex-wrap:wrap"><input id="aureliaPinInput" type="password" inputmode="numeric" maxlength="8" placeholder="4–8 digit PIN" style="padding:10px;border:1px solid var(--line);border-radius:10px;max-width:180px"><button class="btn" onclick="aureliaSetPin()">Set / reset PIN</button><button class="btn" onclick="aureliaForgotPin()">Forgot PIN / recovery</button><button class="btn" onclick="aureliaEnrollBiometric()">Enable device biometric</button></div>
- <div id="aureliaSecurityNote" class="muted" style="margin-top:8px">Biometric availability depends on HTTPS, browser support, and device authentication.</div>
+
  </section>`;
 }
 function aureliaSetPin(){
