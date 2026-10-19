@@ -191,47 +191,6 @@ th,thead th{background:#eee3d3!important;color:#4a3427!important}td,th{border-co
 .badge,.pill,.status{border-radius:999px!important}.status{background:#e4ecdf!important;color:#36553b!important}
 hr{border-color:var(--line)!important}a{color:#86632b}
 @media(max-width:700px){body{overflow-wrap:anywhere}.panel,.card,.stat{border-radius:13px!important}}
-
-/* Aurelia luxury palette: presentation-only changes; retain existing screens and workflows. */
-:root{
-  --brand:#38251d;--brand2:#5a3b2b;--ink:#30231d;--muted:#89796c;
-  --bg:#f5f0e8;--card:#fffdf9;--line:#e5d8c6;--soft:#f1e7d8;
-  --danger:#963f43;--warn:#9a7134;--ok:#47684e;
-  --shadow:0 12px 30px rgba(56,37,29,.08);--radius:20px;
-}
-html,body{background:var(--bg);color:var(--ink)}
-.sidebar{background:linear-gradient(180deg,#38251d,#241812);border-right:1px solid #5a3b2b;color:#fff8ec}
-.brand{border-bottom:1px solid rgba(197,161,91,.25)}
-.brand strong{color:#f4e4bf}
-.logo{border-color:#c5a15b;background:#f1e7d8}
-.nav button{color:#eadfce}
-.nav button.active{background:linear-gradient(135deg,#c5a15b,#e5cb88);color:#30231d;box-shadow:0 5px 16px rgba(197,161,91,.2)}
-.nav button:hover{background:rgba(197,161,91,.16);color:#fff8ec}
-.top{background:rgba(255,253,249,.96);border-bottom-color:var(--line)}
-.search input{background:#fffdf9;color:var(--ink)}
-.search input:focus,.field input:focus,.field select:focus,.field textarea:focus{border-color:#c5a15b}
-.iconbtn{background:#fffdf9;color:#38251d;border-color:var(--line)}
-.btn{background:#fffdf9;color:#38251d;border-color:var(--line)}
-.btn.primary{background:linear-gradient(135deg,#38251d,#5a3b2b);color:#f9edcf;border:1px solid #c5a15b;box-shadow:0 8px 20px rgba(56,37,29,.16)}
-.btn.danger{color:#963f43}
-.card,.room,.item,.modal,.search-results,.more-menu{background:var(--card);border-color:var(--line);box-shadow:var(--shadow)}
-.table-wrap{border-color:var(--line)}
-.table th{background:#f1e7d8;color:#5a3b2b}
-.table th,.table td{border-bottom-color:var(--line)}
-.field label{color:#6b5545}
-.field input,.field select,.field textarea{background:#fffdf9;color:var(--ink);border-color:#dfcdb7}
-.subcard{background:#fbf6ee;border-color:#dfcdb7}
-.room{background:#fffdf9}
-.top-alert{background:#fff5f3}
-.top-alert.inventory{background:#fff8e8}
-.qr-box{background:#fbf6ee;border-color:#dfcdb7}
-.bottom{background:rgba(255,253,249,.98);border-top-color:var(--line)}
-.bottom button{color:#89796c}
-.bottom button.active{background:#f1e7d8;color:#38251d}
-.more-menu button{background:#f1e7d8;color:#38251d}
-.toast{background:#38251d;color:#fff8ec;border:1px solid #c5a15b}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #c5a15b;outline-offset:2px}
-
 </style>
 </style>
 
@@ -1038,7 +997,8 @@ async function aureliaPreprocessIdImage(file){
  return await new Promise((resolve,reject)=>{
   const img=new Image(),url=URL.createObjectURL(file);
   img.onload=()=>{
-   try{    const scale=Math.min(3,Math.max(1.8,2200/Math.max(img.naturalWidth,img.naturalHeight)));
+   try{
+    const scale=Math.min(3,Math.max(1.8,2200/Math.max(img.naturalWidth,img.naturalHeight)));
     const canvas=document.createElement('canvas');canvas.width=Math.round(img.naturalWidth*scale);canvas.height=Math.round(img.naturalHeight*scale);
     const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(img,0,0,canvas.width,canvas.height);
     const im=ctx.getImageData(0,0,canvas.width,canvas.height),d=im.data;
@@ -2037,7 +1997,8 @@ function createWalkInOpenBill(){
     roomNumber:"",mobile,items:DB.restaurantCart.map(x=>({...x})),
     amount,status:"OPEN",createdAt:new Date().toISOString()
   };
-  DB.restaurantSales.unshift(sale);  DB.openRestaurantBillId=saleId;
+  DB.restaurantSales.unshift(sale);
+  DB.openRestaurantBillId=saleId;
   audit("Restaurant walk-in bill opened",`${saleId} · ${sale.items.map(x=>x.name+" × "+x.qty).join(", ")} · ${money(amount)}`);
   DB.restaurantCart=[];
   save();renderRestaurant();toast("Walk-in restaurant bill opened");
@@ -2863,53 +2824,8 @@ async function runImageOCR(file,statusEl){
  ocrBusy=true;
  try{
   if(statusEl)statusEl.textContent="Checking OCR availability…";
-  // Prefer Android's bundled on-device ML Kit OCR when this page runs inside the APK.
-  if(window.AureliaNative && typeof window.AureliaNative.postMessage === "function"){
-    const dataUrl = await new Promise((resolve,reject)=>{
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error("Could not read ID image"));
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.readAsDataURL(file);
-    });
-    const comma = dataUrl.indexOf(",");
-    if(comma < 0) throw new Error("Could not encode ID image");
-    const requestId = "ocr_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,8);
-    window.__aureliaNativeOcrCallbacks = window.__aureliaNativeOcrCallbacks || {};
-    if(typeof window.aureliaNativeOcrResult !== "function"){
-      window.aureliaNativeOcrResult = function(id,text,error){
-        const callback = window.__aureliaNativeOcrCallbacks && window.__aureliaNativeOcrCallbacks[id];
-        if(!callback) return;
-        delete window.__aureliaNativeOcrCallbacks[id];
-        if(error) callback.reject(new Error(String(error)));
-        else callback.resolve(String(text || ""));
-      };
-    }
-    const recognized = await new Promise((resolve,reject)=>{
-      const timeout = setTimeout(()=>{
-        delete window.__aureliaNativeOcrCallbacks[requestId];
-        reject(new Error("Android OCR did not respond. Try again."));
-      },60000);
-      window.__aureliaNativeOcrCallbacks[requestId] = {
-        resolve(value){clearTimeout(timeout);resolve(value)},
-        reject(error){clearTimeout(timeout);reject(error)}
-      };
-      try{
-        window.AureliaNative.postMessage(JSON.stringify({
-          type:"recognizeIdImage",
-          requestId,
-          imageBase64:dataUrl.slice(comma+1)
-        }));
-      }catch(error){
-        clearTimeout(timeout);
-        delete window.__aureliaNativeOcrCallbacks[requestId];
-        reject(error);
-      }
-    });
-    const text = String(recognized || "").replace(/\\r/g,"\\n").replace(/[ \\t]+/g," ").replace(/\\n{2,}/g,"\\n").trim();
-    if(statusEl) statusEl.textContent = text ? "On-device OCR finished. Verify every extracted field before saving." : "No readable text found. Review the image and enter details manually.";
-    return text || null;
-  }
-  // Browser-only preview has no remote OCR library; keep the manual-entry workflow.
+  // This standalone preview does not download OCR code at runtime. The installed Android app
+  // uses the native on-device ML Kit bridge; a browser preview can still save ID images.
   if(!window.Tesseract){
     if(statusEl)statusEl.textContent="On-device OCR is available in the installed Android app. In this HTML preview, review the ID image and enter details manually; the image can still be saved.";
     return null;
@@ -3081,7 +2997,8 @@ async function aureliaVerifyBiometric(){
  const priorSaveSettings=window.saveSettings;
  if(typeof priorSaveSettings==='function'){
   window.saveSettings=function(){priorSaveSettings();setTimeout(()=>{const img=document.getElementById('upiQrPreview');if(img&&DB.settings.upiQr){img.src=DB.settings.upiQr;img.style.display='block'}},0)}
- }})();
+ }
+})();
 
 (function(){
  const baseReports=window.pagesReports;
