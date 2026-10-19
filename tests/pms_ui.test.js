@@ -130,9 +130,8 @@ test('Settings do not expose duplicate browser PIN/biometric controls or online 
   assert.match(html, /onclick="runAureliaHealthCheck\(\)"/);
   // Native app-lock gate remains implemented separately and is not removed with
   // these obsolete in-WebView controls.
-  const gate = fs.readFileSync(path.join(__dirname, '..', 'lib', 'pms_access_gate.dart'), 'utf8');
-  assert.match(gate, /PmsAccessGate/);
-  assert.match(gate, /_verifyPin|verifyPin/);
+  assert.doesNotMatch(dart, /PmsAccessGate|_unlockAndLoad|_unlocked/);
+  assert.doesNotMatch(dart, /getAuthPreferences|setBiometricEnabled|setPinEntryEnabled|setAppProtection|LocalAuthentication|local_auth/);
 });
 
 
@@ -162,4 +161,12 @@ test('all rendered button elements have a wired click action and resolvable hand
     assert.ok(declared, 'button handler is not defined in bundled HTML or scripts: ' + name);
   }
   assert.doesNotMatch(html, /App security|Require PIN \/ device authentication/);
+});
+
+
+test('PIN and biometric security are completely removed and theme is brown and gold', () => {
+  assert.doesNotMatch(dart, /PmsAccessGate|_unlockAndLoad|_unlocked|LocalAuthentication|local_auth|aurelia_pms_pin|aurelia_pms_biometric|getAuthPreferences|setBiometricEnabled|setPinEntryEnabled|setAppProtection/);
+  assert.doesNotMatch(html, /App security|Require PIN \/ device authentication|Backup & device security|PIN recovery|Enable device biometric|Test device biometric|aureliaPinInput|aureliaSetPin|aureliaEnrollBiometric|aureliaVerifyBiometric|aureliaConnectivityAiCard|Online AI is not configured|Google Drive backup/);
+  assert.match(html, /--brand:#7a4b2a/);
+  assert.match(html, /--brand2:#b8863b/);
 });
