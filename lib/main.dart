@@ -13,7 +13,6 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:cryptography/cryptography.dart';
-import 'pms_access_gate.dart';
 import 'pdf_viewer_engine.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -24,7 +23,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:qr/qr.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
-import 'package:local_auth/local_auth.dart';
 import 'package:share_plus/share_plus.dart';
 
 
@@ -475,17 +473,14 @@ class PmsWebViewPage extends StatefulWidget {
   State<PmsWebViewPage> createState() => _PmsWebViewPageState();
 }
 
-class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObserver {
+class _PmsWebViewPageState extends State<PmsWebViewPage> {
   late final WebViewController _controller;
   bool _loading = true;
   int _progress = 0;
-  bool _unlocked = false;
-  bool _pmsLoaded = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _controller = WebViewController();
     if (kDebugMode && _controller.platform is AndroidWebViewController) {
       AndroidWebViewController.enableDebugging(true);
@@ -597,23 +592,9 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         }),
       );
     }
+    // App PIN and biometric gate removed by request; load local PMS directly.
+    unawaited(_loadLocalPms());
 
-  }
-
-  Future<void> _unlockAndLoad() async {
-    if (!mounted) return;
-    setState(() => _unlocked = true);
-    if (!_pmsLoaded) {
-      final loaded = await _loadLocalPms();
-      if (mounted) setState(() => _pmsLoaded = loaded);
-    }
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused && _unlocked && mounted) {
-      setState(() => _unlocked = false);
-    }
   }
 
   String _answerAureliaAssistant(String question) {
@@ -895,58 +876,6 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
             try { await ocrFile.delete(); } catch (_) {}
           }
         }
-        return;
-      }
-      if (value['type'] == 'getAuthPreferences') {
-        if (requestId == null) throw const FormatException('Missing authentication preference request id');
-        final pin = await AureliaSecureVault.readSecret('aurelia_pms_pin_entry_enabled_v1') == 'true';
-        final biometric = await AureliaSecureVault.readSecret('aurelia_pms_biometric_enabled_v1') == 'true';
-        await _controller.runJavaScript(
-          'window.aureliaNativeAuthPreferencesResult?.(${jsonEncode(requestId)},$pin,$biometric,null);',
-        );
-        return;
-      }
-      if (value['type'] == 'setBiometricEnabled') {
-        final enabled = value['enabled'];
-        if (requestId == null || enabled is! bool) throw const FormatException('Biometric preference must be true or false.');
-        final deviceSupported = await LocalAuthentication().isDeviceSupported();
-        if (enabled && !deviceSupported) {
-          throw const FormatException('This device does not support Android device authentication.');
-        }
-        final pinEnabled = await AureliaSecureVault.readSecret('aurelia_pms_pin_entry_enabled_v1') == 'true';
-        if (!enabled && !pinEnabled) {
-          throw const FormatException('Keep PIN entry enabled before disabling the last supported unlock method.');
-        }
-        await AureliaSecureVault.writeSecret('aurelia_pms_biometric_enabled_v1', enabled ? 'true' : 'false');
-        await _controller.runJavaScript('window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},true,null);');
-        return;
-      }
-      if (value['type'] == 'setPinEntryEnabled') {
-        final enabled = value['enabled'];
-        if (requestId == null || enabled is! bool) throw const FormatException('PIN entry preference must be true or false.');
-        final biometricEnabled = await AureliaSecureVault.readSecret('aurelia_pms_biometric_enabled_v1') == 'true';
-        if (!enabled) {
-          final deviceSupported = await LocalAuthentication().isDeviceSupported();
-          if (!biometricEnabled || !deviceSupported) {
-            throw const FormatException('Keep PIN entry enabled unless device authentication is enabled and supported.');
-          }
-        }
-        await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', enabled ? 'true' : 'false');
-        await _controller.runJavaScript('window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},true,null);');
-        return;
-      }
-      if (value['type'] == 'setAppProtection') {
-        final enabled = value['enabled'];
-        if (enabled is! bool) throw const FormatException('Protection setting must be true or false.');
-        if (!enabled) {
-          // App protection itself stays fail-closed in secure builds. The
-          // PIN and biometric methods remain independent optional preferences.
-          await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', 'true');
-          await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},false,${jsonEncode('App protection cannot be disabled in this secure build.')});');
-          return;
-        }
-        await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', 'true');
-        await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
       if (value['type'] == 'chooseDeviceBackupFolder') {
@@ -1243,15 +1172,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
                   alignment: Alignment.topCenter,
                   child: LinearProgressIndicator(
                     value: _progress == 100 ? null : _progress / 100,
-                  ),
-                ),
-              if (!_unlocked)
-                Positioned.fill(
-                  child: PmsAccessGate(
-                    readSecret: AureliaSecureVault.readSecret,
-                    writeSecret: AureliaSecureVault.writeSecret,
-                    deleteSecret: AureliaSecureVault.deleteSecret,
-                    onUnlocked: _unlockAndLoad,
                   ),
                 ),
             ],
