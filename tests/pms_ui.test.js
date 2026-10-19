@@ -69,13 +69,13 @@ test('internet and AI controls are ordered, persisted, and fail back offline', (
   assert.doesNotMatch(html, /feature_keys_placeholder=undefined|Google Drive connection — coming later/);
 });
 
-test('health check is read-only until confirmed and repair preserves existing records', () => {
+test('health check is read-only until confirmed and repair preserves existing records', async () => {
   const vm = require('node:vm');
   const start = html.indexOf('function runAureliaHealthCheck(){');
   const end = html.indexOf('\nwindow.__AURELIA_AI_CONFIG=', start);
   assert.ok(start >= 0 && end > start, 'health-check implementation must be discoverable');
   const source = html.slice(start, end);
-  function harness({db, confirmResult = false, saveThrows = false}) {
+  async function harness({db, confirmResult = false, saveThrows = false}) {
     const report = {textContent: '', style: {}};
     const auditEvents = [];
     const context = {
@@ -91,30 +91,30 @@ test('health check is read-only until confirmed and repair preserves existing re
       Error
     };
     vm.runInNewContext(source, context);
-    context.runAureliaHealthCheck();
+    await context.runAureliaHealthCheck();
     return {db, report, auditEvents};
   }
 
   const existingGuest = {id: 'guest-1', name: 'Preserve me'};
   const complete = {rooms: [], guests: [existingGuest], bookings: [], reservations: []};
   const before = JSON.stringify(complete);
-  harness({db: complete});
+  await harness({db: complete});
   assert.equal(JSON.stringify(complete), before, 'inspection must not mutate a complete database');
 
   const missing = {rooms: [], guests: [existingGuest], bookings: []};
-  const cancelled = harness({db: missing, confirmResult: false});
+  const cancelled = await harness({db: missing, confirmResult: false});
   assert.equal(Object.hasOwn(missing, 'inventory'), false, 'cancelled repair must not add a collection');
   assert.match(cancelled.report.textContent, /Repair cancelled; no data changed/);
   assert.equal(missing.guests[0], existingGuest, 'existing guest object must be retained');
 
   const failed = {rooms: [], guests: [existingGuest], bookings: []};
-  const failedResult = harness({db: failed, confirmResult: true, saveThrows: true});
+  const failedResult = await harness({db: failed, confirmResult: true, saveThrows: true});
   assert.equal(Object.hasOwn(failed, 'inventory'), false, 'failed save must roll back newly added collections');
   assert.equal(failed.guests[0], existingGuest, 'failed repair must preserve guest records');
   assert.match(failedResult.report.textContent, /Safe repair failed/);
 
   const repaired = {rooms: [], guests: [existingGuest], bookings: [], invoices: 'malformed'};
-  const repairedResult = harness({db: repaired, confirmResult: true});
+  const repairedResult = await harness({db: repaired, confirmResult: true});
   assert.ok(Array.isArray(repaired.inventory), 'confirmed repair may add missing empty collections');
   assert.equal(repaired.invoices, 'malformed', 'repair must not overwrite malformed existing sections');
   assert.equal(repaired.guests[0], existingGuest, 'repair must preserve guest records');
