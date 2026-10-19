@@ -183,6 +183,18 @@ class AureliaEncryptedPmsStore {
     }
   }
 
+  static Future<Uint8List> latestEncryptedSnapshotBytes() async {
+    final file = await _file('aurelia-pms-primary.enc');
+    if (!await file.exists()) {
+      throw StateError('There is no saved PMS database to back up yet.');
+    }
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty || bytes.length > 30 * 1024 * 1024) {
+      throw StateError('Encrypted PMS backup is empty or exceeds 30 MB.');
+    }
+    return Uint8List.fromList(bytes);
+  }
+
   static const int _backupIterations = 310000;
   static const String _backupAad = 'aurelia-pms-portable-backup-v1';
   static final Pbkdf2 _backupKdf = Pbkdf2(
@@ -801,6 +813,32 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
+      if (value['type'] == 'chooseDeviceBackupFolder') {
+        if (requestId == null) throw const FormatException('Missing backup-folder request id');
+        const channel = MethodChannel('aurelia/backup_folder');
+        final folder = await channel.invokeMethod<String>('chooseFolder');
+        await _controller.runJavaScript(
+          'window.aureliaNativeBackupFolderResult?.(${jsonEncode(requestId)},${folder != null},${jsonEncode(folder == null ? 'Folder selection cancelled.' : 'Device backup folder selected.')});',
+        );
+        return;
+      }
+      if (value['type'] == 'backupDeviceNow') {
+        if (requestId == null) throw const FormatException('Missing device-backup request id');
+        await AureliaEncryptedPmsStore.createLocalSnapshot();
+        final bytes = await AureliaEncryptedPmsStore.latestEncryptedSnapshotBytes();
+        const channel = MethodChannel('aurelia/backup_folder');
+        final written = await channel.invokeMethod<bool>('writeBackup', {
+          'name': 'aurelia-pms-latest.enc',
+          'bytes': bytes,
+        });
+        if (written != true) {
+          throw StateError('Choose a device backup folder first. The app-private encrypted backup remains saved.');
+        }
+        await _controller.runJavaScript(
+          'window.aureliaNativeDeviceBackupResult?.(${jsonEncode(requestId)},true,null);',
+        );
+        return;
+      }
       if (value['type'] == 'createLocalBackup') {
         await AureliaEncryptedPmsStore.createLocalSnapshot();
         await _controller.runJavaScript('window.aureliaNativeLocalBackupResult?.(${jsonEncode(requestId)},true,null);');
@@ -817,8 +855,16 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         // no timestamped duplicate files are created.
         try {
           await AureliaEncryptedPmsStore.createLocalSnapshot();
+          // If the user selected a document-tree folder, overwrite the same
+          // encrypted archive after each successful changed-data save.
+          final bytes = await AureliaEncryptedPmsStore.latestEncryptedSnapshotBytes();
+          final written = await const MethodChannel('aurelia/backup_folder').invokeMethod<bool>(
+            'writeBackup',
+            {'name': 'aurelia-pms-latest.enc', 'bytes': bytes},
+          );
+          if (written == true) debugPrint('Updated the selected device backup folder.');
         } catch (error) {
-          debugPrint('Automatic encrypted local snapshot failed: $error');
+          debugPrint('Automatic encrypted local snapshot / folder backup failed: $error');
         }
         await _controller.runJavaScript(
           'window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},true,null);',
