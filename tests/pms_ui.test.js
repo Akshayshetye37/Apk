@@ -120,3 +120,14 @@ test('health check is read-only until confirmed and repair preserves existing re
   assert.equal(repaired.guests[0], existingGuest, 'repair must preserve guest records');
   assert.match(repairedResult.report.textContent, /left unchanged|manual review/i);
 });
+
+test('online AI gateway bounds request bodies and requires authenticated JSON', () => {
+  const worker = fs.readFileSync(path.join(__dirname, '..', 'backend', 'ai-gateway', 'worker.js'), 'utf8');
+  assert.match(worker, /contentType !== "application\/json"/);
+  assert.match(worker, /contentLength > 8192/);
+  assert.match(worker, /total > 8192/);
+  assert.match(worker, /reader\.cancel\(\)/);
+  assert.match(worker, /constantTimeEqual\(supplied, env\.AURELIA_GATEWAY_TOKEN\)/);
+  assert.match(worker, /store: false/);
+  assert.doesNotMatch(worker, /console\.(log|error)\([^\n]*(question|token|body)/i);
+});
