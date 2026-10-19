@@ -673,7 +673,7 @@ function importSelected(){
  if(name.endsWith('.json')){
   const reader=new FileReader();reader.onload=()=>{try{const obj=JSON.parse(reader.result);if(!obj||typeof obj!=='object')throw new Error('Invalid JSON');DB=obj;save();setupNav();refreshBrand();showPage('dashboard');audit('JSON import completed',selectedImportFile.name);save();toast('JSON data imported')}catch(e){toast('Invalid JSON backup')}};reader.readAsText(selectedImportFile);return;
  }
- if(!name.endsWith('.xlsx')){toast('Excel import currently supports .xlsx only. Save legacy .xls files as .xlsx and retry.');return}
+ if(!name.endsWith('.xlsx')&&!name.endsWith('.xls')){toast('Choose an Excel workbook (.xlsx or .xls). File content will be checked for safety.');return}
  if(selectedImportFile.size>25*1024*1024){toast('Workbook exceeds the 25 MB import limit.');return}
  const reader=new FileReader();reader.onload=()=>{try{const data=String(reader.result||'').split(',')[1];if(!data)throw new Error('empty');xlsxImportFileName=selectedImportFile.name;window.__aureliaXlsxImportResult=(id,payload,error)=>handleXlsxImportResult(id,payload,error);const requestId='xlsx_'+Date.now();xlsxImportToken=requestId;window.AureliaNative.postMessage(JSON.stringify({type:'xlsxOpen',requestId,bytesBase64:data,fileName:xlsxImportFileName}));document.getElementById('importInfo').textContent='Reading workbook and detecting worksheets…'}catch(e){toast('Could not read this workbook.')}};reader.readAsDataURL(selectedImportFile);
 }
@@ -925,7 +925,7 @@ function pagesImportExport(){
   <section class="card">
    <div class="section-title"><h2>Import</h2></div>
    <div class="import-drop">
-    <input id="importFile" type="file" accept=".pdf,.html,.htm,.xlsx,.xls,.csv,.json,.jpg,.jpeg,.png,.webp,image/*" onchange="inspectImportFile(event)" style="display:none">
+    <input id="importFile" type="file" accept=".json,.xlsx,.xls,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onchange="inspectImportFile(event)" style="display:none">
     <button class="btn primary" onclick="document.getElementById('importFile').click()">Choose PDF / handwriting / Excel / spreadsheet / JSON / JPG / PNG</button>
     <div id="importInfo" class="muted" style="margin-top:12px">Select a file to inspect before importing.</div>
    </div>
