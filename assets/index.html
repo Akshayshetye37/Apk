@@ -386,7 +386,7 @@ DB.settings.features=DB.settings.features&&typeof DB.settings.features==='object
 ['rooms','guests','bookings','reservations','inventory','expenses','audit','invoices','inventoryLedger','restaurantSales','paymentSignals'].forEach(key=>{if(!Array.isArray(DB[key])) DB[key]=[];});
 DB.seq=DB.seq&&typeof DB.seq==='object'?DB.seq:{booking:1000,reservation:0,invoice:1,expense:1};
 DB.settings.featureTree=DB.settings.featureTree&&typeof DB.settings.featureTree==='object'?DB.settings.featureTree:{};
-feature_keys_placeholder=undefined;
+// Removed obsolete development placeholder; feature keys are initialized by the real settings model.
 function save(){
  const snapshot=JSON.stringify(DB);
  aureliaStorage.setItem('aurelia_pms_v3',snapshot);
@@ -1806,6 +1806,16 @@ function pagesSettingsNew(){
       <button class="btn" type="button" disabled aria-disabled="true">Google Drive connection — coming later</button>
       <p class="muted">When implemented, this section will support account connection and encrypted backup transfer. Do not assume cloud copies exist until the status explicitly confirms a successful backup.</p>
     </section>
+    <section class="card" id="aureliaConnectivityAiCard">
+      <div class="section-title"><h2>Internet & AI automation</h2><span class="audit-chip">Offline-first</span></div>
+      <p class="muted">Choose whether Aurelia may use online features. Room operations, billing and saved records must continue to work locally when internet is disabled or unavailable.</p>
+      <div class="feature-row"><label><span><b>Internet access for online features</b><small class="muted" style="display:block">Controls app-level online integrations; it does not switch off Android Wi-Fi/mobile data.</small></span><input id="aureliaInternetToggle" type="checkbox" \${DB.settings.internetEnabled!==false?"checked":""} onchange="setAureliaConnectivityOption('internetEnabled',this.checked)"></label><small id="aureliaInternetState">\${DB.settings.internetEnabled!==false?"Enabled":"Disabled"}</small></div>
+      <div class="feature-row"><label><span><b>AI automation</b><small class="muted" style="display:block">Diagnostics, safe repairs and optional online AI assistance.</small></span><input id="aureliaAiToggle" type="checkbox" \${DB.settings.aiEnabled!==false?"checked":""} onchange="setAureliaConnectivityOption('aiEnabled',this.checked)"></label><small id="aureliaAiState">\${DB.settings.aiEnabled!==false?"Enabled":"Disabled"}</small></div>
+      <div class="field full" style="margin-top:12px"><label for="aureliaAiGatewayUrl">Secure AI gateway URL (optional)</label><input id="aureliaAiGatewayUrl" type="url" inputmode="url" placeholder="https://your-secure-ai-gateway.example/api/chat" value="\${esc(DB.settings.aiGatewayUrl||"")}"><small class="muted">Use your own authenticated HTTPS backend. Never paste a provider API key here or embed one in the APK. Without a configured gateway, Aurelia uses built-in offline guidance and diagnostics.</small></div>
+      <div class="actions" style="margin-top:10px;flex-wrap:wrap"><button class="btn primary" type="button" onclick="saveAureliaAiGateway()">Save AI gateway</button><button class="btn" type="button" onclick="runAureliaHealthCheck()">Run health check & safe repair</button></div>
+      <div id="aureliaAiGatewayState" class="muted" role="status" style="margin-top:8px">Online AI gateway: \${DB.settings.aiGatewayUrl?"Configured in settings":"Not configured"}.</div>
+      <div id="aureliaHealthReport" class="muted" role="status" style="margin-top:8px"></div>
+    </section>
     <section class="card"><div class="section-title"><h2>Hotel identity</h2></div>
       <div class="logo-preview"><img id="settingsLogo" src="${DB.settings.logo||""}" onerror="this.style.display='none'"><div><button class="btn" onclick="document.getElementById('logoFile').click()">Upload logo</button><input id="logoFile" type="file" accept="image/*" hidden onchange="setLogo(event)"></div></div>
       <div class="form-grid" style="margin-top:12px">${field("Hotel name","hotelName",DB.settings.hotelName)}${field("Phone","phone",DB.settings.phone)}${field("Address","address",DB.settings.address,true)}${field("GST","gst",DB.settings.gst)}${field("UPI","upi",DB.settings.upi)}${field("Currency","currency",DB.settings.currency)}</div>
@@ -1852,6 +1862,46 @@ function pagesSettingsNew(){
 <div id="aureliaSecurityNote" class="muted" role="status" style="margin-top:10px">Biometrics require HTTPS or localhost and browser/device support. HTML-only PIN storage is not server-grade authentication.</div><div id="aureliaDriveNote" class="muted" role="status" style="margin-top:6px">Local recovery snapshots are saved when app data is saved. Google Drive requires OAuth configuration.</div></section>
 <section class="card" style="margin-top:16px"><div class="section-title"><h2>Import / Export</h2></div><div class="actions"><button class="btn primary" onclick="showPage('importExport')">Open Center</button><button class="btn" onclick="exportJSON()">Full JSON backup</button></div></section>`;
 }
+
+function setAureliaConnectivityOption(key,on){
+  if(!['internetEnabled','aiEnabled'].includes(key)) return;
+  DB.settings=DB.settings||{};DB.settings[key]=!!on;
+  try{save();}catch(e){console.error('[AURELIA HEALTH] Could not save connectivity setting',e);toast('Setting could not be saved. Check local storage.');return;}
+  const state=document.getElementById(key==='internetEnabled'?'aureliaInternetState':'aureliaAiState');
+  if(state)state.textContent=on?'Enabled':'Disabled';
+  window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled!==false,aiEnabled:DB.settings.aiEnabled!==false,aiGatewayUrl:DB.settings.aiGatewayUrl||''};
+  audit('Connectivity setting changed',key+': '+(on?'enabled':'disabled'));
+  toast((key==='internetEnabled'?'Internet features':'AI automation')+' '+(on?'enabled':'disabled'));
+}
+function saveAureliaAiGateway(){
+  const input=document.getElementById('aureliaAiGatewayUrl'),note=document.getElementById('aureliaAiGatewayState');
+  const value=(input?.value||'').trim();
+  if(value && (!/^https:\/\//i.test(value)||/[\s<>]/.test(value))){if(note)note.textContent='Use a valid HTTPS URL. HTTP endpoints are rejected for security.';return;}
+  DB.settings=DB.settings||{};DB.settings.aiGatewayUrl=value;
+  try{save();}catch(e){if(note)note.textContent='Could not save the gateway setting locally.';return;}
+  window.__AURELIA_AI_CONFIG={internetEnabled:DB.settings.internetEnabled!==false,aiEnabled:DB.settings.aiEnabled!==false,aiGatewayUrl:value};
+  if(note)note.textContent=value?'Gateway URL saved. Ensure the server authenticates requests and does not log guest data.':'Gateway cleared. Offline guidance remains available.';
+  toast('AI gateway setting saved');
+}
+function runAureliaHealthCheck(){
+  const report=document.getElementById('aureliaHealthReport');if(!report)return;
+  const issues=[],repairs=[];
+  if(!DB||typeof DB!=='object'||Array.isArray(DB)){report.textContent='Health check stopped: the database root is invalid. No automatic replacement was made.';return;}
+  DB.settings=DB.settings&&typeof DB.settings==='object'&&!Array.isArray(DB.settings)?DB.settings:{};
+  const arrays=['rooms','guests','bookings','reservations','inventory','expenses','audit','invoices','inventoryLedger','restaurantSales','paymentSignals'];
+  arrays.forEach(k=>{if(!Array.isArray(DB[k])){DB[k]=[];repairs.push('Restored missing collection structure: '+k);}});
+  DB.settings.features=DB.settings.features&&typeof DB.settings.features==='object'&&!Array.isArray(DB.settings.features)?DB.settings.features:{};
+  DB.settings.featureTree=DB.settings.featureTree&&typeof DB.settings.featureTree==='object'&&!Array.isArray(DB.settings.featureTree)?DB.settings.featureTree:{};
+  DB.seq=DB.seq&&typeof DB.seq==='object'?DB.seq:{booking:1000,reservation:0,invoice:1,expense:1};
+  ['rooms','guests','bookings','reservations','inventory','invoices','restaurantSales'].forEach(k=>{
+    const seen=new Set();(DB[k]||[]).forEach((row,i)=>{if(!row||typeof row!=='object'){issues.push(k+' contains a non-object row at position '+(i+1));return;}const id=row.id??row.sr??row.code;if(id!==undefined&&id!==null&&String(id)!==''){const key=String(id);if(seen.has(key))issues.push(k+' has duplicate identifier '+key);seen.add(key);}});
+  });
+  try{save();}catch(e){issues.push('Could not persist repaired schema: '+String(e));}
+  const summary='Health check completed. Safe structural repairs: '+(repairs.length?repairs.join('; '):'none needed')+'. Findings: '+(issues.length?issues.join('; '):'no duplicate identifiers or malformed rows detected')+'. Financial records were not deleted, merged, or rewritten.';
+  report.textContent=summary;report.style.color=issues.length?'#9a5b20':'#2e7152';
+  try{audit('PMS health check',summary);}catch(_){}
+}
+
 pages.settings=pagesSettingsNew;
 
 function setAllNewSafety(on){
