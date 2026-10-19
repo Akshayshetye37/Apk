@@ -167,13 +167,19 @@ class AureliaEncryptedPmsStore {
     if (!await primary.exists()) throw StateError('There is no saved PMS database to back up yet.');
     final dir = Directory('${(await _directory()).path}/backups');
     await dir.create(recursive: true);
-    final stamp = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
-    final destination = File('${dir.path}/aurelia-pms-$stamp.enc');
-    await primary.copy(destination.path);
-    final snapshots = await dir.list().where((entry) => entry is File && entry.path.endsWith('.enc')).cast<File>().toList();
-    snapshots.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-    for (final old in snapshots.skip(14)) {
-      try { await old.delete(); } catch (_) {}
+    // One stable filename only: each successful save overwrites the previous
+    // local snapshot instead of accumulating timestamped backup files.
+    final destination = File('${dir.path}/aurelia-pms-latest.enc');
+    final temporary = File('${dir.path}/aurelia-pms-latest.enc.tmp');
+    await primary.copy(temporary.path);
+    if (await destination.exists()) await destination.delete();
+    await temporary.rename(destination.path);
+    // Clean up legacy timestamped snapshots from older builds.
+    await for (final entry in dir.list()) {
+      if (entry is File && entry.path.endsWith('.enc') &&
+          entry.path != destination.path) {
+        try { await entry.delete(); } catch (_) {}
+      }
     }
   }
 
@@ -806,14 +812,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           throw const FormatException('Missing or oversized secure database fields');
         }
         await AureliaEncryptedPmsStore.write(dataValue);
-        // If auto-backup is enabled in the saved PMS settings, keep a bounded
-        // encrypted on-device snapshot after each committed database change.
+        // Back up only after a successful database save. The encrypted primary,
+        // recovery copy, and one stable latest snapshot are overwritten in place;
+        // no timestamped duplicate files are created.
         try {
-          final decoded = jsonDecode(dataValue);
-          final settings = decoded is Map ? decoded['settings'] : null;
-          if (settings is Map && settings['autoBackupEnabled'] == true) {
-            await AureliaEncryptedPmsStore.createLocalSnapshot();
-          }
+          await AureliaEncryptedPmsStore.createLocalSnapshot();
         } catch (error) {
           debugPrint('Automatic encrypted local snapshot failed: $error');
         }
