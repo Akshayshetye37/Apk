@@ -775,8 +775,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
               answer = 'Online AI guidance — verify before applying:\n\n${remoteAnswer.trim()}';
             } catch (error) {
               debugPrint('Aurelia online AI request failed: $error');
-              answer = '${_answerAureliaAssistant(question.trim())}' +
-                  '\n\nOnline AI is unavailable right now. Showing offline guidance instead; no PMS data was uploaded.';
+              answer = '${_answerAureliaAssistant(question.trim())}\n\nOnline AI is unavailable right now. Showing offline guidance instead; no PMS data was uploaded.';
             } finally {
               client?.close(force: true);
             }
