@@ -784,6 +784,32 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
         await _controller.runJavaScript('window.aureliaNativeLocalBackupResult?.(${jsonEncode(requestId)},true,null);');
         return;
       }
+      if (value['type'] == 'pickImage') {
+        final source = value['source'], purpose = value['purpose'];
+        if (requestId == null || (source != 'camera' && source != 'gallery') ||
+            (purpose != 'id' && purpose != 'logo' && purpose != 'qr')) throw const FormatException('Invalid image picker request');
+        final picked = await ImagePicker().pickImage(source: source == 'camera' ? ImageSource.camera : ImageSource.gallery, maxWidth: 2400, maxHeight: 2400, requestFullMetadata: false);
+        if (picked == null) { await _controller.runJavaScript('window.aureliaNativeImagePickerResult?.(${jsonEncode(requestId)},null,null);'); return; }
+        final tempFile = File(picked.path);
+        try {
+          final raw = await tempFile.readAsBytes();
+          if (raw.isEmpty || raw.length > 15 * 1024 * 1024) throw const FormatException('That photo is too large. Choose one under 15 MB.');
+          var decoded = img.decodeImage(raw);
+          if (decoded == null) throw const FormatException('That file is not a usable photo. Use a JPG or PNG.');
+          decoded = img.bakeOrientation(decoded);
+          final edge = purpose == 'logo' ? 600 : purpose == 'qr' ? 900 : 1600;
+          if (math.max(decoded.width, decoded.height) > edge) decoded = img.copyResize(decoded, width: decoded.width >= decoded.height ? edge : null, height: decoded.height > decoded.width ? edge : null);
+          final png = purpose != 'id';
+          final cleaned = png ? Uint8List.fromList(img.encodePng(decoded)) : Uint8List.fromList(img.encodeJpg(decoded, quality: 84));
+          final digest = await Sha256().hash(cleaned);
+          final sha = digest.bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+          final payload = {'b64':base64Encode(cleaned),'mime':png?'image/png':'image/jpeg','name':'$purpose-${DateTime.now().millisecondsSinceEpoch}.${png?'png':'jpg'}','sha256':sha};
+          await _controller.runJavaScript('window.aureliaNativeImagePickerResult?.(${jsonEncode(requestId)},${jsonEncode(payload)},null);');
+        } catch (error) {
+          await _controller.runJavaScript('window.aureliaNativeImagePickerResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});');
+        } finally { try { await tempFile.delete(); } catch (_) {} }
+        return;
+      }
       if (value['type'] == 'xlsxOpen') {
         final encoded = value['bytesBase64'];
         if (requestId == null || encoded is! String || encoded.isEmpty || encoded.length > 34 * 1024 * 1024) {

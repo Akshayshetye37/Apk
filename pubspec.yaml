@@ -35,3 +35,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/index.html
+    - assets/aurelia-luxury.css
+    - assets/aurelia-media.js
+    - assets/backup-card.html
