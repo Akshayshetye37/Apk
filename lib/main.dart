@@ -732,7 +732,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         } else {
           final uri = Uri.tryParse(endpointValue.trim());
           if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty || uri.fragment.isNotEmpty) {
-            answer = _answerAureliaAssistant(question.trim()) + '\n\nThe AI gateway URL is invalid or not HTTPS. No external request was made.';
+            answer = '${_answerAureliaAssistant(question.trim())}\n\nThe AI gateway URL is invalid or not HTTPS. No external request was made.';
           } else {
             HttpClient? client;
             try {
@@ -775,7 +775,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
               answer = 'Online AI guidance — verify before applying:\n\n${remoteAnswer.trim()}';
             } catch (error) {
               debugPrint('Aurelia online AI request failed: $error');
-              answer = _answerAureliaAssistant(question.trim()) +
+              answer = '${_answerAureliaAssistant(question.trim())}' +
                   '\n\nOnline AI is unavailable right now. Showing offline guidance instead; no PMS data was uploaded.';
             } finally {
               client?.close(force: true);
