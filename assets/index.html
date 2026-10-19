@@ -732,7 +732,6 @@ async function commitXlsxImport(){
  try{aureliaStorage.setItem('aurelia_pms_v3',JSON.stringify(candidate));await window.aureliaWaitForSecureSave?.();Object.keys(DB).forEach(k=>delete DB[k]);Object.assign(DB,candidate);closeModal();setupNav();refreshBrand();showPage('guests');toast('Imported '+fresh.length+' guests. '+skipped+' existing matches skipped.')}catch(e){toast('Import was not committed because encrypted storage save failed. Keep the app open and retry.')}
 }
 function setupNav(){
-function setupNav(){
  const side=document.getElementById('sideNav'); side.innerHTML=MODULES.map(([id,n])=>`<button data-nav="${id}" onclick="showPage('${id}')">${n}</button>`).join('');
  document.getElementById('moreMenu').innerHTML=MODULES.map(([id,n])=>`<button onclick="showPage('${id}');toggleMore()">${n}</button>`).join('');
 }
