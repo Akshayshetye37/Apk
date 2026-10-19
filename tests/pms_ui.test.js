@@ -53,7 +53,9 @@ test('obsolete AI settings are removed while data-integrity checks remain availa
   assert.doesNotMatch(html, /aureliaInternetToggle|aureliaAiToggle|aureliaAiGatewayUrl|aureliaConnectivityAiCard/);
   assert.match(html, /id="aureliaDataIntegrityCard"/);
   assert.match(html, /async function runAureliaHealthCheck\(\)/);
-  assert.match(html, /Local-only mode · cloud sync not configured/);
+  assert.doesNotMatch(html, /Local-only mode · cloud sync not configured/);
+  assert.match(html, /Local backup & restore/);
+  assert.match(html, /aureliaNativeExportEncryptedBackup/);
   assert.doesNotMatch(html, /feature_keys_placeholder=undefined|Google Drive connection — coming later/);
 });
 
