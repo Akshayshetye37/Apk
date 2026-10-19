@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'assets', 'index.html'), 'utf8');
+const dart = fs.readFileSync(path.join(__dirname, '..', 'lib', 'main.dart'), 'utf8');
 
 test('bundled PMS UI is present and does not depend on remote scripts', () => {
   assert.ok(html.trim().length > 5000, 'bundled HTML must not be blank');
@@ -48,11 +49,13 @@ test('internet and AI controls are ordered, persisted, and fail back offline', (
   for (const token of [
     'setAureliaConnectivityOption', 'saveAureliaAiGateway',
     'runAureliaHealthCheck', 'installAureliaNetworkGate',
-    'saveAiGatewayConfig', 'aureliaAiQuery',
-    'aurelia_ai_gateway_token_v1', 'No PMS data was uploaded'
+    'saveAiGatewayConfig'
   ]) {
-    assert.ok(html.includes(token) || token === 'aurelia_ai_query_native_handler',
-      'missing connectivity/AI safeguard: ' + token);
+    assert.ok(html.includes(token), 'missing connectivity/AI UI safeguard: ' + token);
+  }
+  for (const token of ['aureliaAiQuery', 'aurelia_ai_gateway_token_v1',
+    'No PMS data was uploaded', 'HttpHeaders.authorizationHeader']) {
+    assert.ok(dart.includes(token), 'missing native AI safeguard: ' + token);
   }
   assert.match(html, /Local-only mode · cloud sync not configured/);
   assert.doesNotMatch(html, /feature_keys_placeholder=undefined|Google Drive connection — coming later/);
