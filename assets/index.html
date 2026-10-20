@@ -1934,7 +1934,62 @@ function pagesSettingsNew(){
       <button type="button" class="btn primary" onclick="saveTermsSettings()">Save Terms & Conditions</button>
     </div>
   </section>
-<section id="backupCard" class="bk-card card" aria-labelledby="bkTitle"><div class="section-title"><h2 id="bkTitle">Encrypted backup &amp; restore</h2></div><p id="bkState" class="bk-state" data-level="warn" role="status">Backup folder not selected</p><p id="bkLast" class="bk-note">Choose a device folder for one stable encrypted snapshot. The app does not export ID photos to your gallery.</p><div class="bk-actions"><button type="button" id="bkChoose" class="btn" onclick="aureliaChooseBackupFolder()">Choose backup folder</button><button type="button" id="bkNow" class="btn primary" disabled onclick="aureliaRunDeviceBackup()">Back up now</button></div><p class="bk-note">After selecting a folder, the encrypted snapshot can be updated after successful saves. Keep your device encryption and backups protected.</p></section><section class="card" style="margin-top:16px"><div class="section-title"><h2>Import / Export</h2></div><div class="actions"><button class="btn primary" onclick="showPage('importExport')">Open Center</button><button class="btn" onclick="exportJSON()">Full JSON backup</button></div></section>`;
+<section id="backupCard" class="bk-card card" aria-labelledby="bkTitle"><div class="section-title"><h2 id="bkTitle">Encrypted backup &amp; restore</h2></div><p id="bkState" class="bk-state" data-level="warn" role="status">Backup folder not selected</p><p id="bkLast" class="bk-note">Choose a device folder for one stable encrypted snapshot. The app does not export ID photos to your gallery.</p><div class="bk-actions"><button type="button" id="bkChoose" class="btn" onclick="aureliaChooseBackupFolder()">Choose backup folder</button><button type="button" id="bkNow" class="btn primary" disabled onclick="aureliaRunDeviceBackup()">Back up now</button></div><p class="bk-note">After selecting a folder, the encrypted snapshot can be updated after successful saves. Keep your device encryption and backups protected.</p></section>
+  <section class="bk-card card" id="aureliaDeviceBackupCard" style="margin-top:16px">
+    <div class="section-title"><h2>Encrypted device backup</h2><span class="audit-chip">Protected</span></div>
+    <p class="muted">Choose a folder once. Aurelia will overwrite one encrypted backup file there after successful saves—no growing pile of duplicate backup files. Your guest photos remain inside the encrypted PMS data.</p>
+    <div id="aureliaDeviceBackupState" class="bk-state" data-level="warn" role="status">Checking backup folder…</div>
+    <div class="bk-actions" style="margin-top:12px">
+      <button type="button" class="btn" id="aureliaChooseBackupFolder" onclick="aureliaChooseDeviceBackupFolder()">Choose backup folder</button>
+      <button type="button" class="btn primary" id="aureliaRunDeviceBackup" onclick="aureliaRunDeviceBackupNow()" disabled>Back up now</button>
+    </div>
+    <p id="aureliaDeviceBackupMessage" class="bk-note" role="status">The app also keeps its encrypted local recovery snapshot.</p>
+  </section>
+  <script>
+  (function(){
+    const state=()=>document.getElementById('aureliaDeviceBackupState');
+    const msg=()=>document.getElementById('aureliaDeviceBackupMessage');
+    const choose=()=>document.getElementById('aureliaChooseBackupFolder');
+    const backup=()=>document.getElementById('aureliaRunDeviceBackup');
+    window.aureliaChooseDeviceBackupFolder=function(){
+      const id='backup_folder_'+Date.now();
+      window.__aureliaDeviceBackupFolderRequest=id;
+      state().textContent='Choose a folder in the Android system picker…';
+      window.AureliaNative.postMessage(JSON.stringify({type:'chooseDeviceBackupFolder',requestId:id}));
+    };
+    window.aureliaRunDeviceBackupNow=function(){
+      const id='backup_now_'+Date.now();
+      window.__aureliaDeviceBackupNowRequest=id;
+      backup().disabled=true;backup().textContent='Backing up…';
+      msg().textContent='Creating and verifying encrypted backup…';
+      window.AureliaNative.postMessage(JSON.stringify({type:'backupDeviceNow',requestId:id}));
+    };
+    window.aureliaNativeBackupFolderResult=function(id,ok,error){
+      if(id!==window.__aureliaDeviceBackupFolderRequest)return;
+      if(ok){
+        state().textContent='Backup folder selected';
+        state().dataset.level='ok';backup().disabled=false;
+        choose().textContent='Change backup folder';
+        msg().textContent='Folder access is saved by Android. The next successful PMS save updates the encrypted backup.';
+        try{DB.settings=DB.settings||{};DB.settings.deviceBackupFolderSelected=true;save()}catch(_){}
+      }else{
+        state().textContent='Backup folder not selected';state().dataset.level='warn';
+        msg().textContent=error||'Folder selection cancelled. Your app-private encrypted backup remains available.';
+      }
+    };
+    window.aureliaNativeDeviceBackupResult=function(id,ok,error){
+      if(id!==window.__aureliaDeviceBackupNowRequest)return;
+      backup().disabled=!ok;backup().textContent='Back up now';
+      state().textContent=ok?'Encrypted backup saved':'Backup needs attention';
+      state().dataset.level=ok?'ok':'warn';
+      msg().textContent=ok?'Encrypted backup updated successfully.':(error||'Could not write the backup. Choose the folder again and retry.');
+      try{if(ok){DB.settings=DB.settings||{};DB.settings.deviceBackupLastOk=new Date().toISOString();save()}}catch(_){}
+    };
+    if(DB.settings?.deviceBackupFolderSelected){state().textContent='Backup folder was previously selected';state().dataset.level='ok';backup().disabled=false;choose().textContent='Change backup folder';}
+  })();
+  </script>
+
+  <section class="card" style="margin-top:16px"><div class="section-title"><h2>Import / Export</h2></div><div class="actions"><button class="btn primary" onclick="showPage('importExport')">Open Center</button><button class="btn" onclick="exportJSON()">Full JSON backup</button></div></section>`;
 }
 
 async function runAureliaHealthCheck(){

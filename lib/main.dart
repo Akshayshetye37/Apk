@@ -1014,6 +1014,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> {
     try {
       final saved = await AureliaEncryptedPmsStore.read();
       final html = await rootBundle.loadString('assets/index.html');
+      final luxuryCss = await rootBundle.loadString('assets/aurelia-luxury.css');
       // Apply the Aurelia Royal Coast design layer at runtime so the base HTML's
       // business logic remains untouched and preview/browser behavior stays stable.
       const royalCoastTheme = r"""<style id="aurelia-royal-coast-theme">
@@ -1040,7 +1041,7 @@ h1,h2,h3,.serif,.brand strong{font-family:"Iowan Old Style","Palatino Linotype",
 button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--gold)!important;outline-offset:2px}
 @media(max-width:760px){.content{padding:17px 13px}.card{padding:17px}.sidebar{display:none}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 </style>""";
-      final htmlWithLuxuryTheme = html.replaceFirst('</head>', '$royalCoastTheme</head>');
+      final htmlWithLuxuryTheme = html.replaceFirst('</head>', '$royalCoastTheme<style id="aurelia-luxury-ui">${luxuryCss.replaceAll('</style>', '')}</style></head>');
       final headEnd = htmlWithLuxuryTheme.toLowerCase().indexOf('</head>');
       if (headEnd < 0) throw const FormatException('Bundled PMS HTML has no head element.');
       final bootstrapData = saved == null
