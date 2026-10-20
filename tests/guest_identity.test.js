@@ -109,3 +109,72 @@ test('same-name guests with different phone numbers are not merged', () => {
   assert.equal(database.guests[0].id, 'guest-a');
   assert.equal(database.guests[1].id, 'guest-b');
 });
+
+
+test('OCR autofill preserves every non-empty identity field entered by staff', async () => {
+  const start = html.indexOf('async function runGenericOcr(e,btn){');
+  const end = html.indexOf('function demoOCR(btn)', start);
+  assert.ok(start >= 0 && end > start, 'the live OCR autofill function must exist');
+  const fields = {
+    gName: makeField('INPUT', 'Staff-entered name'),
+    gIdType: makeField('SELECT', 'Passport', ['PAN Card', 'Aadhaar Card', 'Passport']),
+    gIdNumber: makeField('INPUT', 'MANUAL123'),
+  };
+  const document = fakeOcrDocument(fields);
+  const context = {
+    document,
+    runImageOCR: async () => 'recognized identity text',
+    parseIdText: () => ({ name: 'OCR Name', idType: 'PAN Card', idNumber: 'ABCDE1234F' }),
+    Event: class { constructor(type, options) { this.type = type; this.bubbles = options?.bubbles; } },
+  };
+  vm.runInNewContext(html.slice(start, end) + '\nglobalThis.invokeOcr = runGenericOcr;', context);
+  await context.invokeOcr(null, null);
+  assert.equal(fields.gName.value, 'Staff-entered name');
+  assert.equal(fields.gIdType.value, 'Passport');
+  assert.equal(fields.gIdNumber.value, 'MANUAL123');
+});
+
+test('OCR autofill fills empty identity fields and dispatches normal form events', async () => {
+  const start = html.indexOf('async function runGenericOcr(e,btn){');
+  const end = html.indexOf('function demoOCR(btn)', start);
+  assert.ok(start >= 0 && end > start, 'the live OCR autofill function must exist');
+  const fields = {
+    gName: makeField('INPUT', ''),
+    gIdType: makeField('SELECT', '', ['PAN Card', 'Aadhaar Card', 'Passport']),
+    gIdNumber: makeField('INPUT', ''),
+  };
+  const context = {
+    document: fakeOcrDocument(fields),
+    runImageOCR: async () => 'recognized identity text',
+    parseIdText: () => ({ name: 'Aditi Sharma', idType: 'PAN Card', idNumber: 'ABCDE1234F' }),
+    Event: class { constructor(type, options) { this.type = type; this.bubbles = options?.bubbles; } },
+  };
+  vm.runInNewContext(html.slice(start, end) + '\nglobalThis.invokeOcr = runGenericOcr;', context);
+  await context.invokeOcr(null, null);
+  assert.equal(fields.gName.value, 'Aditi Sharma');
+  assert.equal(fields.gIdType.value, 'PAN Card');
+  assert.equal(fields.gIdNumber.value, 'ABCDE1234F');
+  for (const field of Object.values(fields)) {
+    assert.deepEqual(field.events.map(event => event.type), ['input', 'change']);
+  }
+});
+
+function makeField(tagName, value, options = []) {
+  return {
+    tagName,
+    value,
+    options: options.map(option => ({ value: option, textContent: option })),
+    events: [],
+    dispatchEvent(event) { this.events.push(event); },
+  };
+}
+
+function fakeOcrDocument(fields) {
+  return {
+    getElementById(id) {
+      if (id === 'guestOcrStatus') return null;
+      return fields[id] || null;
+    },
+    querySelector() { return null; },
+  };
+}

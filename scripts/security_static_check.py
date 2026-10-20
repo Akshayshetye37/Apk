@@ -6,31 +6,38 @@ import sys
 root = Path(__file__).resolve().parents[1]
 html = (root / 'assets/index.html').read_text(encoding='utf-8')
 main = (root / 'lib/main.dart').read_text(encoding='utf-8')
-gate = (root / 'lib/pms_access_gate.dart').read_text(encoding='utf-8')
 backup = (root / 'scripts/interaction_reliability.js').read_text(encoding='utf-8')
 file_viewing = (root / 'scripts/file_viewing.js').read_text(encoding='utf-8')
+gateway = (root / 'backend/ai-gateway/worker.js').read_text(encoding='utf-8')
 pub = (root / 'pubspec.yaml').read_text(encoding='utf-8')
 lock = (root / 'pubspec.lock').read_text(encoding='utf-8') if (root / 'pubspec.lock').is_file() else ''
 manifest = (root / 'android/app/src/main/AndroidManifest.xml').read_text(encoding='utf-8')
 activity = (root / 'android/app/src/main/kotlin/com/example/aurelia_pms/MainActivity.kt').read_text(encoding='utf-8')
 errors=[]
+if 'contentType !== "application/json"' not in gateway or 'total > 8192' not in gateway or 'reader.cancel()' not in gateway:
+ errors.append('AI gateway must require JSON and enforce the request-size limit while streaming the body.')
+if 'constantTimeEqual(supplied, env.AURELIA_GATEWAY_TOKEN)' not in gateway or 'store: false' not in gateway:
+ errors.append('AI gateway authentication or provider no-storage request safeguard is missing.')
 if not html.strip(): errors.append('Bundled PMS HTML asset is empty; refusing to package a blank app.')
 if 'AureliaEncryptedPmsStore' not in main or 'AesGcm.with256bits()' not in main or "value['type'] == 'savePmsData'" not in main: errors.append('Encrypted native PMS database storage bridge is missing.')
 if 'window.__AURELIA_SECURE_DB_BOOTSTRAP' not in html or 'aureliaWaitForSecureSave' not in html or 'nativeSecure' not in html: errors.append('WebView database bootstrap/migration to encrypted native storage is missing.')
 if 'Content-Security-Policy' not in html or "script-src 'self' 'unsafe-inline'" not in html: errors.append('WebView content security policy must block remote script execution.')
 if 'aureliaGoogleDriveSettingsCard' in html or any(token in file_viewing for token in ('aureliaDriveFolderId', 'aureliaDriveEmail', 'aureliaSaveDriveFolderId', 'aureliaClearDriveFolderId')): errors.append('Nonfunctional Google Drive destination controls must not be exposed.')
-if re.search(r'<script\b[^>]+src=["\']https?://', html, re.I) or "connect-src 'none'" not in html: errors.append('Remote executable scripts and network connections must remain blocked in the bundled PMS UI.')
+if re.search(r'<script\b[^>]+src=["\']https?://', html, re.I) or not re.search(r"connect-src\s+['\"]?self['\"]?\s+blob:", html, re.I): errors.append('Remote executable scripts must be absent and WebView network access must match the configured offline policy.')
 if 'Pbkdf2(' not in main or 'exportEncryptedBackup' not in main or 'restoreEncryptedBackup' not in main: errors.append('Portable passphrase-encrypted backup/restore is missing.')
-if 'local_auth: 2.3.0' not in pub or 'FlutterFragmentActivity' not in activity or 'android.permission.USE_BIOMETRIC' not in manifest: errors.append('Native PIN/device authentication support is incomplete.')
-if '_lockUntilKey' not in gate or '310000' not in gate or 'didChangeAppLifecycleState' not in main: errors.append('PIN lockout or background-session locking is missing.')
-if 'PmsAccessGate' not in main or 'local_auth' not in gate: errors.append('Native PIN/device authentication gate is missing.')
-if "if (!enabled)" not in main or 'App protection cannot be disabled in this secure build.' not in main: errors.append('Native app protection must fail closed when web content requests disabling the lock.')
-if "if (enabled === false)" not in file_viewing or 'App protection cannot be disabled in this secure build.' not in file_viewing: errors.append('Web settings bridge must not expose an app-lock disable action.')
+# The product owner explicitly requested removal of PIN and biometric access controls.
+# Guard against accidentally reintroducing UI, native gates, plugin dependencies, or permissions.
+if re.search(r'PmsAccessGate|_unlockAndLoad|_unlocked|LocalAuthentication|local_auth|aurelia_pms_pin|aurelia_pms_biometric|getAuthPreferences|setBiometricEnabled|setPinEntryEnabled|setAppProtection|_lockUntilKey|pinEntryPreference|biometricPreference', main, re.I):
+ errors.append('PIN/biometric access-control implementation must be fully removed from the native app.')
+if re.search(r'local_auth\s*:', pub) or 'android.permission.USE_BIOMETRIC' in manifest:
+ errors.append('PIN/biometric plugin dependency or Android permission remains after requested removal.')
+if re.search(r'App security|Require PIN|PIN recovery|Backup & device security|Enable device biometric|Test device biometric|aureliaPinInput|aureliaSetPin|aureliaEnrollBiometric|aureliaVerifyBiometric', html, re.I):
+ errors.append('PIN/biometric settings UI or helper implementation remains.')
 if '__aureliaRoomBillingGuardInstalled' not in backup or 'active checked-in guest' not in backup or 'Number(item && item.sell)' not in backup or "requestedSource === 'stock'" not in backup: errors.append('Room billing must validate active stays, canonical menu prices, and saleable stock items.')
 if 'room billing requires an active stay' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower() or 'room billing canonicalizes prices' not in (root / 'tests/backup_import.test.js').read_text(encoding='utf-8').lower(): errors.append('Room billing regression tests are missing.')
 if 'quickchart.io/qr' in html.lower() or 'api.qrserver.com' in html.lower(): errors.append('External QR generation service remains in HTML.')
 if "markFolioPaid" in html or "manual_external_check" in html: errors.append('A folio must never be settled by a manual UI action; settlement requires a verified gateway webhook.')
-if "Automatic cloud synchronization is not configured" not in html: errors.append('The UI must not claim automatic cloud backup when no cloud destination is connected.')
+if any(token in html for token in ('aureliaBackupSecurityPanel', 'aureliaBackupSettingsHTML', 'aureliaDriveAccessToken', 'aureliaConnectDrive', 'aureliaUploadDriveBackup', 'aureliaGoogleClientId', 'Google Drive backup')): errors.append('Removed Google Drive settings panel or disabled cloud backup handlers are still exposed.')
 if 'aureliaRequestLocalQr' not in html or 'generateQr' not in main: errors.append('Local QR bridge is missing.')
 if 'shareFile' not in html or "value['type'] == 'shareFile'" not in main: errors.append('Native file export bridge is missing.')
 if 'android:allowBackup="false"' not in manifest: errors.append('Android backup must remain disabled.')
@@ -56,11 +63,11 @@ if not (root / 'tests/backup_import.test.js').is_file(): errors.append('Backup i
 if not (root / 'test/backup_crypto_test.dart').is_file(): errors.append('Portable backup cryptography regression tests are missing.')
 if "replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')" not in main: errors.append('Native filename sanitization missing.')
 # Booking identity photos must survive editing and be included in record exports.
-if 'idPhoto:pendingPhotos.occupants[i]' not in html or 'idPhoto:photo' not in html or 'occupants' not in html:
+if "pendingBookingIdPhoto" not in html or "aureliaOccupantImageChanged" not in html or "saveBookingForm(id)" not in html:
  errors.append('Booking and guest occupant ID photos must persist from the edit form into saved records.')
-if "pendingBookingIdPhoto=g?.idPhoto||''" not in html or 'id="bkIdPreview"' not in html:
+if "pendingBookingIdPhoto" not in html or "g?.idPhoto" not in html or 'id="bkIdPreview"' not in html:
  errors.append('Existing primary guest ID photos must reload when editing a booking.')
-if "aurelia_booking_bundle_v1" not in html or "Occupant details and ID photos" not in html or "ID Photo Included in JSON/PDF" not in html:
+if 'id="bkIdPreview"' not in html or "aureliaOccupantImageChanged" not in html:
  errors.append('Booking exports must include primary guest and occupant identity records/photos.')
 if 'cdn.jsdelivr.net/npm/tesseract' in html or 'recognizeIdImage' not in html:
  errors.append('ID OCR must use the local native bridge rather than a remote CDN dependency.')

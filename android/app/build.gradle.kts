@@ -33,23 +33,38 @@ android {
         versionName = flutter.versionName
     }
 
-    signingConfigs {
-        create("release") {
-            val releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")
-                ?: throw GradleException("ANDROID_KEYSTORE_PATH is required for release signing")
-            storeFile = file(releaseStore)
-            storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                ?: throw GradleException("ANDROID_KEYSTORE_PASSWORD is required for release signing")
-            keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                ?: throw GradleException("ANDROID_KEY_ALIAS is required for release signing")
-            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-                ?: throw GradleException("ANDROID_KEY_PASSWORD is required for release signing")
+    // A debug APK must remain buildable without production signing secrets.
+    // Release builds still require all four private signing environment values.
+    val releaseStore = System.getenv("ANDROID_KEYSTORE_PATH")
+    val releaseStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+    val releaseAlias = System.getenv("ANDROID_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+    val releaseSigningConfigured = !releaseStore.isNullOrBlank() &&
+        !releaseStorePassword.isNullOrBlank() &&
+        !releaseAlias.isNullOrBlank() &&
+        !releaseKeyPassword.isNullOrBlank()
+
+    if (releaseSigningConfigured) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(releaseStore!!)
+                storePassword = releaseStorePassword!!
+                keyAlias = releaseAlias!!
+                keyPassword = releaseKeyPassword!!
+            }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                // Fail explicitly only when someone requests a release variant.
+                if (gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }) {
+                    throw GradleException("Release APK requires ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD")
+                }
+            }
         }
     }
 }

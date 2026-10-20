@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'image_viewer_engine.dart';
 import 'dart:convert';
+import 'xlsx_importer.dart';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -13,7 +14,6 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:cryptography/cryptography.dart';
-import 'pms_access_gate.dart';
 import 'pdf_viewer_engine.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -24,7 +24,6 @@ import 'package:path_provider/path_provider.dart';
 import 'package:qr/qr.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
-import 'package:local_auth/local_auth.dart';
 import 'package:share_plus/share_plus.dart';
 
 
@@ -167,14 +166,32 @@ class AureliaEncryptedPmsStore {
     if (!await primary.exists()) throw StateError('There is no saved PMS database to back up yet.');
     final dir = Directory('${(await _directory()).path}/backups');
     await dir.create(recursive: true);
-    final stamp = DateTime.now().toUtc().toIso8601String().replaceAll(':', '-');
-    final destination = File('${dir.path}/aurelia-pms-$stamp.enc');
-    await primary.copy(destination.path);
-    final snapshots = await dir.list().where((entry) => entry is File && entry.path.endsWith('.enc')).cast<File>().toList();
-    snapshots.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-    for (final old in snapshots.skip(14)) {
-      try { await old.delete(); } catch (_) {}
+    // One stable filename only: each successful save overwrites the previous
+    // local snapshot instead of accumulating timestamped backup files.
+    final destination = File('${dir.path}/aurelia-pms-latest.enc');
+    final temporary = File('${dir.path}/aurelia-pms-latest.enc.tmp');
+    await primary.copy(temporary.path);
+    if (await destination.exists()) await destination.delete();
+    await temporary.rename(destination.path);
+    // Clean up legacy timestamped snapshots from older builds.
+    await for (final entry in dir.list()) {
+      if (entry is File && entry.path.endsWith('.enc') &&
+          entry.path != destination.path) {
+        try { await entry.delete(); } catch (_) {}
+      }
     }
+  }
+
+  static Future<Uint8List> latestEncryptedSnapshotBytes() async {
+    final file = await _file('aurelia-pms-primary.enc');
+    if (!await file.exists()) {
+      throw StateError('There is no saved PMS database to back up yet.');
+    }
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty || bytes.length > 30 * 1024 * 1024) {
+      throw StateError('Encrypted PMS backup is empty or exceeds 30 MB.');
+    }
+    return Uint8List.fromList(bytes);
   }
 
   static const int _backupIterations = 310000;
@@ -442,7 +459,7 @@ class AureliaPmsApp extends StatelessWidget {
       title: 'Aurelia PMS',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF17365D)),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF38251D), secondary: const Color(0xFFD8B45C)),
         useMaterial3: true,
       ),
       home: const PmsWebViewPage(),
@@ -457,17 +474,14 @@ class PmsWebViewPage extends StatefulWidget {
   State<PmsWebViewPage> createState() => _PmsWebViewPageState();
 }
 
-class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObserver {
+class _PmsWebViewPageState extends State<PmsWebViewPage> {
   late final WebViewController _controller;
   bool _loading = true;
   int _progress = 0;
-  bool _unlocked = false;
-  bool _pmsLoaded = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _controller = WebViewController();
     if (kDebugMode && _controller.platform is AndroidWebViewController) {
       AndroidWebViewController.enableDebugging(true);
@@ -486,6 +500,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           },
           onPageFinished: (_) {
             if (mounted) setState(() => _loading = false);
+            // No floating AI assistant is installed in the production PMS UI.
           },
           onWebResourceError: (error) {
             debugPrint('Aurelia PMS WebView error: ${error.description}');
@@ -560,7 +575,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
               // Materialize a bounded cache copy so WebView can read the selected file.
               var path = file.path;
               final bytes = file.bytes;
-              if (bytes != null) {
+              if ((path == null || !await File(path).exists()) && bytes != null) {
                 final safeName = file.name.split(RegExp(r'[/\\\\]')).last
                     .replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
                 if (safeName.isEmpty || safeName == '.' || safeName == '..') continue;
@@ -578,24 +593,12 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         }),
       );
     }
+    // Load local PMS directly; this build has no in-app PIN/biometric gate.
+    unawaited(_loadLocalPms());
 
   }
 
-  Future<void> _unlockAndLoad() async {
-    if (!mounted) return;
-    setState(() => _unlocked = true);
-    if (!_pmsLoaded) {
-      final loaded = await _loadLocalPms();
-      if (mounted) setState(() => _pmsLoaded = loaded);
-    }
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused && _unlocked && mounted) {
-      setState(() => _unlocked = false);
-    }
-  }
+  final Map<String, XlsxWorkbookReader> _xlsxImports = {};
 
   Future<void> _handleNativeMessage(String raw) async {
     String? requestId;
@@ -646,8 +649,8 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       if (value['type'] == 'reloadSecurePms') {
         if (requestId == null) throw const FormatException('Missing secure reload request id');
         // Reload from the encrypted native store, never via WebView location.reload().
-        final loaded = await _loadLocalPms();
-        if (mounted) setState(() { _pmsLoaded = loaded; _loading = false; });
+        await _loadLocalPms();
+        if (mounted) setState(() { _loading = false; });
         return;
       }
       if (value['type'] == 'restoreEncryptedBackup') {
@@ -668,7 +671,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         if (!loaded) {
           throw StateError('Backup data was encrypted and saved, but the PMS could not reopen it. Keep the app installed and recover access before trying again.');
         }
-        if (mounted) setState(() { _pmsLoaded = true; _loading = false; });
+        if (mounted) setState(() { _loading = false; });
         await _controller.runJavaScript(
           'window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},true,null);',
         );
@@ -750,54 +753,94 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
         }
         return;
       }
-      if (value['type'] == 'getAuthPreferences') {
-        if (requestId == null) throw const FormatException('Missing authentication preference request id');
-        final pin = await AureliaSecureVault.readSecret('aurelia_pms_pin_entry_enabled_v1') == 'true';
-        final biometric = await AureliaSecureVault.readSecret('aurelia_pms_biometric_enabled_v1') == 'true';
+      if (value['type'] == 'deviceBackupStatus') {
+        if (requestId == null) throw const FormatException('Missing backup status request id');
+        final selected = await const MethodChannel('aurelia/backup_folder').invokeMethod<bool>('hasFolder') ?? false;
+        await _controller.runJavaScript('window.aureliaNativeDeviceBackupStatusResult?.(${jsonEncode(requestId)},$selected,null);');
+        return;
+      }
+      if (value['type'] == 'chooseDeviceBackupFolder') {
+        if (requestId == null) throw const FormatException('Missing backup-folder request id');
+        const channel = MethodChannel('aurelia/backup_folder');
+        final folder = await channel.invokeMethod<String>('chooseFolder');
         await _controller.runJavaScript(
-          'window.aureliaNativeAuthPreferencesResult?.(${jsonEncode(requestId)},$pin,$biometric,null);',
+          'window.aureliaNativeBackupFolderResult?.(${jsonEncode(requestId)},${folder != null},${jsonEncode(folder == null ? 'Folder selection cancelled.' : 'Device backup folder selected.')});',
         );
         return;
       }
-      if (value['type'] == 'setBiometricEnabled') {
-        final enabled = value['enabled'];
-        if (requestId == null || enabled is! bool) throw const FormatException('Biometric preference must be true or false.');
-        final deviceSupported = await LocalAuthentication().isDeviceSupported();
-        if (enabled && !deviceSupported) {
-          throw const FormatException('This device does not support Android device authentication.');
+      if (value['type'] == 'backupDeviceNow') {
+        if (requestId == null) throw const FormatException('Missing device-backup request id');
+        await AureliaEncryptedPmsStore.createLocalSnapshot();
+        final bytes = await AureliaEncryptedPmsStore.latestEncryptedSnapshotBytes();
+        const channel = MethodChannel('aurelia/backup_folder');
+        final written = await channel.invokeMethod<bool>('writeBackup', {
+          'name': 'aurelia-pms-latest.enc',
+          'bytes': bytes,
+        });
+        if (written != true) {
+          throw StateError('Choose a device backup folder first. The app-private encrypted backup remains saved.');
         }
-        await AureliaSecureVault.writeSecret('aurelia_pms_biometric_enabled_v1', enabled ? 'true' : 'false');
-        // PIN and biometric preferences are independent user choices. Disabling
-        // biometrics must not silently turn PIN entry on or alter its setting.
-        await _controller.runJavaScript('window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},true,null);');
-        return;
-      }
-      if (value['type'] == 'setPinEntryEnabled') {
-        final enabled = value['enabled'];
-        if (requestId == null || enabled is! bool) throw const FormatException('PIN entry preference must be true or false.');
-        // PIN entry is independently optional. The access gate bypasses
-        // authentication only when both preferences are disabled.
-        await AureliaSecureVault.writeSecret('aurelia_pms_pin_entry_enabled_v1', enabled ? 'true' : 'false');
-        await _controller.runJavaScript('window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},true,null);');
-        return;
-      }
-      if (value['type'] == 'setAppProtection') {
-        final enabled = value['enabled'];
-        if (enabled is! bool) throw const FormatException('Protection setting must be true or false.');
-        if (!enabled) {
-          // App protection itself stays fail-closed in secure builds. The
-          // PIN and biometric methods remain independent optional preferences.
-          await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', 'true');
-          await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},false,${jsonEncode('App protection cannot be disabled in this secure build.')});');
-          return;
-        }
-        await AureliaSecureVault.writeSecret('aurelia_pms_auth_enabled_v1', 'true');
-        await _controller.runJavaScript('window.aureliaNativeProtectionResult?.(${jsonEncode(requestId)},true,null);');
+        await _controller.runJavaScript(
+          'window.aureliaNativeDeviceBackupResult?.(${jsonEncode(requestId)},true,null);',
+        );
         return;
       }
       if (value['type'] == 'createLocalBackup') {
         await AureliaEncryptedPmsStore.createLocalSnapshot();
         await _controller.runJavaScript('window.aureliaNativeLocalBackupResult?.(${jsonEncode(requestId)},true,null);');
+        return;
+      }
+      if (value['type'] == 'pickImage') {
+        final source = value['source'], purpose = value['purpose'];
+        if (requestId == null || (source != 'camera' && source != 'gallery') ||
+            (purpose != 'id' && purpose != 'logo' && purpose != 'qr')) {
+          throw const FormatException('Invalid image picker request');
+        }
+        final picked = await ImagePicker().pickImage(source: source == 'camera' ? ImageSource.camera : ImageSource.gallery, maxWidth: 2400, maxHeight: 2400, requestFullMetadata: false);
+        if (picked == null) { await _controller.runJavaScript('window.aureliaNativeImagePickerResult?.(${jsonEncode(requestId)},null,null);'); return; }
+        final tempFile = File(picked.path);
+        try {
+          final raw = await tempFile.readAsBytes();
+          if (raw.isEmpty || raw.length > 15 * 1024 * 1024) throw const FormatException('That photo is too large. Choose one under 15 MB.');
+          var decoded = img.decodeImage(raw);
+          if (decoded == null) throw const FormatException('That file is not a usable photo. Use a JPG or PNG.');
+          decoded = img.bakeOrientation(decoded);
+          final edge = purpose == 'logo' ? 600 : purpose == 'qr' ? 900 : 1600;
+          if (math.max(decoded.width, decoded.height) > edge) decoded = img.copyResize(decoded, width: decoded.width >= decoded.height ? edge : null, height: decoded.height > decoded.width ? edge : null);
+          final png = purpose != 'id';
+          final cleaned = png ? Uint8List.fromList(img.encodePng(decoded)) : Uint8List.fromList(img.encodeJpg(decoded, quality: 84));
+          final digest = await Sha256().hash(cleaned);
+          final sha = digest.bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+          final payload = {'b64':base64Encode(cleaned),'mime':png?'image/png':'image/jpeg','name':'$purpose-${DateTime.now().millisecondsSinceEpoch}.${png?'png':'jpg'}','sha256':sha};
+          await _controller.runJavaScript('window.aureliaNativeImagePickerResult?.(${jsonEncode(requestId)},${jsonEncode(payload)},null);');
+        } catch (error) {
+          await _controller.runJavaScript('window.aureliaNativeImagePickerResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});');
+        } finally { try { await tempFile.delete(); } catch (_) {} }
+        return;
+      }
+      if (value['type'] == 'xlsxOpen') {
+        final encoded = value['bytesBase64'];
+        if (requestId == null || encoded is! String || encoded.isEmpty || encoded.length > 34 * 1024 * 1024) {
+          throw const FormatException('Workbook is missing or exceeds the upload limit.');
+        }
+        final bytes = base64Decode(encoded);
+        final workbook = XlsxWorkbookReader.open(bytes);
+        _xlsxImports.removeWhere((key, _) => key != requestId);
+        _xlsxImports[requestId] = workbook;
+        final sheets = workbook.sheets.map((s) => s.toJson()).toList();
+        await _controller.runJavaScript('window.__aureliaXlsxImportResult?.(${jsonEncode(requestId)},${jsonEncode({'kind':'sheets','sheets':sheets})},null);');
+        return;
+      }
+      if (value['type'] == 'xlsxReadSheet') {
+        final token = value['token'];
+        final index = value['index'];
+        if (requestId == null || token is! String || index is! int || !_xlsxImports.containsKey(token)) {
+          throw const FormatException('Workbook session expired. Choose the file again.');
+        }
+        final workbook = _xlsxImports[token]!;
+        final rows = workbook.readSheet(index);
+        final sheetName = workbook.sheets[index].name;
+        await _controller.runJavaScript('window.__aureliaXlsxImportResult?.(${jsonEncode(requestId)},${jsonEncode({'kind':'rows','rows':rows,'sheetName':sheetName})},null);');
         return;
       }
       if (value['type'] == 'savePmsData') {
@@ -806,16 +849,21 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           throw const FormatException('Missing or oversized secure database fields');
         }
         await AureliaEncryptedPmsStore.write(dataValue);
-        // If auto-backup is enabled in the saved PMS settings, keep a bounded
-        // encrypted on-device snapshot after each committed database change.
+        // Back up only after a successful database save. The encrypted primary,
+        // recovery copy, and one stable latest snapshot are overwritten in place;
+        // no timestamped duplicate files are created.
         try {
-          final decoded = jsonDecode(dataValue);
-          final settings = decoded is Map ? decoded['settings'] : null;
-          if (settings is Map && settings['autoBackupEnabled'] == true) {
-            await AureliaEncryptedPmsStore.createLocalSnapshot();
-          }
+          await AureliaEncryptedPmsStore.createLocalSnapshot();
+          // If the user selected a document-tree folder, overwrite the same
+          // encrypted archive after each successful changed-data save.
+          final bytes = await AureliaEncryptedPmsStore.latestEncryptedSnapshotBytes();
+          final written = await const MethodChannel('aurelia/backup_folder').invokeMethod<bool>(
+            'writeBackup',
+            {'name': 'aurelia-pms-latest.enc', 'bytes': bytes},
+          );
+          if (written == true) debugPrint('Updated the selected device backup folder.');
         } catch (error) {
-          debugPrint('Automatic encrypted local snapshot failed: $error');
+          debugPrint('Automatic encrypted local snapshot / folder backup failed: $error');
         }
         await _controller.runJavaScript(
           'window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},true,null);',
@@ -952,7 +1000,11 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
       debugPrint('Aurelia native bridge rejected request: $error');
       if (requestId != null) {
         try {
-          await _controller.runJavaScript('window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePinEntrySettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBiometricSettingResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
+          await _controller.runJavaScript('window.__aureliaXlsxImportResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});');
+        } catch (_) {}
+
+        try {
+          await _controller.runJavaScript('window.aureliaNativeImagePickerResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeQrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeOcrResult?.(${jsonEncode(requestId)},null,${jsonEncode(error.toString())});window.aureliaNativeFileResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativePmsSaveResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupExportResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupRestoreResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeBackupFolderResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});window.aureliaNativeDeviceBackupResult?.(${jsonEncode(requestId)},false,${jsonEncode(error.toString())});');
         } catch (_) {}
       }
     }
@@ -962,7 +1014,35 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
     try {
       final saved = await AureliaEncryptedPmsStore.read();
       final html = await rootBundle.loadString('assets/index.html');
-      final headEnd = html.toLowerCase().indexOf('</head>');
+      final luxuryCss = await rootBundle.loadString('assets/aurelia-luxury.css');
+      // Apply the Aurelia Royal Coast design layer at runtime so the base HTML's
+      // business logic remains untouched and preview/browser behavior stays stable.
+      const royalCoastTheme = r"""<style id="aurelia-royal-coast-theme">
+:root{--brand:#38251d;--brand2:#5a3b2b;--ink:#30231d;--muted:#89796c;--bg:#f4f0e7;--card:#fffdf8;--line:#e3d8c3;--soft:#f1e7d8;--danger:#a8443d;--warn:#a67b35;--ok:#47684e;--gold:#c7a86a;--gold-light:#e9d8a8;--shadow:0 16px 42px rgba(21,61,53,.09);--radius:20px}
+html,body{background:radial-gradient(ellipse at 95% 0%,rgba(199,168,106,.12),transparent 35%),var(--bg)!important;color:var(--ink)!important}
+h1,h2,h3,.serif,.brand strong{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif!important;font-style:normal!important;letter-spacing:-.025em}
+.sidebar{background:linear-gradient(165deg,#493024 0%,#241812 72%,#1b120d 100%)!important;color:#f9f2e3!important;border-right:1px solid #b99a60!important;box-shadow:10px 0 35px rgba(8,33,30,.12)}
+.sidebar .brand{border-bottom:1px solid rgba(201,177,123,.28);margin-bottom:18px}.sidebar .brand strong{color:#f7edda!important;font-size:23px;letter-spacing:.025em}.sidebar .brand .muted{color:#d8c4a3!important}
+.sidebar .logo{border-radius:50%;border:1px solid var(--gold)!important;background:#493024;box-shadow:0 4px 18px #0002}
+.nav button{color:#e5e9df!important;border-radius:12px;transition:background .18s,color .18s,transform .18s}.nav button:hover{background:rgba(226,213,176,.12)!important;color:#fff!important;transform:translateX(2px)}.nav button.active{background:linear-gradient(120deg,#b99a60,#ead9ab)!important;color:#30231d!important;box-shadow:0 6px 18px #0002}
+.main{background:radial-gradient(ellipse at top right,rgba(196,171,116,.09),transparent 35%),var(--bg)!important}.top{background:rgba(250,247,239,.94)!important;border-bottom:1px solid #ded4bf!important;backdrop-filter:blur(18px)}
+.search input{background:#fffdf8!important;border-color:#ded4bf!important}.search input:focus{border-color:var(--gold)!important;box-shadow:0 0 0 3px #b99a601c}.iconbtn{background:#fffdf8!important;border-color:#ded4bf!important;color:#234536!important}
+.hero h1{font-size:clamp(31px,3vw,43px);font-weight:600;color:#38251d}.hero h1:after{content:"";display:block;width:58px;height:2px;background:linear-gradient(90deg,var(--gold),transparent);margin-top:12px}.hero p{line-height:1.65}
+.card,.item{background:rgba(255,253,248,.97)!important;border-color:#e3d8c3!important;box-shadow:var(--shadow)!important;border-radius:20px}.card{padding:22px}.item{transition:transform .18s,box-shadow .18s,border-color .18s}.item:hover{transform:translateY(-1px);box-shadow:0 15px 34px rgba(39,56,43,.10)!important;border-color:#d1bf98!important}
+.kpi .value{color:#5a3b2b;font-variant-numeric:tabular-nums}.kpi .label{letter-spacing:.13em}.btn{border-color:#ded4bf!important;background:#fffdf8!important;color:#493024!important;border-radius:12px;transition:transform .16s,box-shadow .16s}.btn:hover{transform:translateY(-1px);box-shadow:0 5px 14px #38251d12}
+.btn.primary{background:linear-gradient(135deg,#38251d,#8d6b35)!important;color:#fffaf0!important;border:1px solid var(--gold)!important;box-shadow:0 8px 18px rgba(23,72,59,.18)}.btn.primary:hover{background:linear-gradient(135deg,#30231d,#72502d)!important}.btn.danger{color:#a8443d!important}
+.available{background:#e7f1e8!important;color:#47684e!important}.occupied{background:#e1ece6!important;color:#5a3b2b!important}.reserved{background:#f3ead8!important;color:#8b692d!important}.cleaning{background:#f8eedb!important;color:#936719!important}.maintenance{background:#f7e5e2!important;color:#a8443d!important}
+.table-wrap{border-color:#e3d8c3!important;border-radius:16px}.table th{background:#eee7d7!important;color:#6d705f!important}.table td{background:#fffdf8!important}.table tr:hover td{background:#faf6eb!important}
+.modal{background:#fffdf8!important;border-color:#c7b17f!important;box-shadow:0 35px 100px rgba(16,36,27,.32)!important;border-radius:22px}.modal-back{background:rgba(13,34,26,.64)!important;backdrop-filter:blur(5px)}
+.field label{color:#69776b!important;letter-spacing:.02em}.field input,.field select,.field textarea{background:#fffefb!important;border-color:#ded7c7!important;border-radius:12px}.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold)!important;box-shadow:0 0 0 3px #b99a6018}
+.subcard,.restaurant-customer,.import-drop{background:#faf7ef!important;border-color:#d9caa8!important}.feature-parent{border-color:#e3d8c3!important;background:#fffdf8!important}.child-feature,.feature-row{background:#faf7ef!important;border-color:#e3d8c3!important}.feature-parent-head .master-toggle input:checked{background:#8d6b35!important;border-color:var(--gold)!important}
+.restaurant-tab.active,.pos-subtabs .btn.active{background:#38251d!important;color:#fffaf1!important;border-color:var(--gold)!important}.food-line,.open-bill-card{background:#fffdf8!important;border-color:#e3d8c3!important}.toast{background:#38251d!important;border:1px solid var(--gold)!important}
+.bottom{background:rgba(250,247,239,.97)!important;border-top-color:#d9caa8!important}.bottom button.active{background:#f1e7d8!important;color:#38251d!important}.more-menu{background:#fffdf8!important;border-color:#d9caa8!important}.more-menu button{background:#f4f0e5!important;color:#493024!important}.qr-box{background:#faf7ef!important;border-color:#d4c39e!important}.audit-chip{background:#e8efe5!important;color:#5a3b2b!important}.top-alert{animation:none;box-shadow:0 2px 8px #00000008}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--gold)!important;outline-offset:2px}
+@media(max-width:760px){.content{padding:17px 13px}.card{padding:17px}.sidebar{display:none}}@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+</style>""";
+      final htmlWithLuxuryTheme = html.replaceFirst('</head>', '$royalCoastTheme<style id="aurelia-luxury-ui">${luxuryCss.replaceAll("</style>", "")}</style></head>');
+      final headEnd = htmlWithLuxuryTheme.toLowerCase().indexOf('</head>');
       if (headEnd < 0) throw const FormatException('Bundled PMS HTML has no head element.');
       final bootstrapData = saved == null
           ? 'null'
@@ -977,7 +1057,7 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
           'window.__AURELIA_SECURE_DB_EXISTS=${saved != null};'
           'window.__AURELIA_SECURE_DB_BOOTSTRAP=$bootstrapData;'
           '</script>';
-      final page = html.substring(0, headEnd) + bootstrap + html.substring(headEnd);
+      final page = htmlWithLuxuryTheme.substring(0, headEnd) + bootstrap + htmlWithLuxuryTheme.substring(headEnd);
       await _controller.loadHtmlString(
         page,
         baseUrl: 'file:///android_asset/flutter_assets/assets/index.html',
@@ -1006,7 +1086,6 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -1031,15 +1110,6 @@ class _PmsWebViewPageState extends State<PmsWebViewPage> with WidgetsBindingObse
                   alignment: Alignment.topCenter,
                   child: LinearProgressIndicator(
                     value: _progress == 100 ? null : _progress / 100,
-                  ),
-                ),
-              if (!_unlocked)
-                Positioned.fill(
-                  child: PmsAccessGate(
-                    readSecret: AureliaSecureVault.readSecret,
-                    writeSecret: AureliaSecureVault.writeSecret,
-                    deleteSecret: AureliaSecureVault.deleteSecret,
-                    onUnlocked: _unlockAndLoad,
                   ),
                 ),
             ],
